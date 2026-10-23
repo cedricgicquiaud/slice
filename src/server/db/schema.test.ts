@@ -87,4 +87,11 @@ describe('database schema (D3)', () => {
 
     expect(await rows(sql`select 1 from connector_actions where connector_id = 'cascade'`)).toEqual([]);
   });
+
+  it('refuses two actions at the same position of a connector', async () => {
+    await insertConnector('positions', 'none', null, null);
+    await insertAction('positions', 0);
+
+    await expect(insertAction('positions', 0)).rejects.toThrow();
+  });
 });
