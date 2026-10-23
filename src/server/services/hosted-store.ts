@@ -1,7 +1,75 @@
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { asc, eq } from 'drizzle-orm';
+import type { UpstreamAuth } from '@shared/types';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
+import type { Database } from '../db/client';
+import { connectorActions, connectors } from '../db/schema';
+
+export interface DatabaseHostedStore {
+  /** Store a connector and its actions at once, created at `now`; return its unguessable id. */
+  put(config: HostedMcpConfig, now: Date): Promise<{ id: string; createdAt: string }>;
+  /** Read a connector back (`createdAt` set), or `undefined` if unknown. */
+  get(id: string): Promise<HostedMcpConfig | undefined>;
+}
+
+export function createDatabaseHostedStore(database: Database): DatabaseHostedStore {
+  const { db } = database;
+  return {
+    async put(config, now) {
+      const id = newId();
+      const auth = config.upstreamAuth;
+      await db.transaction(async (tx) => {
+        await tx.insert(connectors).values({
+          id,
+          name: config.name,
+          baseUrl: config.baseUrl,
+          upstreamAuthType: auth.type,
+          upstreamHeaderName: auth.type === 'apiKey' ? auth.headerName : null,
+          upstreamTokenUrl: auth.type === 'oauth2' ? auth.tokenUrl : null,
+          upstreamScopes: auth.type === 'oauth2' ? auth.scopes : null,
+          createdAt: now,
+        });
+        if (config.endpoints.length === 0) return;
+        await tx.insert(connectorActions).values(
+          config.endpoints.map((endpoint, position) => ({ connectorId: id, position, ...endpoint }))
+        );
+      });
+      return { id, createdAt: now.toISOString() };
+    },
+    async get(id) {
+      const [connector] = await db.select().from(connectors).where(eq(connectors.id, id));
+      if (!connector) return undefined;
+      const actions = await db
+        .select()
+        .from(connectorActions)
+        .where(eq(connectorActions.connectorId, id))
+        .orderBy(asc(connectorActions.position));
+      return {
+        name: connector.name,
+        baseUrl: connector.baseUrl,
+        upstreamAuth: upstreamAuthOf(connector),
+        endpoints: actions.map(({ name, description, method, path, params }) => ({
+          name,
+          description,
+          method,
+          path,
+          params,
+        })),
+        createdAt: connector.createdAt.toISOString(),
+      };
+    },
+  };
+}
+
+function upstreamAuthOf(connector: typeof connectors.$inferSelect): UpstreamAuth {
+  const auth: UpstreamAuth = { type: connector.upstreamAuthType };
+  if (connector.upstreamHeaderName !== null) auth.headerName = connector.upstreamHeaderName;
+  if (connector.upstreamTokenUrl !== null) auth.tokenUrl = connector.upstreamTokenUrl;
+  if (connector.upstreamScopes !== null) auth.scopes = connector.upstreamScopes;
+  return auth;
+}
 
 export interface HostedStore {
   /** Store a config (stamping `createdAt` when absent), return its unguessable id. */
