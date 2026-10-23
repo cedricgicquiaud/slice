@@ -1,19 +1,31 @@
 **Feature « <nom> »** — livraison <n>/<total> « <titre> »
+<!-- Tâche isolée (fix/chore) : supprimer la ligne ci-dessus. -->
+<!-- Ne pas recopier les fiches Linear, ni leur lien : Linear le publie en commentaire. -->
 
 ## Ce qui change
 
-- <un changement, une phrase, lisible par un non-développeur>
+<!-- Ce que l'utilisateur voit, ou « rien de visible », en une phrase. Puis une puce par
+     apport, ouverte par une phrase en gras, avec un exemple concret. Mots courants
+     seulement : ni nom de fichier, ni variable, ni jargon. -->
 
-## Comment
+## Ce qui est prouvé
 
-- <fichiers et fonctions nommés, choix faits et écartés, par où relire>
+<!-- Du constaté, en mots courants : tests passés, recette jouée, cas vérifiés. -->
 
-## Preuve
+## Limites connues
 
-- <CI verte, sortie réelle, capture si l'interface change>
+<!-- Ce que la livraison ne fait pas, la dette assumée, souvent les livraisons suivantes. -->
 
-## Hors périmètre / risques
+Recette : [UAT.md#<feature>](<lien sur la branche>), section « Livraison <n> »
 
-- <souvent, les livraisons suivantes>
+<details><summary>Détails techniques</summary>
+
+**Comment**
+<!-- Fichiers et fonctions nommés, choix faits et écartés, par où relire. -->
+
+**Preuve**
+<!-- Sortie réelle, CI verte, capture si l'interface change. -->
+
+</details>
 
 Closes WAT-<n>
