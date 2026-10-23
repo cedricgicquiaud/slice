@@ -165,6 +165,20 @@ const checks: { name: string; fn: () => Promise<void> }[] = [
       }
     },
   },
+  {
+    name: 'an unknown hosted URL answers 404 and the server stays healthy',
+    fn: async () => {
+      const res = await fetch(`${BASE}/m/AAAAAAAAAAAAAAAAAAAAAA`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+      });
+      if (res.status !== 404) throw new Error(`status ${res.status}, expected 404`);
+      const health = await fetch(`${BASE}/api/health`);
+      const body = (await health.json()) as { ok?: boolean };
+      if (body.ok !== true) throw new Error(`health is not ok after the 404: ${JSON.stringify(body)}`);
+    },
+  },
 ];
 
 async function main(): Promise<void> {
