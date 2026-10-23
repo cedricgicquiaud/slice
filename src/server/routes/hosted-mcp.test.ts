@@ -5,7 +5,11 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createApp } from '../app';
-import { hostedStore } from '../services/hosted-store';
+import { hostedStore, createDatabaseHostedStore, type DatabaseHostedStore } from '../services/hosted-store';
+import type { HostedMcpConfig } from '../services/hosted-mcp-factory';
+import { openDatabase, type Database } from '../db/client';
+import { migrateDatabase } from '../db/migrate';
+import { createTestDatabase, type TestDatabase } from '../db/test-database';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
@@ -22,20 +26,28 @@ paths:
 
 let upstream: Server;
 let upstreamUrl: string;
-let received: Array<{ url: string; auth: string | undefined }> = [];
+let received: Array<{ url: string; auth: string | undefined; apiKey: string | undefined }> = [];
+let testDb: TestDatabase;
+let database: Database;
+let store: DatabaseHostedStore;
 let app: Server;
 let baseUrl: string;
 
 beforeAll(async () => {
   upstream = createServer((req, res) => {
-    received.push({ url: req.url ?? '', auth: req.headers.authorization });
+    received.push({ url: req.url ?? '', auth: req.headers.authorization, apiKey: req.headers['x-api-key'] as string | undefined });
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ ok: true }));
   });
   await new Promise<void>((r) => upstream.listen(0, r));
   upstreamUrl = `http://127.0.0.1:${(upstream.address() as AddressInfo).port}`;
 
-  app = createApp({ nodeEnv: 'test' }).listen(0);
+  testDb = await createTestDatabase();
+  database = openDatabase(testDb.config);
+  await migrateDatabase(database);
+  store = createDatabaseHostedStore(database);
+
+  app = createApp({ nodeEnv: 'test', hostedStore: store }).listen(0);
   await new Promise<void>((r) => app.once('listening', r));
   baseUrl = `http://127.0.0.1:${(app.address() as AddressInfo).port}`;
 });
@@ -43,6 +55,68 @@ beforeAll(async () => {
 afterAll(async () => {
   await new Promise<void>((r) => (app ? app.close(() => r()) : r()));
   await new Promise<void>((r) => (upstream ? upstream.close(() => r()) : r()));
+  await database?.close();
+  await testDb?.dispose();
+});
+
+async function connectAgent(url: string, token: string): Promise<Client> {
+  const client = new Client({ name: 'agent', version: '0.0.0' });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(url), {
+      requestInit: { headers: { Authorization: `Bearer ${token}` } },
+    })
+  );
+  return client;
+}
+
+/** A connector with three actions in a deliberate order: a read then two writes. */
+function threeActions(): HostedMcpConfig {
+  return {
+    name: 'things',
+    baseUrl: upstreamUrl,
+    upstreamAuth: { type: 'bearer' },
+    endpoints: [
+      {
+        name: 'list_things',
+        description: 'List things',
+        method: 'GET',
+        path: '/things',
+        params: [{ name: 'limit', in: 'query', type: 'integer', required: false }],
+      },
+      {
+        name: 'create_thing',
+        description: 'Create a thing',
+        method: 'POST',
+        path: '/things',
+        params: [{ name: 'title', in: 'body', type: 'string', required: true, wireName: 'title' }],
+      },
+      {
+        name: 'delete_thing',
+        description: 'Delete a thing',
+        method: 'DELETE',
+        path: '/things/{id}',
+        params: [{ name: 'id', in: 'path', type: 'string', required: true }],
+      },
+    ],
+  };
+}
+
+describe('hosted connector served from the database', () => {
+  it('serves its actions in order, with their parameters and read/write labels', async () => {
+    const { id } = await store.put(threeActions(), new Date());
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`, 'TOKEN');
+    const { tools } = await agent.listTools();
+    await agent.close();
+
+    expect(
+      tools.map((t) => [t.name, Object.keys(t.inputSchema.properties ?? {}), t.annotations?.readOnlyHint])
+    ).toEqual([
+      ['list_things', ['limit'], true],
+      ['create_thing', ['title'], false],
+      ['delete_thing', ['id'], false],
+    ]);
+  });
 });
 
 async function host(): Promise<string> {
