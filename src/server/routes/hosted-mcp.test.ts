@@ -4,6 +4,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { sql } from 'drizzle-orm';
 import { createApp } from '../app';
 import { createDatabaseHostedStore, type DatabaseHostedStore } from '../services/hosted-store';
 import type { HostedMcpConfig } from '../services/hosted-mcp-factory';
@@ -126,6 +127,62 @@ describe('hosted connector served from the database', () => {
       ['create_thing', ['title'], false],
       ['delete_thing', ['id'], false],
     ]);
+  });
+
+  it('gives a connector created from screen 4 a 22-character address kept in the database', async () => {
+    const url = await host();
+    const id = url.split('/m/')[1]!;
+
+    expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect((await store.get(id))?.endpoints.map((e) => e.name)).toEqual(['list_things']);
+  });
+
+  it("relays the agent's API key in the header the API expects", async () => {
+    received = [];
+    const { id } = await store.put(
+      { ...threeActions(), upstreamAuth: { type: 'apiKey', headerName: 'X-Api-Key' } },
+      new Date()
+    );
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`, 'KEY-123');
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    expect(received.map((r) => r.apiKey)).toEqual(['KEY-123']);
+  });
+
+  it('keeps no upstream key or token in the database', async () => {
+    const res = await fetch(`${baseUrl}/api/host`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        parsedSpec: {},
+        rawSpec: SPEC,
+        selectedIds: ['GET /things'],
+        config: {
+          mcpName: 'demo',
+          baseUrl: upstreamUrl,
+          upstreamAuth: { type: 'apiKey', headerName: 'X-Api-Key' },
+          hosting: 'cloud',
+          mode: 'remote',
+          mcpServerToken: 'feedfacefeedfacefeedfacefeedface',
+          includeParamDescriptions: false,
+          retryOnServerError: false,
+        },
+      }),
+    });
+    expect(res.status).toBe(200);
+    const { url } = (await res.json()) as { url: string };
+    const agent = await connectAgent(url, 'AGENT-SECRET-0002');
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    const everything = await database.rows<{ row: string }>(
+      sql`select row_to_json(c)::text as row from connectors c
+          union all select row_to_json(a)::text from connector_actions a`
+    );
+    expect(everything.length).toBeGreaterThan(0);
+    expect(everything.filter((r) => /feedface|AGENT-SECRET/.test(r.row))).toEqual([]);
   });
 });
 
