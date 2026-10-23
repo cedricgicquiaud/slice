@@ -200,3 +200,30 @@ SLICE/
 - Documentation publique : `docs/` (la spec MVP de mai 2026 est dans l historique git)
 - PRD validé : [.workflow/PRD.md](.workflow/PRD.md)
 - Règles projet : `.claude/rules/` (workflow FORGE retiré le 2026-08-27 ; circuit de développement : dépôt `AlanZien/pilot`)
+
+## Pilot
+
+_Configuration de ce projet. Les règles de la méthode vivent dans la skill `pilot` ; ici,_
+_seulement ce qui est propre à ce dépôt._
+
+**Posé par `init`** (23/10/2026)
+
+- Workspace Linear : `gm5` (connexion MCP `linear` ; clé `~/.config/pilot/linear-gm5.env`)
+- Team : `WATIDO` — clé `WAT` — id `0d728832-ef31-4986-8655-1c0b068624e7`.
+  SLICE n'a pas sa propre team (plan gratuit limité à 2) : ses features sont des projets
+  Linear de WATIDO, préfixés « SLICE — ».
+- Agents en parallèle : `1`
+- Barème et capacité : `.pilot/calibration.md`
+- PRD : `.pilot/PRD.md` (fait foi sur les sections « État du projet » et « Decisions »
+  ci-dessus, en partie périmées) ; vocabulaire : `CONTEXT.md`
+- Cahier de recette : `UAT.md` à la racine, lié depuis chaque feature
+- Direction visuelle : `.pilot/design.md` (système existant, `src/client/index.css`)
+
+**Selon le projet**
+
+- Lancer l'app : `pnpm dev` (front http://localhost:5173, API http://localhost:3001)
+- Testeur : `passe visuelle automatisée`
+- Échéance : à fixer — date de la certification de développeur
+
+**Le contrat de ce projet** : aucun développement sans fiche Linear ; rien n'est créé dans
+Linear sans liste validée. Dépôt public : aucune idée stratégique ni secret dans le dépôt.
