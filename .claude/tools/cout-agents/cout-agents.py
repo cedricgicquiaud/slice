@@ -5,6 +5,10 @@ Usage :
   python3 .claude/tools/cout-agents/cout-agents.py [dossier du projet] [--detail] [--seuils]
   python3 .claude/tools/cout-agents/cout-agents.py [dossier du projet] --direct [--une-fois] [--notifier] [--depuis 120]
 
+Mode projet : ce qu'a coûté tout le projet, par étape de la méthode et par feature, en équivalent
+prix d'API (module `cout_projet.py`, tarifs dans `prix.json`).
+  python3 .claude/tools/cout-agents/cout-agents.py [dossier du projet] --projet
+
 Mode suivre : pendant un run, les grandes étapes de chaque agent, en français, sans code.
   python3 .claude/tools/cout-agents/cout-agents.py [dossier du projet] --suivre [nom d'agent] [--depuis 120]
 Une ligne par étape : l'heure, puis la phrase que l'agent a écrite entre deux commandes, ou un
@@ -365,6 +369,10 @@ def main():
         if nom: args = [a for a in args if a != nom]
         projet = os.path.abspath(args[0]) if args else os.getcwd()
         return suivre(projet, nom, depuis)
+    if "--projet" in sys.argv:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import cout_projet
+        return cout_projet.main(os.path.abspath(args[0]) if args else os.getcwd())
     if "--direct" in sys.argv:
         projet = os.path.abspath(args[0]) if args else os.getcwd()
         return direct(projet, "--une-fois" in sys.argv, "--notifier" in sys.argv, depuis)

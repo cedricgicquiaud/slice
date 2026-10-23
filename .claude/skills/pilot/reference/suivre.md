@@ -90,6 +90,11 @@ périmètre : « il faut choisir quoi couper », pas seulement « ça glisse »)
 **alertes** : toute tâche isolée non terminée dont l'échéance (`dueDate`) est passée, en
 soulignant les tâches-décisions citées dans des fiches de features (« la décision X a
 n jours de retard, m features en dépendent »).
+**Coûter** : quand une feature passe « Terminée », relever son coût par étape avec
+`python3 .claude/tools/cout-agents/cout-agents.py . --projet` (lignes de son code de cadrage et
+des codes de ses livraisons) et l'écrire dans sa ligne d'historique de `.pilot/calibration.md`,
+en équivalent prix d'API. Entre features de même taille, l'étape qui coûte le plus est celle à
+regarder.
 **Apprendre** : quand une feature passe « Terminée », relire les rapports d'audit de ses PR.
 Chaque défaut trouvé par le `verifier` qui pourrait se reproduire devient une ligne dans la
 section « Idiomes de code » du `CLAUDE.md` du projet (proposée, validée par l'humain, poussée
