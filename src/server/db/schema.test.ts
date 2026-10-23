@@ -50,4 +50,17 @@ describe('database schema (D3)', () => {
       'connectors.created_at timestamptz NO',
     ]);
   });
+
+  function insertConnector(id: string, authType: string, headerName: string | null, tokenUrl: string | null) {
+    return rows(
+      sql`insert into connectors (id, name, base_url, upstream_auth_type, upstream_header_name, upstream_token_url, created_at)
+          values (${id}, 'demo', 'https://api.example.com', ${authType}, ${headerName}, ${tokenUrl}, now())`
+    );
+  }
+
+  it('fills the upstream header name if and only if the access is an API key', async () => {
+    await expect(insertConnector('apikey-without-header', 'apiKey', null, null)).rejects.toThrow();
+    await expect(insertConnector('bearer-with-header', 'bearer', 'X-Api-Key', null)).rejects.toThrow();
+    await expect(insertConnector('apikey-with-header', 'apiKey', 'X-Api-Key', null)).resolves.toBeDefined();
+  });
 });
