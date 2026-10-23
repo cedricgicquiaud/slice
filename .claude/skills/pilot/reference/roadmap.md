@@ -10,6 +10,8 @@ Relançable : ne propose que les features nouvelles.
 
 ## Proposer
 
+Ouvrir la branche `roadmap/<CLE>` avant de lire le cadrage (`git.md` § Branches).
+
 1. Lire le cadrage disponible (PRD, spec, README, plan validé, backlog existant).
 2. Proposer **la liste complète des features** (grandes fonctionnalités, échelle semaines) et,
    pour chacune, **ses livraisons** (titre-résultat + taille S/M/L/XL) et l'ordre suggéré ;

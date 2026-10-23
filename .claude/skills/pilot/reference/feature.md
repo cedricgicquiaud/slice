@@ -11,6 +11,9 @@ fabrique et dans quel fichier.
 
 ## Temps 1 — cadrer
 
+Ouvrir la branche `cadrage/<id de la feature>-<slug>` avant la première question ; elle sert
+aux deux temps, cadrage et découpage (`git.md` § Branches).
+
 1. **Retrouver la feature** dans Linear (titre proche, statut « À cadrer »), ou en créer une
    nouvelle après validation, comme `roadmap`. Lire sa fiche, le PRD, `CONTEXT.md`, le code
    concerné.

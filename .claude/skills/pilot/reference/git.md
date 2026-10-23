@@ -9,6 +9,16 @@ _Lu par `run`, `fix` et `sync`, et par `init` qui pose les gabarits du dépôt._
 - Nom de branche : `feature/<CODE>-<n° première tâche>-<slug>`, `fix/<CODE>-<n>-<slug>`,
   `chore/<CODE>-<n>-<slug>`. Le code Linear dans le nom, c'est ce qui fait avancer les
   statuts de tâche sans personne.
+- **Une branche par étape de cadrage**, même quand l'étape n'écrit aucun fichier :
+  `prd/<slug-du-projet>` pour `init`, `roadmap/<CLE>` pour `roadmap`,
+  `cadrage/<id de la feature>-<slug>` pour `feature` (cadrage et découpage, par exemple
+  `cadrage/P-ABC-4-authentification`). Elle s'ouvre au début de l'étape. Ce qu'elle écrit
+  (PRD, `CONTEXT.md`, barème) part en PR comme le reste ; une étape qui n'écrit que dans
+  Linear laisse une branche vide, supprimée en fin d'étape (`git branch -d`).
+  _Pourquoi : chaque requête de Claude enregistre la branche courante. C'est le seul repère
+  qui permet au relevé de coûts (`cout-agents.py --projet`) de ranger le cadrage par étape
+  et par feature ; sans lui, tout ce qui se fait sur `main` tombe dans « hors méthode »._
+- `next`, `sync` et les conversations libres restent sur `main`.
 - **Release.** Dès qu'un environnement porte des utilisateurs (testeurs, clients), le projet
   déclare `Release : release` dans sa section Pilot. La branche `release` ne reçoit que des
   PR `main → release`, titrées `Release <AAAA-MM-JJ>`, mergées par l'humain, sans fiche

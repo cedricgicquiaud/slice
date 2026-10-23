@@ -15,6 +15,8 @@
 
 ## Comprendre le produit
 
+Ouvrir la branche `prd/<slug-du-projet>` avant la première question (`git.md` § Branches).
+
 Si un cadrage existe déjà (PRD, ou README qui dise ce que le produit fait et pour qui) : le
 lire et passer à l'étape 4.
 

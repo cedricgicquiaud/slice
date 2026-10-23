@@ -1,0 +1,18 @@
+{
+  "source": "Tarifs publics de l'API Anthropic, en dollars par million de tokens, relevés le 06/10/2026 (documentation de l'API). À revérifier sur la page tarifs avant de citer un montant.",
+  "regles": "Écriture du cache : 1,25 × l'entrée pour 5 minutes, 2 × pour 1 heure. Lecture du cache : prix propre à chaque modèle.",
+  "modeles": {
+    "claude-fable-5-1": { "entree": 10, "sortie": 50, "lecture_cache": 0.25 },
+    "claude-fable-5": { "entree": 10, "sortie": 50, "lecture_cache": 1 },
+    "claude-opus-5-5": { "entree": 4, "sortie": 20, "lecture_cache": 0.2 },
+    "claude-opus-5": { "entree": 5, "sortie": 25, "lecture_cache": 0.5 },
+    "claude-opus-4-8": { "entree": 5, "sortie": 25, "lecture_cache": 0.5 },
+    "claude-opus-4-7": { "entree": 5, "sortie": 25, "lecture_cache": 0.5 },
+    "claude-opus-4-6": { "entree": 5, "sortie": 25, "lecture_cache": 0.5 },
+    "claude-sonnet-5-5": { "entree": 2, "sortie": 10, "lecture_cache": 0.2 },
+    "claude-sonnet-5": { "entree": 2, "sortie": 10, "lecture_cache": 0.2 },
+    "claude-sonnet-4-6": { "entree": 3, "sortie": 15, "lecture_cache": 0.3 },
+    "claude-haiku-5-5": { "entree": 0.1, "sortie": 0.5, "lecture_cache": 0.01 },
+    "claude-haiku-4-5": { "entree": 1, "sortie": 5, "lecture_cache": 0.1 }
+  }
+}
