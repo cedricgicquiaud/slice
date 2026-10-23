@@ -1,0 +1,56 @@
+{
+  "skill_name": "pilot",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Dans le dépôt pilotage-sandbox (projet piloté, team TST) : /pilot next. Mode lecture seule : ne modifie rien dans Linear ni dans git, décris ce que tu ferais et arrête-toi sur ta proposition.",
+      "expected_output": "Lit les statuts Linear, annonce où en est le projet (feature en cours ou suivante), propose l'étape logique (cadrage / production / PR à merger) et s'arrête.",
+      "files": [],
+      "assertions": [
+        "Annonce le statut Linear de la feature en cours ou suivante (nom + statut)",
+        "Propose explicitement une commande suivante (feature / livre / merger / sync) adaptée au statut",
+        "S'arrête sur la proposition sans lancer de développement ni décrire une production dans la session",
+        "N'a rien écrit dans Linear ni dans git"
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Dans le dépôt pilotage-sandbox (projet piloté, team TST) : /pilot feature Facturation. Arrête-toi à la première validation demandée à l'humain ; ne crée rien dans Linear.",
+      "expected_output": "Propose un cadrage : décisions produit et un contrat de validation numéroté (10-30 phrases, avec des refus), puis s'arrête pour validation.",
+      "files": [],
+      "assertions": [
+        "Propose un contrat de validation : liste numérotée de phrases « ce qui devra être vrai » (au moins 10)",
+        "Au moins un tiers des phrases sont des refus (ce qui doit être impossible ou rejeté)",
+        "Propose des décisions produit explicites avant le découpage",
+        "Ne propose pas encore de tâches ni de découpage en livraisons (le cadrage vient d'abord)",
+        "S'arrête pour validation humaine sans rien créer dans Linear"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Dans un dossier vide (aucun README, aucun PRD) : /pilot init. Arrête-toi à la première question ou validation ; ne lance aucun script, ne crée rien dans Linear.",
+      "expected_output": "Commence par un entretien de cadrage (utilisateurs, problème, périmètre) au lieu de demander directement workspace et clé.",
+      "files": [],
+      "assertions": [
+        "Commence par des questions de cadrage produit (utilisateurs, problème, périmètre) avant de demander workspace, nom et clé Linear",
+        "Pose les questions par petits lots (pas plus de 5 questions dans le premier message)",
+        "Annonce qu'un PRD sera écrit et validé avant la création dans Linear",
+        "Ne lance aucun script et ne crée rien"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Dans le dépôt pilotage-sandbox (projet piloté, team TST), une feature « Planifiée » avec deux livraisons disjointes est prête. Décris, étape par étape et en lecture seule (ne lance aucun agent, ne modifie ni git ni Linear), comment /pilot run produirait la première livraison, qui intervient après le producteur, ce qui se passe si le testeur constate un défaut à l'écran, et à quoi ressemble le rapport de la PR.",
+      "expected_output": "Décrit la boucle avec tdd-writer, puis verifier ET testeur en parallèle ; le testeur lance l'app avec la commande de la section Pilot et fait une passe visuelle bornée (1280 px, 375 px, clavier, sombre, console) sans jouer ni cocher UAT.md ; un défaut constaté part au correcteur et est verrouillé par un test ; le rapport de PR a deux colonnes prouvé / à relire.",
+      "files": [],
+      "assertions": [
+        "Nomme l'agent testeur comme intervenant après le producteur, à côté de verifier",
+        "Dit que le testeur lit la commande « Lancer l'app » de la section Pilot et fait une passe visuelle bornée en budget",
+        "Dit que le testeur ne déroule pas UAT.md, ne coche rien et ne commite rien ; le cahier est joué à la main en recette",
+        "Décrit le traitement d'un défaut constaté : correcteur avec liste fermée, correction verrouillée par un test",
+        "Décrit un rapport de PR en deux colonnes prouvé / à relire",
+        "Ne lance aucun agent et ne modifie rien"
+      ]
+    }
+  ]
+}

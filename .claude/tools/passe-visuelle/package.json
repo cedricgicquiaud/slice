@@ -1,0 +1,7 @@
+{
+  "name": "passe-visuelle",
+  "private": true,
+  "type": "module",
+  "description": "Passe visuelle automatisée pour l'agent testeur (skill pilot)",
+  "dependencies": { "playwright": "^1.62.1" }
+}
