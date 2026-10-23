@@ -9,6 +9,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { z, type ZodTypeAny } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import type { EndpointParam, HttpMethod, UpstreamAuth } from '@shared/types';
 import { type ZodSchemaShape, schemaShapeForParam } from './zod-schema-builder';
 import { assertPublicUrl } from './ssrf-guard';
@@ -186,6 +187,22 @@ async function callUpstream(
 }
 
 /**
+ * MCP hints the agent uses to tell reads from writes. Same rule as screen 2's
+ * Reads/Writes filter: only GET reads. Every other method — unknown ones
+ * included — is a possibly destructive write (a POST can delete). All four
+ * hints are explicit: absent, the protocol defaults would apply instead.
+ */
+export function toolAnnotationsFor(method: string): ToolAnnotations {
+  const reads = method.toUpperCase() === 'GET';
+  return {
+    readOnlyHint: reads,
+    destructiveHint: !reads,
+    idempotentHint: reads,
+    openWorldHint: true,
+  };
+}
+
+/**
  * Build an in-memory MCP server from a config. Cheap object construction —
  * call it per session (and cache by id). The config drives everything; the
  * code below is identical for every MCP.
@@ -201,10 +218,16 @@ export function buildHostedMcpServer(
     for (const p of endpoint.params) {
       shape[p.name] = buildZodSchema(schemaShapeForParam(p));
     }
-    server.tool(endpoint.name, endpoint.description, shape, async (args: Record<string, unknown>) => {
-      const result = await callUpstream(config, endpoint, args, allowPrivateHosts);
-      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
-    });
+    server.tool(
+      endpoint.name,
+      endpoint.description,
+      shape,
+      toolAnnotationsFor(endpoint.method),
+      async (args: Record<string, unknown>) => {
+        const result = await callUpstream(config, endpoint, args, allowPrivateHosts);
+        return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+      }
+    );
   }
   return server;
 }
