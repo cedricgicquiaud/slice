@@ -15,6 +15,13 @@
       "when": 1792793453846,
       "tag": "0001_header_name_iff_api_key",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792793491958,
+      "tag": "0002_token_url_iff_oauth2",
+      "breakpoints": true
     }
   ]
 }

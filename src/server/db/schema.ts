@@ -28,6 +28,10 @@ export const connectors = pgTable(
       'connectors_header_name_iff_api_key',
       sql`(${table.upstreamAuthType} = 'apiKey') = (${table.upstreamHeaderName} is not null)`
     ),
+    check(
+      'connectors_token_url_iff_oauth2',
+      sql`(${table.upstreamAuthType} = 'oauth2') = (${table.upstreamTokenUrl} is not null)`
+    ),
   ]
 );
 

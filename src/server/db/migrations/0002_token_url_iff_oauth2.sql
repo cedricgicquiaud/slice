@@ -1,0 +1,1 @@
+ALTER TABLE "connectors" ADD CONSTRAINT "connectors_token_url_iff_oauth2" CHECK (("connectors"."upstream_auth_type" = 'oauth2') = ("connectors"."upstream_token_url" is not null));
