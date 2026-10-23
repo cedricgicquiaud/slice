@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
+import { spawn, type ChildProcess } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createApp } from './app';
 
 describe('Express app', () => {
@@ -19,4 +25,90 @@ describe('Express app', () => {
     expect(res.body.env).toBeDefined();
     expect(typeof res.body.env).toBe('string');
   });
+});
+
+// The real entry point, run as `pnpm dev:server` runs it (tsx binary, no package manager).
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const TSX = path.join(ROOT, 'node_modules/.bin/tsx');
+const ENTRY = path.join(ROOT, 'src/server/index.ts');
+
+async function freePort(): Promise<number> {
+  const probe = createServer();
+  await new Promise<void>((r) => probe.listen(0, r));
+  const { port } = probe.address() as { port: number };
+  await new Promise<void>((r) => probe.close(() => r()));
+  return port;
+}
+
+interface RunningServer {
+  baseUrl: string;
+  stop(): Promise<void>;
+}
+
+/** Start the server in `cwd` and wait until it answers its health check. */
+async function startServer(cwd: string, env: Record<string, string>): Promise<RunningServer> {
+  const port = await freePort();
+  const { DATABASE_URL: _ignored, ...inherited } = process.env;
+  const child: ChildProcess = spawn(TSX, ['--tsconfig', path.join(ROOT, 'tsconfig.server.json'), ENTRY], {
+    cwd,
+    env: { ...inherited, NODE_ENV: 'development', PORT: String(port), ...env },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let output = '';
+  child.stdout?.on('data', (chunk) => (output += chunk));
+  child.stderr?.on('data', (chunk) => (output += chunk));
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const stop = () =>
+    new Promise<void>((r) => {
+      if (child.exitCode !== null) return r();
+      child.once('exit', () => r());
+      child.kill('SIGTERM');
+    });
+  for (let attempt = 0; attempt < 150; attempt++) {
+    if (child.exitCode !== null) throw new Error(`server exited (${child.exitCode}):\n${output}`);
+    try {
+      if ((await fetch(`${baseUrl}/api/health`)).ok) return { baseUrl, stop };
+    } catch {
+      // not listening yet
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  await stop();
+  throw new Error(`server never became healthy:\n${output}`);
+}
+
+function postToolsList(url: string): Promise<Response> {
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+  });
+}
+
+describe('server entry point', () => {
+  it('starts without DATABASE_URL and never reads the old hosted.json file', async () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    const legacyFile = path.join(cwd, 'data', 'hosted.json');
+    mkdirSync(path.dirname(legacyFile), { recursive: true });
+    const legacy = JSON.stringify({
+      LegacyConnectorId00001: {
+        name: 'legacy',
+        baseUrl: 'https://api.example.com',
+        upstreamAuth: { type: 'none' },
+        endpoints: [],
+        createdAt: '2026-10-24T09:00:00.000Z',
+      },
+    });
+    writeFileSync(legacyFile, legacy);
+    const server = await startServer(cwd, { SLICE_HOSTED_TTL_HOURS: '0' });
+    try {
+      const res = await postToolsList(`${server.baseUrl}/m/LegacyConnectorId00001`);
+
+      expect(res.status).toBe(404);
+      expect(readFileSync(legacyFile, 'utf-8')).toBe(legacy);
+    } finally {
+      await server.stop();
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
