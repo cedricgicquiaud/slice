@@ -12,6 +12,8 @@ export interface DatabaseHostedStore {
   put(config: HostedMcpConfig, now: Date): Promise<{ id: string; createdAt: string }>;
   /** Read a connector back (`createdAt` set), or `undefined` if unknown. */
   get(id: string): Promise<HostedMcpConfig | undefined>;
+  /** Remove a connector and its actions (no-op if unknown). */
+  delete(id: string): Promise<void>;
 }
 
 export function createDatabaseHostedStore(database: Database): DatabaseHostedStore {
@@ -65,6 +67,9 @@ export function createDatabaseHostedStore(database: Database): DatabaseHostedSto
         })),
         createdAt: connector.createdAt.toISOString(),
       };
+    },
+    async delete(id) {
+      await db.delete(connectors).where(eq(connectors.id, id));
     },
   };
 }
@@ -153,6 +158,18 @@ export function createFileHostedStore(filePath: string): HostedStore {
     delete(id) {
       if (configs.delete(id)) persist();
     },
+  };
+}
+
+/** Transitional: the file store behind the async interface, until the server opens its database. */
+export function legacyFileHostedStore(): DatabaseHostedStore {
+  return {
+    put: async (config, now) => {
+      const createdAt = now.toISOString();
+      return { id: hostedStore.put({ ...config, createdAt }), createdAt };
+    },
+    get: async (id) => hostedStore.get(id),
+    delete: async (id) => hostedStore.delete(id),
   };
 }
 

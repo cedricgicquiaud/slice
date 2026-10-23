@@ -1,11 +1,11 @@
 // E2E for the hosted runtime routes (Pivot-4): POST /api/host stores a config
 // and returns a URL; /m/:id serves the MCP, multi-session (several agents in
 // parallel), relaying each caller's own token to the upstream.
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createApp } from '../app';
-import { hostedStore, createDatabaseHostedStore, type DatabaseHostedStore } from '../services/hosted-store';
+import { createDatabaseHostedStore, type DatabaseHostedStore } from '../services/hosted-store';
 import type { HostedMcpConfig } from '../services/hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
@@ -33,6 +33,16 @@ let store: DatabaseHostedStore;
 let app: Server;
 let baseUrl: string;
 
+const CREATED = new Date('2026-10-24T09:00:00.000Z');
+/** The servers' clock: every app of this file reads it, tests move it. */
+let clock = CREATED;
+const now = () => clock;
+const hoursAfterCreation = (hours: number) => new Date(CREATED.getTime() + hours * 3_600_000);
+
+beforeEach(() => {
+  clock = CREATED;
+});
+
 beforeAll(async () => {
   upstream = createServer((req, res) => {
     received.push({ url: req.url ?? '', auth: req.headers.authorization, apiKey: req.headers['x-api-key'] as string | undefined });
@@ -47,7 +57,7 @@ beforeAll(async () => {
   await migrateDatabase(database);
   store = createDatabaseHostedStore(database);
 
-  app = createApp({ nodeEnv: 'test', hostedStore: store }).listen(0);
+  app = createApp({ nodeEnv: 'test', hostedStore: store, now }).listen(0);
   await new Promise<void>((r) => app.once('listening', r));
   baseUrl = `http://127.0.0.1:${(app.address() as AddressInfo).port}`;
 });
@@ -168,9 +178,9 @@ describe('hosted runtime routes', () => {
 
   it('returns 410 and purges the entry when the hosted URL has expired', async () => {
     const url = await host();
-    const id = url.split('/m/')[1];
-    // Age the record beyond the default 72h TTL.
-    hostedStore.get(id)!.createdAt = new Date(Date.now() - 100 * 3600 * 1000).toISOString();
+    const id = url.split('/m/')[1]!;
+    // Visit beyond the default 72h TTL.
+    clock = hoursAfterCreation(100);
 
     const res = await fetch(url, {
       method: 'POST',
@@ -178,23 +188,23 @@ describe('hosted runtime routes', () => {
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
     });
     expect(res.status).toBe(410);
-    expect(hostedStore.get(id)).toBeUndefined();
+    expect(await store.get(id)).toBeUndefined();
   });
 
   it('never expires a hosted URL when TTL is 0 (self-host deployments)', async () => {
-    const ttl0 = createApp({ nodeEnv: 'test', hostedTtlHours: 0 }).listen(0);
+    const ttl0 = createApp({ nodeEnv: 'test', hostedStore: store, hostedTtlHours: 0, now }).listen(0);
     await new Promise<void>((r) => ttl0.once('listening', r));
     const ttl0Base = `http://127.0.0.1:${(ttl0.address() as AddressInfo).port}`;
     try {
       received = [];
       const url = await host();
-      const id = url.split('/m/')[1];
-      hostedStore.get(id)!.createdAt = new Date(Date.now() - 100 * 3600 * 1000).toISOString();
+      const id = url.split('/m/')[1]!;
+      clock = hoursAfterCreation(100);
 
-      // Store is process-wide — the TTL-0 app serves the same id and must not expire it.
+      // Same database — the TTL-0 app serves the same id and must not expire it.
       await callListThings(`${ttl0Base}/m/${id}`, 'TOKEN_C');
       expect(received.some((r) => r.auth === 'Bearer TOKEN_C')).toBe(true);
-      expect(hostedStore.get(id)).toBeDefined();
+      expect(await store.get(id)).toBeDefined();
     } finally {
       await new Promise<void>((r) => ttl0.close(() => r()));
     }
@@ -221,12 +231,11 @@ describe('hosted runtime routes', () => {
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { id: string; expiresAt: string | null };
-    // Default TTL is 72h — expiresAt must be exactly createdAt + 72h.
-    const createdAt = hostedStore.get(body.id)!.createdAt!;
-    expect(body.expiresAt).toBe(new Date(Date.parse(createdAt) + 72 * 3_600_000).toISOString());
+    // Default TTL is 72h — created 2026-10-24 09:00 UTC, expires three days later.
+    expect(body.expiresAt).toBe('2026-10-27T09:00:00.000Z');
 
     // TTL 0 (self-host) → no expiry advertised.
-    const ttl0 = createApp({ nodeEnv: 'test', hostedTtlHours: 0 }).listen(0);
+    const ttl0 = createApp({ nodeEnv: 'test', hostedStore: store, hostedTtlHours: 0, now }).listen(0);
     await new Promise<void>((r) => ttl0.once('listening', r));
     try {
       const res0 = await fetch(`http://127.0.0.1:${(ttl0.address() as AddressInfo).port}/api/host`, {
@@ -265,7 +274,7 @@ describe('hosted runtime routes', () => {
 
   it('rejects a private/loopback baseUrl with 400 BLOCKED_HOST when the SSRF guard is on', async () => {
     // A production-like instance: allowPrivateHosts off → guard active.
-    const guarded = createApp({ nodeEnv: 'test', allowPrivateHosts: false }).listen(0);
+    const guarded = createApp({ nodeEnv: 'test', allowPrivateHosts: false, hostedStore: store }).listen(0);
     await new Promise<void>((r) => guarded.once('listening', r));
     const guardedUrl = `http://127.0.0.1:${(guarded.address() as AddressInfo).port}`;
     try {
