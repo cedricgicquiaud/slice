@@ -71,4 +71,20 @@ describe('database schema (D3)', () => {
       insertConnector('oauth2-with-url', 'oauth2', null, 'https://auth.example.com/token')
     ).resolves.toBeDefined();
   });
+
+  function insertAction(connectorId: string, position: number) {
+    return rows(
+      sql`insert into connector_actions (connector_id, position, name, description, method, path, params)
+          values (${connectorId}, ${position}, 'ping', 'Ping', 'GET', '/ping', '[]'::jsonb)`
+    );
+  }
+
+  it('deletes the actions of a deleted connector', async () => {
+    await insertConnector('cascade', 'none', null, null);
+    await insertAction('cascade', 0);
+
+    await rows(sql`delete from connectors where id = 'cascade'`);
+
+    expect(await rows(sql`select 1 from connector_actions where connector_id = 'cascade'`)).toEqual([]);
+  });
 });
