@@ -4,7 +4,7 @@
  * Migrations are generated from this file (see `drizzle.config.ts`).
  */
 import { sql } from 'drizzle-orm';
-import { check, integer, jsonb, pgEnum, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { check, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp } from 'drizzle-orm/pg-core';
 import type { EndpointParam } from '@shared/types';
 
 export const upstreamAuthType = pgEnum('upstream_auth_type', ['none', 'apiKey', 'bearer', 'oauth2']);
@@ -35,14 +35,18 @@ export const connectors = pgTable(
   ]
 );
 
-export const connectorActions = pgTable('connector_actions', {
-  connectorId: text('connector_id')
-    .notNull()
-    .references(() => connectors.id, { onDelete: 'cascade' }),
-  position: integer('position').notNull(),
-  name: text('name').notNull(),
-  description: text('description').notNull(),
-  method: httpMethod('method').notNull(),
-  path: text('path').notNull(),
-  params: jsonb('params').$type<EndpointParam[]>().notNull(),
-});
+export const connectorActions = pgTable(
+  'connector_actions',
+  {
+    connectorId: text('connector_id')
+      .notNull()
+      .references(() => connectors.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull(),
+    name: text('name').notNull(),
+    description: text('description').notNull(),
+    method: httpMethod('method').notNull(),
+    path: text('path').notNull(),
+    params: jsonb('params').$type<EndpointParam[]>().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.connectorId, table.position] })]
+);
