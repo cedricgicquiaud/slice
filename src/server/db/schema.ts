@@ -36,7 +36,9 @@ export const connectors = pgTable(
 );
 
 export const connectorActions = pgTable('connector_actions', {
-  connectorId: text('connector_id').notNull(),
+  connectorId: text('connector_id')
+    .notNull()
+    .references(() => connectors.id, { onDelete: 'cascade' }),
   position: integer('position').notNull(),
   name: text('name').notNull(),
   description: text('description').notNull(),
