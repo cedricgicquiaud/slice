@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { asc, eq } from 'drizzle-orm';
-import type { UpstreamAuth } from '@shared/types';
+import type { HttpMethod, UpstreamAuth } from '@shared/types';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
 import type { Database } from '../db/client';
 import { connectorActions, connectors } from '../db/schema';
@@ -33,7 +33,13 @@ export function createDatabaseHostedStore(database: Database): DatabaseHostedSto
         });
         if (config.endpoints.length === 0) return;
         await tx.insert(connectorActions).values(
-          config.endpoints.map((endpoint, position) => ({ connectorId: id, position, ...endpoint }))
+          config.endpoints.map((endpoint, position) => ({
+            connectorId: id,
+            position,
+            ...endpoint,
+            // Older paths may carry a lowercase method; the column only takes uppercase.
+            method: endpoint.method.toUpperCase() as HttpMethod,
+          }))
         );
       });
       return { id, createdAt: now.toISOString() };
