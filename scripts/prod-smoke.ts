@@ -14,8 +14,9 @@
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
@@ -190,9 +191,18 @@ async function main(): Promise<void> {
   }
 
   console.log(`› booting compiled server on :${PORT}…`);
+  // Throwaway store: the connectors created by the smoke must not land in the
+  // repo's default `./data/hosted.json`, which `pnpm dev` also serves. Left in
+  // the OS temp dir for the system to reclaim.
+  const storeDir = mkdtempSync(join(tmpdir(), 'slice-prod-smoke-'));
   const child = spawn(process.execPath, [SERVER_ENTRY], {
     cwd: ROOT,
-    env: { ...process.env, NODE_ENV: 'production', PORT: String(PORT) },
+    env: {
+      ...process.env,
+      NODE_ENV: 'production',
+      PORT: String(PORT),
+      SLICE_STORE_PATH: join(storeDir, 'hosted.json'),
+    },
     stdio: ['ignore', 'inherit', 'inherit'],
   });
 
