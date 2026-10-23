@@ -94,4 +94,12 @@ describe('database schema (D3)', () => {
 
     await expect(insertAction('positions', 0)).rejects.toThrow();
   });
+
+  it('indexes connectors by creation date', async () => {
+    const indexes = await rows<{ indexdef: string }>(
+      sql`select indexdef from pg_indexes where schemaname = 'public' and tablename = 'connectors'`
+    );
+
+    expect(indexes.some((i) => /\(created_at\)$/.test(i.indexdef))).toBe(true);
+  });
 });
