@@ -231,10 +231,15 @@ les suivantes. Moins de 200 caractères, ce qu'il doit faire en premier.
    ensuite, la technique repliée. Jamais de tableau à deux colonnes (il suggère une
    correspondance ligne à ligne qui n'existe pas), jamais d'identifiant de commit, de nom de
    fonction ou de fichier hors du bloc replié. Ne jamais écrire « auditée » ou « recettée »
-   pour ce qui n'a pas été joué.
+   pour ce qui n'a pas été joué. Tout ce qui précède le bloc replié s'écrit en mots courants,
+   sans le vocabulaire de la boucle ni celui des développeurs (« contrat 1 à 4 », « fixtures »,
+   « mode X ») : même règle que la description de PR (`git.md`).
 
    ```
    ## Livraison <n>/<total> « <titre> » — <Mergeable | Non mergeable>, <k> points à relire, <d> décisions
+
+   ### Ce qui change
+   - <ce que l'utilisateur voit, ou « rien de visible », puis un apport par puce, avec un exemple>
 
    ### Prouvé
    - <N> tests verts (<n> nouveaux).

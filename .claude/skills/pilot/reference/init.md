@@ -69,6 +69,9 @@ lire et passer à l'étape 4.
 11. Vérifier que le dépôt est couvert par l'intégration GitHub de Linear : demander à
     l'utilisateur de confirmer que l'organisation du dépôt apparaît dans Linear → Settings →
     Integrations → GitHub → Connected organizations. Sinon lui indiquer le bouton « + ».
+    Lui faire vérifier aussi, au même endroit, que Linear commente chaque PR avec le lien de
+    ses fiches (commentaire marqué `linear-linkback`) : c'est le seul lien vers la fiche
+    visible depuis GitHub, la PR n'en écrit pas.
 12. Poser les gabarits GitHub du dépôt, s'ils manquent : le gabarit de PR et le renvoi des
     issues vers Linear (`git.md` § Les gabarits du dépôt).
 13. **Poser la base de la boucle.**
