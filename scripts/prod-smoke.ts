@@ -16,6 +16,8 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 const PORT = Number(process.env.PORT ?? 3099);
 const BASE = `http://localhost:${PORT}`;
@@ -145,6 +147,22 @@ const checks: { name: string; fn: () => Promise<void> }[] = [
         throw new Error(`url does not end with /m/<22-char id>: ${body.url}`);
       }
       hostedUrl = body.url;
+    },
+  },
+  {
+    name: 'tools/list on the hosted URL returns exactly the selected actions',
+    fn: async () => {
+      const client = new Client({ name: 'prod-smoke', version: '0.0.0' });
+      await client.connect(new StreamableHTTPClientTransport(new URL(hostedUrl)));
+      try {
+        const { tools } = await client.listTools();
+        const names = tools.map((t) => t.name).sort().join(',');
+        if (names !== 'create_thing,list_things') {
+          throw new Error(`expected create_thing,list_things, got ${names}`);
+        }
+      } finally {
+        await client.close();
+      }
     },
   },
 ];
