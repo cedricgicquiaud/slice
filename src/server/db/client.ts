@@ -3,6 +3,7 @@
  * given, otherwise PGlite (embedded PostgreSQL, nothing to install) — on disk
  * in `dataDir`, or in memory without one.
  */
+import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import type { SQL } from 'drizzle-orm';
 import { drizzle as drizzlePostgres, type NodePgDatabase } from 'drizzle-orm/node-postgres';
@@ -23,6 +24,12 @@ interface DatabaseHandle {
 export type Database =
   | (DatabaseHandle & { driver: 'postgres'; db: NodePgDatabase<Schema>; pool: pg.Pool })
   | (DatabaseHandle & { driver: 'pglite'; db: PgliteDatabase<Schema>; client: PGlite });
+
+/** `DATABASE_URL` when set; otherwise PGlite on disk under `SLICE_DATA_DIR` (default `./data`). */
+export function databaseConfigFromEnv(env: NodeJS.ProcessEnv): DatabaseConfig {
+  if (env.DATABASE_URL) return { driver: 'postgres', url: env.DATABASE_URL };
+  return { driver: 'pglite', dataDir: path.resolve(env.SLICE_DATA_DIR ?? './data', 'pglite') };
+}
 
 export function openDatabase(config: DatabaseConfig): Database {
   if (config.driver === 'postgres') {
