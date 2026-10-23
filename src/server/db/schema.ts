@@ -4,7 +4,7 @@
  * Migrations are generated from this file (see `drizzle.config.ts`).
  */
 import { sql } from 'drizzle-orm';
-import { check, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp } from 'drizzle-orm/pg-core';
+import { check, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp } from 'drizzle-orm/pg-core';
 import type { EndpointParam } from '@shared/types';
 
 export const upstreamAuthType = pgEnum('upstream_auth_type', ['none', 'apiKey', 'bearer', 'oauth2']);
@@ -24,6 +24,7 @@ export const connectors = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   },
   (table) => [
+    index('connectors_created_at_idx').on(table.createdAt),
     check(
       'connectors_header_name_iff_api_key',
       sql`(${table.upstreamAuthType} = 'apiKey') = (${table.upstreamHeaderName} is not null)`
