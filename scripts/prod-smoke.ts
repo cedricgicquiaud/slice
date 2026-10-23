@@ -22,6 +22,33 @@ const BASE = `http://localhost:${PORT}`;
 const ROOT = resolve(import.meta.dirname, '..');
 const SERVER_ENTRY = 'dist/server/server/index.js';
 
+// Hosted connector exercised over HTTP only, so the check holds whatever the
+// store behind it. The base URL is a public documentation IP literal (TEST-NET-3):
+// the SSRF guard accepts it without DNS, and the smoke never calls an action —
+// only `tools/list` — so nothing leaves the machine.
+const HOSTED_SPEC = `openapi: 3.0.3
+info: { title: Smoke, version: "1.0" }
+paths:
+  /things:
+    get:
+      operationId: listThings
+      summary: List things
+      responses: { '200': { description: ok } }
+    post:
+      operationId: createThing
+      summary: Create thing
+      responses: { '201': { description: created } }
+  /things/{id}:
+    delete:
+      operationId: deleteThing
+      summary: Delete thing
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { '204': { description: deleted } }
+`;
+const HOSTED_URL = /\/m\/[A-Za-z0-9_-]{22}$/;
+
+let hostedUrl = '';
+
 function run(cmd: string, args: string[]): void {
   const r = spawnSync(cmd, args, { cwd: ROOT, stdio: 'inherit' });
   if (r.status !== 0) {
@@ -89,6 +116,35 @@ const checks: { name: string; fn: () => Promise<void> }[] = [
       if (!body.apiName || !Array.isArray(body.groups) || body.groups.length === 0) {
         throw new Error(`parse produced no usable result: ${JSON.stringify(body).slice(0, 200)}`);
       }
+    },
+  },
+  {
+    name: 'POST /api/host creates a connector at /m/<22-char id>',
+    fn: async () => {
+      const res = await fetch(`${BASE}/api/host`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          parsedSpec: {},
+          rawSpec: HOSTED_SPEC,
+          selectedIds: ['GET /things', 'POST /things'],
+          config: {
+            mcpName: 'smoke',
+            baseUrl: 'https://203.0.113.10',
+            upstreamAuth: { type: 'bearer' },
+            hosting: 'cloud',
+            mode: 'remote',
+            includeParamDescriptions: false,
+            retryOnServerError: false,
+          },
+        }),
+      });
+      if (!res.ok) throw new Error(`status ${res.status}: ${await res.text()}`);
+      const body = (await res.json()) as { url?: string };
+      if (!body.url || !HOSTED_URL.test(body.url)) {
+        throw new Error(`url does not end with /m/<22-char id>: ${body.url}`);
+      }
+      hostedUrl = body.url;
     },
   },
 ];
