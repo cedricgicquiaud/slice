@@ -63,4 +63,12 @@ describe('database schema (D3)', () => {
     await expect(insertConnector('bearer-with-header', 'bearer', 'X-Api-Key', null)).rejects.toThrow();
     await expect(insertConnector('apikey-with-header', 'apiKey', 'X-Api-Key', null)).resolves.toBeDefined();
   });
+
+  it('fills the token address if and only if the access is OAuth2', async () => {
+    await expect(insertConnector('oauth2-without-url', 'oauth2', null, null)).rejects.toThrow();
+    await expect(insertConnector('none-with-url', 'none', null, 'https://auth.example.com/token')).rejects.toThrow();
+    await expect(
+      insertConnector('oauth2-with-url', 'oauth2', null, 'https://auth.example.com/token')
+    ).resolves.toBeDefined();
+  });
 });
