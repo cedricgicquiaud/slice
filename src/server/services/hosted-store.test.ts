@@ -3,6 +3,7 @@ import { mkdirSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHostedStore, createFileHostedStore, createDatabaseHostedStore } from './hosted-store';
+import type { HttpMethod } from '@shared/types';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
@@ -70,6 +71,15 @@ describe('hosted store in the database', () => {
 
     expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
     expect(await store.get(id)).toEqual({ ...threeActions, createdAt: '2026-10-24T09:00:00.000Z' });
+  });
+
+  it('stores a lowercase method in uppercase', async () => {
+    const store = createDatabaseHostedStore(database);
+    const lowercase = { ...threeActions.endpoints[0]!, method: 'get' as HttpMethod };
+
+    const { id } = await store.put({ ...threeActions, endpoints: [lowercase] }, NOW);
+
+    expect((await store.get(id))?.endpoints[0]?.method).toBe('GET');
   });
 });
 
