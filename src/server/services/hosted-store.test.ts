@@ -1,9 +1,77 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll, afterAll } from 'vitest';
 import { mkdirSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createHostedStore, createFileHostedStore } from './hosted-store';
+import { createHostedStore, createFileHostedStore, createDatabaseHostedStore } from './hosted-store';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
+import { openDatabase, type Database } from '../db/client';
+import { migrateDatabase } from '../db/migrate';
+import { createTestDatabase, type TestDatabase } from '../db/test-database';
+
+const NOW = new Date('2026-10-24T09:00:00.000Z');
+
+/** Three actions in a deliberate order, with path, query and body params. */
+const threeActions: HostedMcpConfig = {
+  name: 'crm',
+  baseUrl: 'https://api.example.com/v1',
+  upstreamAuth: { type: 'apiKey', headerName: 'X-Api-Key' },
+  endpoints: [
+    {
+      name: 'list_contacts',
+      description: 'List contacts',
+      method: 'GET',
+      path: '/contacts',
+      params: [{ name: 'limit', in: 'query', type: 'integer', required: false }],
+    },
+    {
+      name: 'create_contact',
+      description: 'Create a contact',
+      method: 'POST',
+      path: '/contacts',
+      params: [
+        {
+          name: 'address',
+          in: 'body',
+          required: true,
+          wireName: 'address',
+          schema: { type: 'object', properties: { city: { type: 'string' } }, requiredFields: ['city'] },
+        },
+      ],
+    },
+    {
+      name: 'delete_contact',
+      description: 'Delete a contact',
+      method: 'DELETE',
+      path: '/contacts/{id}',
+      params: [{ name: 'id', in: 'path', type: 'string', required: true, description: 'Contact id' }],
+    },
+  ],
+};
+
+describe('hosted store in the database', () => {
+  let testDb: TestDatabase;
+  let database: Database;
+
+  beforeAll(async () => {
+    testDb = await createTestDatabase();
+    database = openDatabase(testDb.config);
+    await migrateDatabase(database);
+  });
+
+  afterAll(async () => {
+    await database?.close();
+    await testDb?.dispose();
+  });
+
+  it('gives a created connector a 22-character id that reads back the same connector, actions in order', async () => {
+    const store = createDatabaseHostedStore(database);
+
+    const { id } = await store.put(threeActions, NOW);
+
+    expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(await store.get(id)).toEqual({ ...threeActions, createdAt: '2026-10-24T09:00:00.000Z' });
+  });
+});
 
 const config: HostedMcpConfig = {
   name: 'demo',
