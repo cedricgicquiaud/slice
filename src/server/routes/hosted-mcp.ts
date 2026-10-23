@@ -10,11 +10,11 @@
 import { Router } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { buildHostedMcpServer, relayStore } from '../services/hosted-mcp-factory';
-import type { DatabaseHostedStore } from '../services/hosted-store';
+import type { HostedStore } from '../services/hosted-store';
 
 export interface HostedMcpRouterOptions {
   /** Where the hosted connectors are read from. */
-  store: DatabaseHostedStore;
+  store: HostedStore;
   /** Clock used to tell an expired connector. */
   now: () => Date;
   /** Forwarded to the engine — disables the SSRF guard (tests/dev only). */

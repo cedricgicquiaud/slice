@@ -6,7 +6,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { createApp } from '../app';
-import { createDatabaseHostedStore, type DatabaseHostedStore } from '../services/hosted-store';
+import { createHostedStore, type HostedStore } from '../services/hosted-store';
 import type { HostedMcpConfig } from '../services/hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
@@ -30,7 +30,7 @@ let upstreamUrl: string;
 let received: Array<{ url: string; auth: string | undefined; apiKey: string | undefined }> = [];
 let testDb: TestDatabase;
 let database: Database;
-let store: DatabaseHostedStore;
+let store: HostedStore;
 let app: Server;
 let baseUrl: string;
 
@@ -56,7 +56,7 @@ beforeAll(async () => {
   testDb = await createTestDatabase();
   database = openDatabase(testDb.config);
   await migrateDatabase(database);
-  store = createDatabaseHostedStore(database);
+  store = createHostedStore(database);
 
   app = createApp({ nodeEnv: 'test', hostedStore: store, now }).listen(0);
   await new Promise<void>((r) => app.once('listening', r));

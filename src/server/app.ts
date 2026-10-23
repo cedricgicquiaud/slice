@@ -7,7 +7,7 @@ import { createUploadRouter, createUploadUrlRouter } from './routes/upload';
 import { createGenerateRouter } from './routes/generate';
 import { createHostRouter } from './routes/host';
 import { createHostedMcpRouter } from './routes/hosted-mcp';
-import type { DatabaseHostedStore } from './services/hosted-store';
+import type { HostedStore } from './services/hosted-store';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,7 +27,7 @@ export interface CreateAppOptions {
    */
   hostedTtlHours?: number;
   /** Where hosted connectors live. Without it, the hosted routes are not mounted. */
-  hostedStore?: DatabaseHostedStore;
+  hostedStore?: HostedStore;
   /** Clock for hosted connectors (creation date, expiry). Defaults to the system clock. */
   now?: () => Date;
 }

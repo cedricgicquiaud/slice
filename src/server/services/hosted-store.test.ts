@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { createDatabaseHostedStore } from './hosted-store';
+import { createHostedStore } from './hosted-store';
 import type { HttpMethod } from '@shared/types';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
@@ -63,7 +63,7 @@ describe('hosted store in the database', () => {
   });
 
   it('gives a created connector a 22-character id that reads back the same connector, actions in order', async () => {
-    const store = createDatabaseHostedStore(database);
+    const store = createHostedStore(database);
 
     const { id } = await store.put(threeActions, NOW);
 
@@ -72,7 +72,7 @@ describe('hosted store in the database', () => {
   });
 
   it('stores a lowercase method in uppercase', async () => {
-    const store = createDatabaseHostedStore(database);
+    const store = createHostedStore(database);
     const lowercase = { ...threeActions.endpoints[0]!, method: 'get' as HttpMethod };
 
     const { id } = await store.put({ ...threeActions, endpoints: [lowercase] }, NOW);
@@ -81,13 +81,13 @@ describe('hosted store in the database', () => {
   });
 
   it('reads nothing back for an unknown id', async () => {
-    const store = createDatabaseHostedStore(database);
+    const store = createHostedStore(database);
 
     expect(await store.get('nope-unknown-id')).toBeUndefined();
   });
 
   it('gives two simultaneous creations two distinct ids, both read back', async () => {
-    const store = createDatabaseHostedStore(database);
+    const store = createHostedStore(database);
 
     const [a, b] = await Promise.all([store.put(threeActions, NOW), store.put(threeActions, NOW)]);
 
@@ -97,7 +97,7 @@ describe('hosted store in the database', () => {
   });
 
   it('leaves no connector behind when writing its actions fails', async () => {
-    const store = createDatabaseHostedStore(database);
+    const store = createHostedStore(database);
     const unwritable = { ...threeActions.endpoints[0]!, method: 'TRACE' as HttpMethod };
 
     await expect(
@@ -114,12 +114,12 @@ describe('hosted store across a restart', () => {
     try {
       const first = openDatabase(testDb.config);
       await migrateDatabase(first);
-      const { id } = await createDatabaseHostedStore(first).put(threeActions, NOW);
+      const { id } = await createHostedStore(first).put(threeActions, NOW);
       await first.close();
 
       const reopened = openDatabase(testDb.config);
       try {
-        expect(await createDatabaseHostedStore(reopened).get(id)).toEqual({
+        expect(await createHostedStore(reopened).get(id)).toEqual({
           ...threeActions,
           createdAt: '2026-10-24T09:00:00.000Z',
         });

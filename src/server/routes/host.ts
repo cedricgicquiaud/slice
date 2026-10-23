@@ -11,7 +11,7 @@ import { generateRequestSchema } from '@shared/config-schema';
 import { ApiError, type ApiErrorPayload, type SliceConfig } from '@shared/types';
 import { reparseAndSelect } from '../services/reparse-and-select';
 import { specToHostedConfig } from '../services/spec-to-hosted-config';
-import type { DatabaseHostedStore } from '../services/hosted-store';
+import type { HostedStore } from '../services/hosted-store';
 import { assertPublicUrl, SsrfError } from '../services/ssrf-guard';
 import { defaultTtlHours } from './hosted-mcp';
 
@@ -19,7 +19,7 @@ const BODY_LIMIT = '15mb';
 
 export interface HostRouterOptions {
   /** Where the created connectors are stored. */
-  store: DatabaseHostedStore;
+  store: HostedStore;
   /** Clock that dates a created connector. */
   now: () => Date;
   /** When false (production default), SSRF-guard the user-supplied baseUrl. */
@@ -46,7 +46,7 @@ export function createHostRouter(options: HostRouterOptions): Router {
 }
 
 const makeHandleHost = (
-  store: DatabaseHostedStore,
+  store: HostedStore,
   now: () => Date,
   allowPrivateHosts: boolean,
   ttlHours: number

@@ -5,7 +5,7 @@ import type { HostedMcpConfig } from './hosted-mcp-factory';
 import type { Database } from '../db/client';
 import { connectorActions, connectors } from '../db/schema';
 
-export interface DatabaseHostedStore {
+export interface HostedStore {
   /** Store a connector and its actions at once, created at `now`; return its unguessable id. */
   put(config: HostedMcpConfig, now: Date): Promise<{ id: string; createdAt: string }>;
   /** Read a connector back (`createdAt` set), or `undefined` if unknown. */
@@ -14,7 +14,7 @@ export interface DatabaseHostedStore {
   delete(id: string): Promise<void>;
 }
 
-export function createDatabaseHostedStore(database: Database): DatabaseHostedStore {
+export function createHostedStore(database: Database): HostedStore {
   const { db } = database;
   return {
     async put(config, now) {
