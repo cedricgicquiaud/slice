@@ -1,0 +1,53 @@
+// WAT-62 — the two tables follow the feature's schema (D3).
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { sql, type SQL } from 'drizzle-orm';
+import { openDatabase, type Database } from './client';
+import { migrateDatabase } from './migrate';
+import { createTestDatabase, type TestDatabase } from './test-database';
+
+let testDb: TestDatabase;
+let database: Database;
+
+beforeAll(async () => {
+  testDb = await createTestDatabase();
+  database = openDatabase(testDb.config);
+  await migrateDatabase(database);
+});
+
+afterAll(async () => {
+  await database?.close();
+  await testDb?.dispose();
+});
+
+function rows<T>(query: SQL): Promise<T[]> {
+  return database.rows<T>(query);
+}
+
+describe('database schema (D3)', () => {
+  it('creates connectors and connector_actions with the columns of the schema', async () => {
+    const columns = await rows<{ table_name: string; column_name: string; udt_name: string; is_nullable: string }>(
+      sql`select table_name, column_name, udt_name, is_nullable
+          from information_schema.columns
+          where table_schema = 'public' and table_name in ('connectors', 'connector_actions')
+          order by table_name, ordinal_position`
+    );
+
+    expect(columns.map((c) => `${c.table_name}.${c.column_name} ${c.udt_name} ${c.is_nullable}`)).toEqual([
+      'connector_actions.connector_id text NO',
+      'connector_actions.position int4 NO',
+      'connector_actions.name text NO',
+      'connector_actions.description text NO',
+      'connector_actions.method http_method NO',
+      'connector_actions.path text NO',
+      'connector_actions.params jsonb NO',
+      'connectors.id text NO',
+      'connectors.name text NO',
+      'connectors.base_url text NO',
+      'connectors.upstream_auth_type upstream_auth_type NO',
+      'connectors.upstream_header_name text YES',
+      'connectors.upstream_token_url text YES',
+      'connectors.upstream_scopes _text YES',
+      'connectors.created_at timestamptz NO',
+    ]);
+  });
+});
