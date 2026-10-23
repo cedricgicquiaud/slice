@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach, beforeAll, afterAll } from 'vitest';
+import { sql } from 'drizzle-orm';
 import { mkdirSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -80,6 +81,57 @@ describe('hosted store in the database', () => {
     const { id } = await store.put({ ...threeActions, endpoints: [lowercase] }, NOW);
 
     expect((await store.get(id))?.endpoints[0]?.method).toBe('GET');
+  });
+
+  it('reads nothing back for an unknown id', async () => {
+    const store = createDatabaseHostedStore(database);
+
+    expect(await store.get('nope-unknown-id')).toBeUndefined();
+  });
+
+  it('gives two simultaneous creations two distinct ids, both read back', async () => {
+    const store = createDatabaseHostedStore(database);
+
+    const [a, b] = await Promise.all([store.put(threeActions, NOW), store.put(threeActions, NOW)]);
+
+    expect(a.id).not.toBe(b.id);
+    expect((await store.get(a.id))?.name).toBe('crm');
+    expect((await store.get(b.id))?.name).toBe('crm');
+  });
+
+  it('leaves no connector behind when writing its actions fails', async () => {
+    const store = createDatabaseHostedStore(database);
+    const unwritable = { ...threeActions.endpoints[0]!, method: 'TRACE' as HttpMethod };
+
+    await expect(
+      store.put({ ...threeActions, name: 'half-written', endpoints: [unwritable] }, NOW)
+    ).rejects.toThrow();
+
+    expect(await database.rows(sql`select id from connectors where name = 'half-written'`)).toEqual([]);
+  });
+});
+
+describe('hosted store across a restart', () => {
+  it('serves the same connector after the database is reopened', async () => {
+    const testDb = await createTestDatabase({ persistent: true });
+    try {
+      const first = openDatabase(testDb.config);
+      await migrateDatabase(first);
+      const { id } = await createDatabaseHostedStore(first).put(threeActions, NOW);
+      await first.close();
+
+      const reopened = openDatabase(testDb.config);
+      try {
+        expect(await createDatabaseHostedStore(reopened).get(id)).toEqual({
+          ...threeActions,
+          createdAt: '2026-10-24T09:00:00.000Z',
+        });
+      } finally {
+        await reopened.close();
+      }
+    } finally {
+      await testDb.dispose();
+    }
   });
 });
 
