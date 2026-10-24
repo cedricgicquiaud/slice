@@ -2,18 +2,27 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import App from '../App';
+import { authClient } from '../lib/auth-client';
 import { AuthGate } from './auth-gate';
 
-/** The server's answer to "who is signed in?" (`GET /api/auth/get-session`). */
+/**
+ * The server's answer to "who is signed in?" (`GET /api/auth/get-session`).
+ * Set before any import: the auth client keeps the `fetch` it finds when loaded.
+ */
+const server = vi.hoisted(() => {
+  const state: { session: unknown } = { session: null };
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify(state.session), { headers: { 'content-type': 'application/json' } })) as typeof fetch;
+  return state;
+});
+
+/** The server now answers `session`; like a sign-in or out, the client is told to ask again. */
 function serverSession(session: unknown) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async () => new Response(JSON.stringify(session), { headers: { 'content-type': 'application/json' } }))
-  );
+  server.session = session;
+  authClient.$store.notify('$sessionSignal');
 }
 
 afterEach(() => {
-  vi.unstubAllGlobals();
   window.history.pushState({}, '', '/');
 });
 
