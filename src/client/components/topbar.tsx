@@ -1,4 +1,5 @@
 import { Moon, RotateCcw, Sun } from 'lucide-react';
+import { AccountMenu } from './account-menu';
 import { Stepper } from './stepper';
 import type { Theme } from '../hooks/use-theme';
 
@@ -51,6 +52,8 @@ export function Topbar({
           <RotateCcw className="h-3.5 w-3.5" />
           Reset
         </button>
+
+        <AccountMenu />
       </div>
     </header>
   );
