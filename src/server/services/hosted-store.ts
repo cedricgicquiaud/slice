@@ -1,15 +1,20 @@
 import { randomBytes } from 'node:crypto';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, lt } from 'drizzle-orm';
 import type { HttpMethod, UpstreamAuth } from '@shared/types';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
 import type { Database } from '../db/client';
 import { connectorActions, connectors } from '../db/schema';
+
+/** An expired connector stays this long, answering "expired", before the cleanup deletes it. */
+export const EXPIRED_RETENTION_DAYS = 30;
 
 export interface HostedStore {
   /** Store a connector and its actions at once, created at `now`; return its unguessable id. */
   put(config: HostedMcpConfig, now: Date): Promise<{ id: string; createdAt: string }>;
   /** Read a connector back (`createdAt` set), or `undefined` if unknown. */
   get(id: string): Promise<HostedMcpConfig | undefined>;
+  /** Delete, with their actions, the connectors expired for more than the retention period at `now`. */
+  purgeExpired(now: Date, ttlHours: number): Promise<void>;
 }
 
 export function createHostedStore(database: Database): HostedStore {
@@ -63,6 +68,10 @@ export function createHostedStore(database: Database): HostedStore {
         })),
         createdAt: connector.createdAt.toISOString(),
       };
+    },
+    async purgeExpired(now, ttlHours) {
+      const cutoff = new Date(now.getTime() - ttlHours * 3_600_000 - EXPIRED_RETENTION_DAYS * 86_400_000);
+      await db.delete(connectors).where(lt(connectors.createdAt, cutoff));
     },
   };
 }
