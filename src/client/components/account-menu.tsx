@@ -32,7 +32,7 @@ export function AccountMenu() {
           <a role="menuitem" href="/mcps" className={ITEM_CLASS}>
             My MCPs
           </a>
-          <button role="menuitem" type="button" className={ITEM_CLASS}>
+          <button role="menuitem" type="button" className={ITEM_CLASS} onClick={() => void authClient.signOut()}>
             Sign out
           </button>
           <a role="menuitem" href="/account/delete" className={ITEM_CLASS}>
