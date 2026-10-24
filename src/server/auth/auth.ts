@@ -83,6 +83,8 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
     plugins: sendCode
       ? [
           emailOTP({
+            // D13: a code takes five tries; the sixth, even right, is refused.
+            allowedAttempts: 5,
             sendVerificationOTP: async ({ email, otp }, ctx) => {
               try {
                 await sendCode(email, otp);
