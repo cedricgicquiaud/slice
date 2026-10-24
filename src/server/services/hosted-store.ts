@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { asc, eq, lt } from 'drizzle-orm';
+import { asc, eq, lt, sql } from 'drizzle-orm';
 import type { HttpMethod, UpstreamAuth } from '@shared/types';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
 import type { Database } from '../db/client';
@@ -15,6 +15,8 @@ export interface HostedStore {
   get(id: string): Promise<HostedMcpConfig | undefined>;
   /** Delete, with their actions, the connectors expired for more than the retention period at `now`. */
   purgeExpired(now: Date, ttlHours: number): Promise<void>;
+  /** Resolve when the database answers, reject when it is out of reach. */
+  ping(): Promise<void>;
 }
 
 export function createHostedStore(database: Database): HostedStore {
@@ -73,6 +75,9 @@ export function createHostedStore(database: Database): HostedStore {
       if (ttlHours <= 0) return;
       const cutoff = new Date(now.getTime() - ttlHours * 3_600_000 - EXPIRED_RETENTION_DAYS * 86_400_000);
       await db.delete(connectors).where(lt(connectors.createdAt, cutoff));
+    },
+    async ping() {
+      await database.rows(sql`select 1`);
     },
   };
 }

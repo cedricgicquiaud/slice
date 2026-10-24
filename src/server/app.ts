@@ -59,8 +59,15 @@ export function createApp(options: CreateAppOptions = {}): Express {
 
   // Health check is exempted from rate limiting so monitoring/CI behind
   // shared NAT can probe freely without exhausting the IP quota.
-  app.get('/api/health', (_req, res) => {
-    res.json({ ok: true, status: 'ok', env: nodeEnv, timestamp: new Date().toISOString() });
+  app.get('/api/health', async (_req, res) => {
+    const timestamp = new Date().toISOString();
+    try {
+      await options.hostedStore?.ping();
+    } catch {
+      res.status(503).json({ ok: false, status: 'database unreachable', env: nodeEnv, timestamp });
+      return;
+    }
+    res.json({ ok: true, status: 'ok', env: nodeEnv, timestamp });
   });
 
   app.use('/api/', apiLimiter);
