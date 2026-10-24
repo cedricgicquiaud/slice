@@ -21,6 +21,8 @@ function signInWith(provider: 'google' | 'microsoft') {
 /** The only screen without an account (D1, D3): Google, Microsoft or a code by email. */
 export function SignInScreen() {
   const [email, setEmail] = useState('');
+  const [codeSent, setCodeSent] = useState(false);
+  const [code, setCode] = useState('');
   const error = SIGN_IN_ERRORS.get(new URLSearchParams(window.location.search).get('error') ?? '');
   return (
     <main className="flex min-h-screen flex-col bg-background text-foreground">
@@ -54,32 +56,63 @@ export function SignInScreen() {
           <span className="h-px flex-1 bg-border" />
         </div>
 
-        <form
-          className="flex w-full flex-col gap-3 text-left"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void authClient.emailOtp.sendVerificationOtp({ email, type: 'sign-in' });
-          }}
-        >
-          <label htmlFor="sign-in-email" className="text-sm font-medium">
-            Email
-          </label>
-          <input
-            id="sign-in-email"
-            type="email"
-            autoComplete="email"
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-lg border border-border bg-background px-4 py-3 font-mono text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground"
-          />
-          <button
-            type="submit"
-            className="rounded-lg bg-foreground px-6 py-2.5 text-sm font-medium text-background transition-opacity disabled:opacity-40"
+        {codeSent ? (
+          <form
+            className="flex w-full flex-col gap-3 text-left"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void authClient.signIn.emailOtp({ email, otp: code });
+            }}
           >
-            Email me a code
-          </button>
-        </form>
+            <label htmlFor="sign-in-code" className="text-sm font-medium">
+              Code
+            </label>
+            <input
+              id="sign-in-code"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder="123456"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              className="w-full rounded-lg border border-border bg-background px-4 py-3 font-mono text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground"
+            />
+            <button
+              type="submit"
+              className="rounded-lg bg-foreground px-6 py-2.5 text-sm font-medium text-background transition-opacity disabled:opacity-40"
+            >
+              Sign in
+            </button>
+          </form>
+        ) : (
+          <form
+            className="flex w-full flex-col gap-3 text-left"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const { error } = await authClient.emailOtp.sendVerificationOtp({ email, type: 'sign-in' });
+              if (!error) setCodeSent(true);
+            }}
+          >
+            <label htmlFor="sign-in-email" className="text-sm font-medium">
+              Email
+            </label>
+            <input
+              id="sign-in-email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full rounded-lg border border-border bg-background px-4 py-3 font-mono text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground"
+            />
+            <button
+              type="submit"
+              className="rounded-lg bg-foreground px-6 py-2.5 text-sm font-medium text-background transition-opacity disabled:opacity-40"
+            >
+              Email me a code
+            </button>
+          </form>
+        )}
       </section>
     </main>
   );
