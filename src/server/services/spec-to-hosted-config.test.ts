@@ -48,6 +48,12 @@ describe('specToHostedConfig', () => {
     expect(ep.params).toEqual([{ name: 'id', in: 'path', type: 'string', required: true }]);
   });
 
+  it("keeps the API's name as read in its description (D9)", () => {
+    const hosted = specToHostedConfig(SPEC, ['GET /things'], CONFIG);
+
+    expect(hosted.apiName).toBe('Demo');
+  });
+
   it('ignores ids that are not in the spec', () => {
     const hosted = specToHostedConfig(SPEC, ['GET /things', 'GET /nope'], CONFIG);
     expect(hosted.endpoints.map((e) => e.name)).toEqual(['list_things']);
