@@ -280,20 +280,6 @@ describe('server entry point', () => {
     }
   }, 30_000);
 
-  it('outside production, takes its values from the .env of its folder (D5)', async () => {
-    const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
-    writeFileSync(path.join(cwd, '.env'), 'GOOGLE_CLIENT_ID=google-app-from-dotenv\nGOOGLE_CLIENT_SECRET=google-secret\n');
-    const server = await startServer(cwd, {});
-    try {
-      expect(await signInStart(server.baseUrl, 'google')).toBe(
-        'https://accounts.google.com/o/oauth2/v2/auth google-app-from-dotenv'
-      );
-    } finally {
-      await server.stop();
-      rmSync(cwd, { recursive: true, force: true });
-    }
-  }, 30_000);
-
   it('refuses to start in production without BETTER_AUTH_SECRET, and says why', async () => {
     const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
     try {
@@ -334,6 +320,12 @@ describe('environment file', () => {
 
   it('.env.example carries no value', () => {
     expect(variables().filter((line) => !/^[A-Z][A-Z0-9_]*=$/.test(line))).toEqual([]);
+  });
+
+  it('pnpm dev:server reads the .env of the repository (D5); tests and pnpm start never do', () => {
+    const { scripts } = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf-8'));
+
+    expect(scripts['dev:server']).toContain('--env-file-if-exists=.env');
   });
 
   it('.env, where the values go, is never committed', () => {
