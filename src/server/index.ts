@@ -1,5 +1,5 @@
 import { createApp } from './app';
-import { createAuth } from './auth/auth';
+import { authSecretFromEnv, createAuth } from './auth/auth';
 import { databaseConfigFromEnv, openDatabase } from './db/client';
 import { migrateDatabase } from './db/migrate';
 import { defaultTtlHours } from './routes/hosted-mcp';
@@ -9,14 +9,15 @@ const PORT = Number(process.env.PORT ?? 3001);
 const NODE_ENV = process.env.NODE_ENV ?? 'development';
 
 try {
-  const database = openDatabase(databaseConfigFromEnv(process.env));
+  const databaseConfig = databaseConfigFromEnv(process.env);
+  const authSecret = authSecretFromEnv(process.env);
+  const database = openDatabase(databaseConfig);
   await migrateDatabase(database);
 
   const hostedStore = createHostedStore(database);
   startHostedCleanup(hostedStore, { ttlHours: defaultTtlHours(), now: () => new Date() });
 
-  // Secret and public address come from BETTER_AUTH_SECRET and BETTER_AUTH_URL.
-  const auth = createAuth({ database });
+  const auth = createAuth({ database, secret: authSecret, baseURL: process.env.BETTER_AUTH_URL });
 
   const app = createApp({ nodeEnv: NODE_ENV, hostedStore, auth });
 

@@ -30,3 +30,12 @@ export function createAuth({ database, secret, baseURL }: AuthOptions) {
 }
 
 export type SliceAuth = ReturnType<typeof createAuth>;
+
+/** BETTER_AUTH_SECRET; refused missing in production, where sessions would be signed with a public default. */
+export function authSecretFromEnv(env: NodeJS.ProcessEnv): string | undefined {
+  if (env.BETTER_AUTH_SECRET) return env.BETTER_AUTH_SECRET;
+  if (env.NODE_ENV === 'production') {
+    throw new Error('BETTER_AUTH_SECRET is required in production (it signs the session cookies).');
+  }
+  return undefined;
+}
