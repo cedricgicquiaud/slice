@@ -171,6 +171,24 @@ describe('hosted store cleanup', () => {
       vi.useRealTimers();
     }
   });
+
+  it('logs a failed cleanup instead of crashing when the database is unreachable', async () => {
+    const downDb = await createTestDatabase();
+    const down = openDatabase(downDb.config);
+    await migrateDatabase(down);
+    const store = createHostedStore(down);
+    await down.close();
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const cleanup = startHostedCleanup(store, { ttlHours: 72, now: () => NOW });
+      cleanup.stop();
+
+      await vi.waitFor(() => expect(logged).toHaveBeenCalledWith('[hosted-store] cleanup failed:', expect.any(String)));
+    } finally {
+      logged.mockRestore();
+      await downDb.dispose();
+    }
+  });
 });
 
 describe('hosted store across a restart', () => {
