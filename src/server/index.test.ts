@@ -6,6 +6,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PGlite } from '@electric-sql/pglite';
 import { createApp } from './app';
 
 describe('Express app', () => {
@@ -185,6 +186,23 @@ describe('server entry point', () => {
       rmSync(scratch, { recursive: true, force: true });
     }
   }, 60_000);
+
+  it('refuses to start when its migrations fail, and says why', async () => {
+    const scratch = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    try {
+      // A database where a type of the schema already exists with another shape.
+      const conflicting = new PGlite(path.join(scratch, 'pglite'));
+      await conflicting.exec(`CREATE TYPE upstream_auth_type AS ENUM ('legacy')`);
+      await conflicting.close();
+
+      const { code, output } = await runUntilExit(ROOT, { NODE_ENV: 'development', SLICE_DATA_DIR: scratch });
+
+      expect(code).toBe(1);
+      expect(output).toMatch(/Database migrations failed: .*already exists/);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  }, 30_000);
 
   it('refuses to start in production without DATABASE_URL, and says why', async () => {
     const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
