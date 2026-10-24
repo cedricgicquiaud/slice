@@ -1,5 +1,6 @@
 import { createApp } from './app';
 import { authSecretFromEnv, createAuth, oauthApplicationsFromEnv } from './auth/auth';
+import { codeSenderFromEnv } from './auth/email-code';
 import { databaseConfigFromEnv, openDatabase } from './db/client';
 import { migrateDatabase } from './db/migrate';
 import { defaultTtlHours } from './routes/hosted-mcp';
@@ -22,6 +23,7 @@ try {
     secret: authSecret,
     baseURL: process.env.BETTER_AUTH_URL,
     ...oauthApplicationsFromEnv(process.env),
+    sendCode: codeSenderFromEnv(process.env),
   });
 
   const app = createApp({ nodeEnv: NODE_ENV, hostedStore, auth });
