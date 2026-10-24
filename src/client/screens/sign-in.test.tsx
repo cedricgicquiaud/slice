@@ -12,4 +12,11 @@ describe('SignInScreen', () => {
     expect(screen.getByRole('textbox', { name: 'Email' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Email me a code' })).toBeInTheDocument();
   });
+
+  it('never asks for a password', () => {
+    const { container } = render(<SignInScreen />);
+
+    expect(container.querySelector('input[type="password"]')).toBeNull();
+    expect(container.textContent).not.toMatch(/password/i);
+  });
 });
