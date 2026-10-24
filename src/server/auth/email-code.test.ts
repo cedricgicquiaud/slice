@@ -199,4 +199,13 @@ describe('five tries per code (contract 18)', () => {
 
     expect(session?.user.email).toBe('tries@example.com');
   });
+
+  it('refuses even the right code after five wrong ones', async () => {
+    const browser = request.agent(app);
+    const code = await missCode(browser, 'worn@example.com', 5);
+
+    const { res, session } = await enterCode(browser, 'worn@example.com', code);
+
+    expect({ status: res.status, code: res.body.code, session }).toEqual({ status: 403, code: 'TOO_MANY_ATTEMPTS', session: null });
+  });
 });
