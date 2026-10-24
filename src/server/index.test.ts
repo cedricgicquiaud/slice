@@ -8,6 +8,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { createApp } from './app';
+import { openDatabase } from './db/client';
+import { migrateDatabase } from './db/migrate';
+import { createHostedStore } from './services/hosted-store';
 
 describe('Express app', () => {
   it('GET /api/health responds 200 with status ok', async () => {
@@ -186,6 +189,28 @@ describe('server entry point', () => {
       rmSync(scratch, { recursive: true, force: true });
     }
   }, 60_000);
+
+  it('deletes at startup a connector expired for more than 30 days', async () => {
+    const scratch = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    try {
+      const database = openDatabase({ driver: 'pglite', dataDir: path.join(scratch, 'pglite') });
+      await migrateDatabase(database);
+      const { id } = await createHostedStore(database).put(
+        { name: 'old', baseUrl: 'https://api.example.com', upstreamAuth: { type: 'none' }, endpoints: [] },
+        new Date('2020-01-01T00:00:00.000Z')
+      );
+      await database.close();
+
+      const server = await startServer(ROOT, { SLICE_DATA_DIR: scratch, SLICE_HOSTED_TTL_HOURS: '72' });
+      try {
+        await expect.poll(async () => (await postToolsList(`${server.baseUrl}/m/${id}`)).status).toBe(404);
+      } finally {
+        await server.stop();
+      }
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  }, 30_000);
 
   it('refuses to start when its migrations fail, and says why', async () => {
     const scratch = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
