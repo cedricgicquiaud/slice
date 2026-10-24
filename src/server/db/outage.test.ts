@@ -55,9 +55,9 @@ async function startRelay(target: URL) {
   };
 }
 
-const unlessPostgres = process.env.DATABASE_URL ? describe : describe.skip;
+const withPostgres = process.env.DATABASE_URL ? describe : describe.skip;
 
-unlessPostgres('a database outage (runs only with DATABASE_URL)', () => {
+withPostgres('a database outage (runs only with DATABASE_URL)', () => {
   it('refuses while the database is cut, and works again once it is back, without a restart', async () => {
     const testDb = await createTestDatabase();
     if (testDb.config.driver !== 'postgres') throw new Error('expected a PostgreSQL test database');

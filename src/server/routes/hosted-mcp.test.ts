@@ -187,24 +187,7 @@ describe('hosted connector served from the database', () => {
 });
 
 async function host(): Promise<string> {
-  const res = await fetch(`${baseUrl}/api/host`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      parsedSpec: {},
-      rawSpec: SPEC,
-      selectedIds: ['GET /things'],
-      config: {
-        mcpName: 'demo',
-        baseUrl: upstreamUrl,
-        upstreamAuth: { type: 'bearer' },
-        hosting: 'cloud',
-        mode: 'remote',
-        includeParamDescriptions: false,
-        retryOnServerError: false,
-      },
-    }),
-  });
+  const res = await hostRequest(baseUrl);
   expect(res.status).toBe(200);
   const body = (await res.json()) as { id: string; url: string };
   expect(body.url).toContain('/m/');
