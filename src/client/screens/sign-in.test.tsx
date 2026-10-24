@@ -19,4 +19,10 @@ describe('SignInScreen', () => {
     expect(container.querySelector('input[type="password"]')).toBeNull();
     expect(container.textContent).not.toMatch(/password/i);
   });
+
+  it('never mentions a space (D15: the personal one stays invisible)', () => {
+    const { container } = render(<SignInScreen />);
+
+    expect(container.textContent).not.toMatch(/space/i);
+  });
 });
