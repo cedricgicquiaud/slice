@@ -11,6 +11,7 @@ import { Router } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { buildHostedMcpServer, relayStore, type HostedMcpConfig } from '../services/hosted-mcp-factory';
 import type { HostedStore } from '../services/hosted-store';
+import { isDatabaseUnreachable } from '../db/errors';
 
 export interface HostedMcpRouterOptions {
   /** Where the hosted connectors are read from. */
@@ -45,9 +46,11 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
     try {
       config = await options.store.get(req.params.id);
     } catch (err) {
-      // The database is out of reach: the connector may well exist, never call it unknown.
       // eslint-disable-next-line no-console
       console.error('[hosted-mcp] reading the connector failed:', err instanceof Error ? err.message : err);
+      // Anything but an outage is a bug: Express turns the rejection into a server error.
+      if (!isDatabaseUnreachable(err)) throw err;
+      // The database is out of reach: the connector may well exist, never call it unknown.
       res.status(503).json({ error: 'This MCP is unavailable for the moment. Try again in a few minutes.' });
       return;
     }
