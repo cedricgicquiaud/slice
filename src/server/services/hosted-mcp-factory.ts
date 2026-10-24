@@ -32,6 +32,8 @@ export interface HostedEndpoint {
 /** The stored "fiche": everything the engine needs to serve one MCP. */
 export interface HostedMcpConfig {
   name: string;
+  /** The API's name as read in its description (D9), shown in the account's list of MCPs. */
+  apiName?: string;
   baseUrl: string;
   upstreamAuth: UpstreamAuth;
   endpoints: HostedEndpoint[];
