@@ -110,7 +110,7 @@ const RESEND_EMAILS = 'https://api.resend.com/emails';
 
 /** Resend's API answers `status`, recording what it was asked to send; any other network call fails the test. */
 function resendAnswers(status: number) {
-  const sent: { authorization: string | null; email: { to: string | string[]; text: string } }[] = [];
+  const sent: { authorization: string | null; email: { from: string; to: string | string[]; text: string } }[] = [];
   vi.stubGlobal('fetch', async (input: string | URL | Request, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : String(input);
     if (url !== RESEND_EMAILS) throw new Error(`Unexpected network call: ${url}`);
@@ -135,5 +135,14 @@ describe('with a Resend key', () => {
       to: 'katherine@example.com',
       signedIn: 'katherine@example.com',
     });
+  });
+
+  it('sends from the address of RESEND_FROM', async () => {
+    const sent = resendAnswers(200);
+    const env = { RESEND_API_KEY: 're_test_key', RESEND_FROM: 'SLICE <codes@slice.example>' };
+
+    await askForCode(request.agent(appSendingWith(codeSenderFromEnv(env))), 'katherine@example.com');
+
+    expect(sent[0]?.email.from).toBe('SLICE <codes@slice.example>');
   });
 });
