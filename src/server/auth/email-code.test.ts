@@ -146,3 +146,14 @@ describe('with a Resend key', () => {
     expect(sent[0]?.email.from).toBe('SLICE <codes@slice.example>');
   });
 });
+
+describe('a code that could not be sent (contract 14)', () => {
+  it('answers that the code was not sent', async () => {
+    resendAnswers(500);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const res = await askForCode(request.agent(appSendingWith(codeSenderFromEnv({ RESEND_API_KEY: 're_test_key' }))), 'mary@example.com');
+
+    expect({ status: res.status, code: res.body.code }).toEqual({ status: 502, code: 'code_not_sent' });
+  });
+});
