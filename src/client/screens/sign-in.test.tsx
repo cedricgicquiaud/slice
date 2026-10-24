@@ -41,4 +41,12 @@ describe('SignInScreen', () => {
       "Your Google or Microsoft account didn't confirm this email address. Get a code by email instead."
     );
   });
+
+  it.each(['unknown_code', 'toString'])('shows no message for a code it does not know (%s)', (code) => {
+    window.history.pushState({}, '', `/?error=${code}`);
+
+    render(<SignInScreen />);
+
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
 });
