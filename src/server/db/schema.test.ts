@@ -103,3 +103,15 @@ describe('database schema (D3)', () => {
     expect(indexes.some((i) => /\(created_at\)$/.test(i.indexdef))).toBe(true);
   });
 });
+
+describe('accounts schema (WAT-96)', () => {
+  it('keeps accounts, their sign-in methods and their sessions without any password column (D3)', async () => {
+    const columns = await rows<{ table_name: string; column_name: string }>(
+      sql`select table_name, column_name from information_schema.columns
+          where table_schema = 'public' and table_name in ('users', 'accounts', 'sessions', 'verifications')`
+    );
+
+    expect(new Set(columns.map((c) => c.table_name))).toEqual(new Set(['users', 'accounts', 'sessions', 'verifications']));
+    expect(columns.filter((c) => /password/i.test(c.column_name))).toEqual([]);
+  });
+});
