@@ -5,20 +5,20 @@
 import type { SendCode } from './auth';
 
 /** Resend's sender until SLICE has a domain of its own: it only reaches the Resend account's own address. */
-const FROM = 'SLICE <onboarding@resend.dev>';
+const DEFAULT_FROM = 'SLICE <onboarding@resend.dev>';
 
 export function codeSenderFromEnv(env: NodeJS.ProcessEnv): SendCode {
-  return env.RESEND_API_KEY ? emailCodeByResend(env.RESEND_API_KEY) : printCode;
+  return env.RESEND_API_KEY ? emailCodeByResend(env.RESEND_API_KEY, env.RESEND_FROM || DEFAULT_FROM) : printCode;
 }
 
 /** Resend's API (https://resend.com/docs/api-reference/emails/send-email). */
-function emailCodeByResend(apiKey: string): SendCode {
+function emailCodeByResend(apiKey: string, from: string): SendCode {
   return async (email, code) => {
     await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
       body: JSON.stringify({
-        from: FROM,
+        from,
         to: email,
         subject: `${code} is your SLICE code`,
         text: `Your SLICE sign-in code: ${code}\n\nIf you didn't ask for it, ignore this email.`,
