@@ -2,14 +2,13 @@ const ENTRY_CLASS =
   'w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm font-medium transition-colors hover:bg-[var(--slice-highlight)]';
 
 /** What a refused Google or Microsoft sign-in says, by the code the server sends back (`?error=`). */
-const SIGN_IN_ERRORS: Record<string, string> = {
-  email_not_verified:
-    "Your Google or Microsoft account didn't confirm this email address. Get a code by email instead.",
-};
+const SIGN_IN_ERRORS = new Map([
+  ['email_not_verified', "Your Google or Microsoft account didn't confirm this email address. Get a code by email instead."],
+]);
 
 /** The only screen without an account (D1, D3): Google, Microsoft or a code by email. */
 export function SignInScreen() {
-  const error = SIGN_IN_ERRORS[new URLSearchParams(window.location.search).get('error') ?? ''];
+  const error = SIGN_IN_ERRORS.get(new URLSearchParams(window.location.search).get('error') ?? '');
   return (
     <main className="flex min-h-screen flex-col bg-background text-foreground">
       <section className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center justify-center gap-10 px-6 py-12 text-center">
