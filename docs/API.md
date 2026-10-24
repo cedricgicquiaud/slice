@@ -26,7 +26,11 @@ with a single-page-app fallback: any other `GET` returns `index.html`.
 
 ### Authentication
 
-The `/api/*` routes have no authentication: SLICE is a public tool with no user accounts.
+Every `/api/*` route needs the session cookie of a SLICE account, except `GET /api/health`, the sign-in routes of
+Better Auth under `/api/auth/*`, and, outside production only, `POST /api/dev/sign-in` (opens a session for the recette
+account `recette@slice.local`; used by the visual test pass). Without a live session the answer is
+`401 { "code": "UNAUTHORIZED", "message": "Sign in to continue." }`; while the database is unreachable,
+`503 SERVICE_UNAVAILABLE`.
 The hosted runtime `/m/:id` is protected by the unguessable id in its URL (see [Hosted runtime](#any-mid)).
 
 ### CORS

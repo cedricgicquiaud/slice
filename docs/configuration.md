@@ -14,6 +14,8 @@ The server reads its configuration from the process environment only. It does no
 | `PORT` | `3001` | HTTP port the server listens on. |
 | `NODE_ENV` | `development` | `production` serves the built front end from `dist/client` (with a single-page-app fallback) and turns on the SSRF guard for hosted MCPs (`config.baseUrl` in `POST /api/host`, and every hosted tool call). Any other value leaves that guard off so a local upstream can be reached. The value is also reported by `GET /api/health`. `pnpm start` sets it to `production`. |
 | `DATABASE_URL` | (none) | PostgreSQL connection string (`postgres://user:password@host:5432/database`) where hosted MCPs are stored. **Required when `NODE_ENV=production`**: without it the server refuses to start and says why. Elsewhere, leaving it unset uses the embedded database below. |
+| `BETTER_AUTH_SECRET` | (none) | Signs the session cookies of SLICE accounts. **Required when `NODE_ENV=production`**: without it the server refuses to start and says why. Use a long random value (`openssl rand -hex 32`), kept in the platform's secret settings. Elsewhere, Better Auth falls back to a public development secret. |
+| `BETTER_AUTH_URL` | (none) | SLICE's public address (`https://slice.example.com`, or `http://localhost:5173` behind the Vite proxy in development). Better Auth builds its sign-in links from it; without it, it reads the address of each request and logs a warning. An `https://` address makes the session cookie `Secure`. |
 | `SLICE_DATA_DIR` | `./data` | Without `DATABASE_URL` only: folder of the embedded PostgreSQL (PGlite, nothing to install), kept in its `pglite/` subfolder. Resolved from the working directory; created if missing. |
 | `SLICE_HOSTED_TTL_HOURS` | `72` | Lifetime of a hosted MCP URL, in hours. `0` disables expiry (useful for a private self-hosted instance). A negative or non-numeric value falls back to `72`. An expired MCP is kept 30 more days, then deleted (see [Persistent data](#persistent-data)). |
 | `PARSE_MAX_CONCURRENT` | `3` | Maximum number of spec parses running at the same time (minimum 1). Each parse is a child process with a 512 MB heap cap, so peak parse memory is about this value × 512 MB. |
@@ -35,11 +37,11 @@ Requirements: Node.js 22 or later, pnpm 9.
 ```bash
 pnpm install          # full install: the build tools and the MCP SDK used by the hosted runtime are devDependencies
 pnpm build            # front end to dist/client, server to dist/server/server (templates and migrations copied alongside)
-DATABASE_URL=postgres://… pnpm start   # NODE_ENV=production node dist/server/server/index.js
+DATABASE_URL=postgres://… BETTER_AUTH_SECRET=… BETTER_AUTH_URL=https://… pnpm start   # NODE_ENV=production node dist/server/server/index.js
 ```
 
 - Provide a PostgreSQL database through `DATABASE_URL`; the server refuses to start in production without one. Keep its
-  password in the platform's secret settings, never in the repository.
+  password in the platform's secret settings, never in the repository. Same for `BETTER_AUTH_SECRET`.
 - At startup the server creates or updates its tables before it accepts any request. The migrations run under a
   PostgreSQL lock, so several instances starting together migrate only once. If they fail, the server refuses to start
   and prints the database's reason.
@@ -48,7 +50,8 @@ DATABASE_URL=postgres://… pnpm start   # NODE_ENV=production node dist/server/
   the real production paths, and stops it. `SKIP_BUILD=1 pnpm prod:smoke` reuses an existing `dist/`. It starts the
   server in production mode, so it needs `DATABASE_URL` too. It creates a throwaway database on that server, runs the
   compiled server against it and drops it afterwards: the database user needs the right to create databases, and the
-  smoke connector never lands in the database the URL names. A disposable local PostgreSQL works:
+  smoke connector never lands in the database the URL names. It signs a throwaway account in on that database, since
+  the API answers nothing without a session. A disposable local PostgreSQL works:
   `docker run --rm -d -p 54329:5432 -e POSTGRES_PASSWORD=smoke postgres:16`, then
   `DATABASE_URL=postgres://postgres:smoke@localhost:54329/postgres pnpm prod:smoke`.
 - The repository ships no Dockerfile for SLICE itself.
@@ -69,7 +72,12 @@ Expiry and cleanup:
 - A cleanup deletes the MCPs expired for more than 30 days, with their endpoints, even if their URL is never visited
   again. It runs at startup, then **every hour**. With `SLICE_HOSTED_TTL_HOURS=0`, nothing expires and nothing is deleted.
 
-When the database is unreachable, the server stays up: creating a hosted MCP fails with `503 SERVICE_UNAVAILABLE`,
+Accounts and their sessions live in the same database (`users`, `sessions`, `accounts`, `verifications`, managed by
+Better Auth; no password column). Every `/api/*` route except `GET /api/health`, Better Auth's own `/api/auth/*` and,
+outside production, `POST /api/dev/sign-in` answers `401 UNAUTHORIZED` without a live session.
+
+When the database is unreachable, the server stays up: every API call that checks the session fails with
+`503 SERVICE_UNAVAILABLE`, creating a hosted MCP fails with `503 SERVICE_UNAVAILABLE`,
 an existing hosted URL answers `503` (never "unknown"), and `GET /api/health` answers `503`. Everything works again as
 soon as the database is back, without a restart.
 
