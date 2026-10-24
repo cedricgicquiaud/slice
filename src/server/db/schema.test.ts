@@ -12,6 +12,8 @@ beforeAll(async () => {
   testDb = await createTestDatabase();
   database = openDatabase(testDb.config);
   await migrateDatabase(database);
+  await rows(sql`insert into users (id, name, email) values ('owner', '', 'owner@example.com')`);
+  await rows(sql`insert into workspaces (id, owner_id, created_at) values ('owner-workspace', 'owner', now())`);
 });
 
 afterAll(async () => {
@@ -48,7 +50,7 @@ describe('database schema (D3)', () => {
       'connectors.upstream_token_url text YES',
       'connectors.upstream_scopes _text YES',
       'connectors.created_at timestamptz NO',
-      'connectors.workspace_id text YES',
+      'connectors.workspace_id text NO',
       'connectors.api_name text YES',
       'workspaces.id text NO',
       'workspaces.owner_id text NO',
@@ -58,10 +60,19 @@ describe('database schema (D3)', () => {
 
   function insertConnector(id: string, authType: string, headerName: string | null, tokenUrl: string | null) {
     return rows(
-      sql`insert into connectors (id, name, base_url, upstream_auth_type, upstream_header_name, upstream_token_url, created_at)
-          values (${id}, 'demo', 'https://api.example.com', ${authType}, ${headerName}, ${tokenUrl}, now())`
+      sql`insert into connectors (id, name, base_url, upstream_auth_type, upstream_header_name, upstream_token_url, created_at, workspace_id)
+          values (${id}, 'demo', 'https://api.example.com', ${authType}, ${headerName}, ${tokenUrl}, now(), 'owner-workspace')`
     );
   }
+
+  it('refuses a connector that belongs to no workspace (D17)', async () => {
+    await expect(
+      rows(
+        sql`insert into connectors (id, name, base_url, upstream_auth_type, created_at)
+            values ('ownerless', 'demo', 'https://api.example.com', 'none', now())`
+      )
+    ).rejects.toThrow();
+  });
 
   it('fills the upstream header name if and only if the access is an API key', async () => {
     await expect(insertConnector('apikey-without-header', 'apiKey', null, null)).rejects.toThrow();
