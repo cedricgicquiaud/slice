@@ -101,3 +101,25 @@ describe('sign-in with Microsoft', () => {
     expect(session.user.email).toBe('katherine@contoso.com');
   });
 });
+
+describe('one account per verified address (D7)', () => {
+  it('finds the existing account of that address, through Google as through Microsoft', async () => {
+    const existing = await request(app).get('/api/auth/get-session').set('Cookie', account.cookie);
+
+    const google = await signInWith('google', GOOGLE_TOKEN_ENDPOINT, {
+      sub: 'google-account',
+      email: 'account@slice.test',
+      email_verified: true,
+      name: 'Account',
+    });
+    const microsoft = await signInWith('microsoft', MICROSOFT_TOKEN_ENDPOINT, {
+      oid: 'microsoft-account',
+      tid: PERSONAL_MICROSOFT_TENANT,
+      email: 'account@slice.test',
+      verified_primary_email: ['account@slice.test'],
+      name: 'Account',
+    });
+
+    expect([google.session.user.id, microsoft.session.user.id]).toEqual([existing.body.user.id, existing.body.user.id]);
+  });
+});
