@@ -3,6 +3,7 @@
  * No password anywhere: Better Auth's email-and-password sign-in stays off.
  */
 import { betterAuth } from 'better-auth';
+import { APIError } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import type { Database } from '../db/client';
 import { accounts, sessions, users, verifications } from '../db/schema';
@@ -36,6 +37,23 @@ export function createAuth({ database, secret, baseURL, google, microsoft }: Aut
       provider: 'pg',
       schema: { user: users, session: sessions, account: accounts, verification: verifications },
     }),
+    databaseHooks: {
+      user: {
+        create: {
+          // D6: an account always rests on a proven address. A provider's
+          // unverified address never creates one (nor joins one: Better Auth
+          // links only verified addresses).
+          before: async (user) => {
+            if (!user.emailVerified) {
+              throw new APIError('FORBIDDEN', {
+                code: 'email_not_verified',
+                message: 'The provider did not verify this email address.',
+              });
+            }
+          },
+        },
+      },
+    },
     socialProviders: {
       ...(google && { google }),
       // SLICE shows no profile picture: no extra call to Microsoft Graph.
