@@ -18,8 +18,11 @@ const SIGN_IN_ERRORS = new Map([
 ]);
 
 const CODE_NOT_SENT = "Couldn't send the code, try again";
-/** What a refused code says, by the code the server answers. */
-const CODE_REFUSALS = new Map([['INVALID_OTP', 'This code is wrong or was already used.']]);
+/** What a refused code says, by the code the server answers, and whether only a new code can sign in. */
+const CODE_REFUSALS = new Map([
+  ['INVALID_OTP', { message: 'This code is wrong or was already used.', newCodeNeeded: false }],
+  ['TOO_MANY_ATTEMPTS', { message: 'Too many wrong codes. Ask for a new one.', newCodeNeeded: true }],
+]);
 
 /** Leaves for the provider's sign-in; back on SLICE's home, or on this screen with `?error=` if refused. */
 function signInWith(provider: 'google' | 'microsoft') {
@@ -71,7 +74,9 @@ export function SignInScreen() {
             onSubmit={async (e) => {
               e.preventDefault();
               const signedIn = await authClient.signIn.emailOtp({ email, otp: code });
-              setCodeRefusal(CODE_REFUSALS.get(signedIn.error?.code ?? ''));
+              const refusal = CODE_REFUSALS.get(signedIn.error?.code ?? '');
+              setCodeRefusal(refusal?.message);
+              if (refusal?.newCodeNeeded) setCodeSent(false);
             }}
           >
             <label htmlFor="sign-in-code" className="text-sm font-medium">
