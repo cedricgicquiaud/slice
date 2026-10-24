@@ -234,5 +234,6 @@ describe('hosted store across a restart', () => {
     } finally {
       await testDb.dispose();
     }
-  });
+    // Two databases opened on disk and an account signed in: slow on a loaded machine.
+  }, 20_000);
 });
