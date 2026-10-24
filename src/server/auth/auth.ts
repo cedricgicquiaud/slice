@@ -37,6 +37,8 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
   // Better Auth logs a failed send and answers success anyway: the requests
   // whose code did not leave are marked here, and answered as such below.
   const unsent = new WeakSet<object>();
+  // D13: codes asked for, by address.
+  const codesAskedFor = new Map<string, number>();
   return betterAuth({
     secret,
     baseURL,
@@ -74,6 +76,18 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
       ...(microsoft && { microsoft: { ...microsoft, tenantId: 'common', disableProfilePhoto: true } }),
     },
     hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== '/email-otp/send-verification-otp') return;
+        const email = String(ctx.body?.email).toLowerCase();
+        const asked = codesAskedFor.get(email) ?? 0;
+        if (asked >= 5) {
+          throw new APIError('TOO_MANY_REQUESTS', {
+            code: 'too_many_codes_for_address',
+            message: 'Too many codes asked for this address. Try again in an hour.',
+          });
+        }
+        codesAskedFor.set(email, asked + 1);
+      }),
       after: createAuthMiddleware(async (ctx) => {
         if (unsent.has(ctx.context)) {
           throw new APIError('BAD_GATEWAY', { code: 'code_not_sent', message: "Couldn't send the code, try again." });
