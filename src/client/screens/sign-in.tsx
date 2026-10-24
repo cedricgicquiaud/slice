@@ -17,6 +17,8 @@ const SIGN_IN_ERRORS = new Map([
   ['account_not_linked', UNVERIFIED_ADDRESS],
 ]);
 
+const CODE_NOT_SENT = "Couldn't send the code, try again";
+
 /** Leaves for the provider's sign-in; back on SLICE's home, or on this screen with `?error=` if refused. */
 function signInWith(provider: 'google' | 'microsoft') {
   void authClient.signIn.social({ provider, callbackURL: '/', errorCallbackURL: '/' });
@@ -27,7 +29,10 @@ export function SignInScreen() {
   const [email, setEmail] = useState('');
   const [codeSent, setCodeSent] = useState(false);
   const [code, setCode] = useState('');
-  const error = SIGN_IN_ERRORS.get(new URLSearchParams(window.location.search).get('error') ?? '');
+  const [codeNotSent, setCodeNotSent] = useState(false);
+  const error = codeNotSent
+    ? CODE_NOT_SENT
+    : SIGN_IN_ERRORS.get(new URLSearchParams(window.location.search).get('error') ?? '');
   return (
     <main className="flex min-h-screen flex-col bg-background text-foreground">
       <section className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center justify-center gap-10 px-6 py-12 text-center">
@@ -94,6 +99,7 @@ export function SignInScreen() {
             onSubmit={async (e) => {
               e.preventDefault();
               const sent = await authClient.emailOtp.sendVerificationOtp({ email, type: 'sign-in' });
+              setCodeNotSent(Boolean(sent.error));
               if (!sent.error) setCodeSent(true);
             }}
           >
