@@ -77,6 +77,23 @@ async function startServer(cwd: string, env: Record<string, string>): Promise<Ru
   throw new Error(`server never became healthy:\n${output}`);
 }
 
+/** Run the server in `cwd` until it exits on its own; return its exit code and output. */
+async function runUntilExit(cwd: string, env: Record<string, string>): Promise<{ code: number | null; output: string }> {
+  const { DATABASE_URL: _ignored, ...inherited } = process.env;
+  const child = spawn(TSX, ['--tsconfig', path.join(ROOT, 'tsconfig.server.json'), ENTRY], {
+    cwd,
+    env: { ...inherited, PORT: String(await freePort()), ...env },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let output = '';
+  child.stdout.on('data', (chunk) => (output += chunk));
+  child.stderr.on('data', (chunk) => (output += chunk));
+  const timer = setTimeout(() => child.kill('SIGKILL'), 20_000);
+  const code = await new Promise<number | null>((r) => child.once('exit', (c) => r(c)));
+  clearTimeout(timer);
+  return { code, output };
+}
+
 function postToolsList(url: string): Promise<Response> {
   return fetch(url, {
     method: 'POST',
@@ -108,6 +125,18 @@ describe('server entry point', () => {
       expect(readFileSync(legacyFile, 'utf-8')).toBe(legacy);
     } finally {
       await server.stop();
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it('refuses to start in production without DATABASE_URL, and says why', async () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    try {
+      const { code, output } = await runUntilExit(cwd, { NODE_ENV: 'production' });
+
+      expect(code).toBe(1);
+      expect(output).toContain('DATABASE_URL is required in production');
+    } finally {
       rmSync(cwd, { recursive: true, force: true });
     }
   }, 30_000);
