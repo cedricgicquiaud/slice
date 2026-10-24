@@ -337,6 +337,12 @@ describe('environment file', () => {
     );
   });
 
+  it('.env.example names the variables of the code by email', () => {
+    const names = variables().map((line) => line.split('=')[0]);
+
+    expect(names).toEqual(expect.arrayContaining(['RESEND_API_KEY', 'RESEND_FROM']));
+  });
+
   it('.env.example carries no value', () => {
     expect(variables().filter((line) => !/^[A-Z][A-Z0-9_]*=$/.test(line))).toEqual([]);
   });
