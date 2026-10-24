@@ -103,6 +103,26 @@ plafonds vivent en mémoire et repartent de zéro), et prendre une adresse neuve
   terminal affiche dix codes ; la onzième demande affiche « Too many codes asked from your network. Try again in an
   hour. », et aucun onzième code n'apparaît.
 
+**Le menu de compte et la session de 7 jours (WAT-100)**
+
+Préparer : se connecter par l'un des moyens ci-dessus (le plus simple : code par e-mail, sans clé Resend).
+
+- [ ] Connecté, l'adresse e-mail du compte (par exemple `ada@example.com`) s'affiche en haut à droite, à droite du
+  bouton « Reset ».
+- [ ] Cliquer sur l'adresse : un menu s'ouvre avec « My MCPs », « Sign out » et « Delete account ». « My MCPs » mène à
+  http://localhost:5173/mcps et « Delete account » à http://localhost:5173/account/delete ; les deux affichent
+  l'accueil jusqu'aux livraisons 2 et 3.
+- [ ] Revenu après 6 jours sans visite, on est toujours connecté. Ce cas ne se joue pas à l'écran sans attendre 6
+  jours. Contrôle visible : dans les outils du navigateur (Application, puis Cookies, puis http://localhost:5173), le
+  cookie `better-auth.session_token` expire 7 jours après le dernier chargement de page, et sa date avance à chaque
+  rechargement. Le retour à J+6 (connecté, session repartie pour 7 jours) et le retour 6 j 22 h après une visite du
+  premier jour sont prouvés par les tests automatiques de `src/server/auth/session-lifetime.test.ts`.
+- [ ] Refus : après plus de 7 jours sans visite, l'écran « Sign in to SLICE » s'affiche. Prouvé par le test
+  automatique « is refused seven days and one minute after the last visit » (`src/server/auth/session-lifetime.test.ts`).
+- [ ] Refus : cliquer sur l'adresse, puis « Sign out » : l'écran « Sign in to SLICE » remplace l'application. Ouvrir
+  ensuite http://localhost:5173/mcps : l'écran « Sign in to SLICE » s'affiche toujours. (L'ancien cookie de session
+  n'ouvre plus rien, ni l'écran ni l'API : `src/server/auth/sign-out.test.ts`.)
+
 ## SLICE — Les MCP rangés en base de données
 
 ### Livraison 2 — Un connecteur hébergé est créé, servi et expiré depuis la base
