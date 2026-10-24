@@ -1,5 +1,5 @@
 import { createApp } from './app';
-import { authSecretFromEnv, createAuth, oauthApplicationsFromEnv } from './auth/auth';
+import { authBaseUrlFromEnv, authSecretFromEnv, createAuth, oauthApplicationsFromEnv } from './auth/auth';
 import { codeSenderFromEnv } from './auth/email-code';
 import { databaseConfigFromEnv, openDatabase } from './db/client';
 import { migrateDatabase } from './db/migrate';
@@ -21,7 +21,7 @@ try {
   const auth = createAuth({
     database,
     secret: authSecret,
-    baseURL: process.env.BETTER_AUTH_URL,
+    baseURL: authBaseUrlFromEnv(process.env),
     ...oauthApplicationsFromEnv(process.env),
     sendCode: codeSenderFromEnv(process.env),
   });
