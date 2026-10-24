@@ -193,4 +193,17 @@ describe('SignInScreen', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Too many codes asked for this address. Try again in an hour.');
   });
+
+  it('says to wait an hour when the network asked for too many codes (contract 22)', async () => {
+    server.answers.set('/email-otp/send-verification-otp', {
+      status: 429,
+      body: { code: 'too_many_codes_from_ip', message: 'Too many codes asked from your network. Try again in an hour.' },
+    });
+    render(<SignInScreen />);
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Email' }), 'ada@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Too many codes asked from your network. Try again in an hour.');
+  });
 });
