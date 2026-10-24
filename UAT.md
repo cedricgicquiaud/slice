@@ -72,9 +72,36 @@ tourne `pnpm dev`.
   la boîte, le terminal n'affiche pas le code, et ce code connecte.
 - [ ] Refus : un envoi qui échoue affiche « Couldn't send the code, try again » et le champ « Code » n'apparaît pas.
   Pour le voir : mettre une clé invalide (`RESEND_API_KEY=re_invalide`), relancer `pnpm dev`, demander un code.
-- [ ] Refus : un envoi en échec ne compte pas dans les plafonds de demandes (5 par heure par adresse, 10 par IP) :
-  après l'échec ci-dessus, remettre une clé valide, relancer, et demander cinq codes pour la même adresse dans
-  l'heure : les cinq partent. (Les plafonds arrivent avec WAT-99 : cette case se joue après elle.)
+- [ ] Refus : un envoi en échec ne compte pas dans les plafonds de demandes (5 par heure par adresse, 10 par IP). Ce
+  cas ne se joue pas à l'écran : passer d'une clé invalide à une clé valide oblige à relancer `pnpm dev`, ce qui remet
+  les plafonds à zéro. Il est prouvé par les tests automatiques « leaves the address its five codes for the hour » et
+  « leaves the IP its ten codes when one could not be sent » (`src/server/auth/email-code.test.ts`, WAT-99).
+
+**Code faux, périmé, déjà servi, ou trop demandé (WAT-99)**
+
+Préparer : `.env` sans `RESEND_API_KEY`, les codes se lisent dans le terminal de `pnpm dev`. Toutes les demandes faites
+depuis le Mac comptent pour la même adresse IP (10 codes par heure) : **relancer `pnpm dev` avant chaque case** (les
+plafonds vivent en mémoire et repartent de zéro), et prendre une adresse neuve à chaque case (`ada1@example.com`,
+`ada2@example.com`…).
+
+- [ ] Refus : demander un code, saisir `000000` (ou `111111` si le code reçu est `000000`), cliquer « Sign in » : on
+  reste sur l'écran de connexion, avec le message « This code is wrong or was already used. »
+- [ ] Refus : demander un code, saisir cinq fois un code faux, puis le bon : le bon est refusé avec le message « Too
+  many wrong codes. Ask for a new one. », et le champ « Email » revient avec le bouton « Email me a code ». Demander
+  un nouveau code et le saisir : on est connecté.
+- [ ] Refus : demander un code, attendre 11 minutes, le saisir : refus avec le message « This code has expired. Ask
+  for a new one. », et le champ « Email » revient. (La limite exacte, accepté à 9 min 59 s et refusé à 10 min 01 s,
+  est prouvée par les tests automatiques de `src/server/auth/email-code.test.ts`.)
+- [ ] Refus : un code qui a déjà connecté ne connecte plus. L'écran ne permet pas de ressaisir un code sans en
+  redemander un (et un nouveau code remplace l'ancien) : ce cas est prouvé par le test automatique « is refused the
+  second time and opens no session » (`src/server/auth/email-code.test.ts`). Le serveur y répond comme pour un code
+  faux, et l'écran affiche le même message : « This code is wrong or was already used. »
+- [ ] Refus : demander six codes pour la même adresse (cliquer « Email me a code », recharger la page, recommencer) :
+  le terminal affiche cinq codes ; la sixième demande affiche « Too many codes asked for this address. Try again in
+  an hour. », et aucun sixième code n'apparaît dans le terminal.
+- [ ] Refus : demander onze codes, chacun pour une adresse différente (`ip1@example.com` … `ip11@example.com`) : le
+  terminal affiche dix codes ; la onzième demande affiche « Too many codes asked from your network. Try again in an
+  hour. », et aucun onzième code n'apparaît.
 
 ## SLICE — Les MCP rangés en base de données
 

@@ -48,6 +48,20 @@ Sign-in with a code by email (Better Auth's email OTP): `POST /api/auth/email-ot
 `POST /api/auth/sign-in/email-otp` with `{ "email", "otp" }` sets the session cookie; the first code of an unknown
 address creates its account (and its personal workspace, never shown).
 
+A code lives 10 minutes, signs in once, and takes 5 tries:
+
+| Status | `code` | When |
+|---|---|---|
+| 400 | `INVALID_OTP` | Wrong code, or a code already used |
+| 403 | `TOO_MANY_ATTEMPTS` | Sixth try of a code, even the right one; only a new code signs in |
+| 400 | `OTP_EXPIRED` | Code older than 10 minutes |
+| 429 | `too_many_codes_for_address` | Sixth code within the hour for the address; no email sent |
+| 429 | `too_many_codes_from_ip` | Eleventh code within the hour from the IP (`x-forwarded-for`), any address; no email sent |
+
+Only codes that left count in the two hourly quotas: a `code_not_sent` spends nothing. The quotas live in the server's
+memory, so a restart gives them back. In production, Better Auth also limits each of the two routes to 3 calls a minute
+per IP (`429` without `code`).
+
 The hosted runtime `/m/:id` is protected by the unguessable id in its URL (see [Hosted runtime](#any-mid)).
 
 ### CORS
