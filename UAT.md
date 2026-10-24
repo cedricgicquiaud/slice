@@ -27,6 +27,31 @@ _Feature P-WAT-40. Une section par livraison, ajoutée par chaque PR._
   base, aucune table n'a de colonne de mot de passe (contrôle automatique : `src/server/db/schema.test.ts`).
 - [ ] Refus : aucun texte de l'écran ne parle d'espace (ni « space », ni « workspace »).
 
+**Connexion par Google ou Microsoft (WAT-97)**
+
+Préparer : copier `.env.example` en `.env`, déclarer les deux applications en suivant `docs/oauth-apps.md`, remplir
+`.env`, puis relancer `pnpm dev`.
+
+- [ ] `docs/oauth-apps.md` se suit pas à pas, sans connaître le code : à la fin, `.env` contient `BETTER_AUTH_URL`,
+  `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID` et `MICROSOFT_CLIENT_SECRET`, et les adresses
+  de retour déclarées sont les adresses locales (`http://localhost:5173/api/auth/callback/google` et
+  `…/microsoft`).
+- [ ] `.env.example` liste ces variables sans aucune valeur après le `=`, et `git status` ne montre pas `.env` une
+  fois rempli (contrôle automatique : `src/server/index.test.ts`).
+- [ ] Cliquer « Continue with Google », choisir son compte Google : on revient sur SLICE, connecté (l'accueil
+  « Any API, in any agent, in 3 clicks » s'affiche).
+- [ ] En navigation privée, cliquer « Continue with Microsoft » avec un compte Microsoft personnel (outlook.com,
+  hotmail.com, live.com) : on revient sur SLICE, connecté.
+- [ ] Même chose avec un compte Microsoft professionnel ou scolaire : on revient sur SLICE, connecté.
+- [ ] Se connecter par Google, puis, en navigation privée, par Microsoft avec la même adresse e-mail : c'est le même
+  compte (le menu de compte de WAT-100 affichera la même adresse ; contrôle automatique :
+  `src/server/auth/social-sign-in.test.ts`).
+- [ ] Refus : une adresse que Google ou Microsoft ne garantit pas ne connecte pas. Pour le voir : avant l'étape 4 de
+  la partie Microsoft de `docs/oauth-apps.md` (ou après avoir retiré ses « optional claims »), cliquer
+  « Continue with Microsoft » : on revient sur l'écran de connexion, sans session, avec le message « Your Google or
+  Microsoft account didn't confirm this email address. Get a code by email instead. » Le message seul s'affiche aussi
+  en ouvrant http://localhost:5173/?error=email_not_verified.
+
 ## SLICE — Les MCP rangés en base de données
 
 ### Livraison 2 — Un connecteur hébergé est créé, servi et expiré depuis la base
