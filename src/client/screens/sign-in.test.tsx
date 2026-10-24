@@ -162,6 +162,17 @@ describe('SignInScreen', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('This code is wrong or was already used.');
   });
 
+  // Better Auth's own limit in production: three tries a minute from an IP, answered without a code.
+  it('says to wait a minute when the server limits the tries', async () => {
+    server.answers.set('/email-otp/send-verification-otp', { status: 200, body: { success: true } });
+    server.answers.set('/sign-in/email-otp', { status: 429, body: { message: 'Too many requests. Please try again later.' } });
+    render(<SignInScreen />);
+
+    await signInWithCode('ada@example.com', '123456');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Too many tries. Wait a minute, then try again.');
+  });
+
   it('asks for a new code, and offers to send one, after too many wrong codes (contract 18)', async () => {
     server.answers.set('/email-otp/send-verification-otp', { status: 200, body: { success: true } });
     server.answers.set('/sign-in/email-otp', { status: 403, body: { code: 'TOO_MANY_ATTEMPTS', message: 'Too many attempts' } });
