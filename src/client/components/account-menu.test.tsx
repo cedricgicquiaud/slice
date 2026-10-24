@@ -2,17 +2,24 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import App from '../App';
 import { authClient } from '../lib/auth-client';
 import { AccountMenu } from './account-menu';
+import { AuthGate } from './auth-gate';
 
 /**
- * The server's answer to "who is signed in?" (`GET /api/auth/get-session`).
+ * The server's answer to "who is signed in?" (`GET /api/auth/get-session`);
+ * `POST /api/auth/sign-out` ends the session.
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
 const server = vi.hoisted(() => {
   const state: { session: unknown } = { session: null };
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify(state.session), { headers: { 'content-type': 'application/json' } })) as typeof fetch;
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (url.endsWith('/sign-out')) state.session = null;
+    const body = url.endsWith('/sign-out') ? { success: true } : state.session;
+    return new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+  }) as typeof fetch;
   return state;
 });
 
@@ -50,5 +57,19 @@ describe('AccountMenu', () => {
       signOut: menu.queryByRole('menuitem', { name: 'Sign out' }) !== null,
       deleteAccount: menu.getByRole('menuitem', { name: 'Delete account' }).getAttribute('href'),
     }).toEqual({ myMcps: '/mcps', signOut: true, deleteAccount: '/account/delete' });
+  });
+
+  it('shows the sign-in screen again once Sign out is clicked', async () => {
+    signedInAs('ada@example.com');
+    render(
+      <AuthGate>
+        <App />
+      </AuthGate>
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: 'ada@example.com' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Sign out' }));
+
+    expect(await screen.findByRole('heading', { name: 'Sign in to SLICE' })).toBeInTheDocument();
   });
 });
