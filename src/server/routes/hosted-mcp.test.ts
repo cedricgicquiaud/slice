@@ -314,6 +314,15 @@ describe('hosted runtime routes', () => {
     }
   });
 
+  it('lets an agent call a hosted MCP from any site (CORS open on /m)', async () => {
+    const res = await fetch(`${baseUrl}/m/some-id`, {
+      method: 'OPTIONS',
+      headers: { origin: 'https://agent.example', 'access-control-request-method': 'POST' },
+    });
+
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+  });
+
   it('returns 404 for an unknown id', async () => {
     const res = await fetch(`${baseUrl}/m/nope-unknown-id`, {
       method: 'POST',
