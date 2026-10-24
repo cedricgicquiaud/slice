@@ -92,4 +92,13 @@ describe('a request sent from another site with the session', () => {
 
     expect(res.body.code).toBe('INVALID_SPEC');
   });
+
+  it("gets no CORS permission: the browser keeps the API's answer from the other site", async () => {
+    const res = await request(signedInApp())
+      .options('/api/host')
+      .set('Origin', 'https://evil.example')
+      .set('Access-Control-Request-Method', 'POST');
+
+    expect(res.headers['access-control-allow-origin']).toBeUndefined();
+  });
 });
