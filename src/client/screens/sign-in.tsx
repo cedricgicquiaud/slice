@@ -18,6 +18,10 @@ const SIGN_IN_ERRORS = new Map([
 ]);
 
 const CODE_NOT_SENT = "Couldn't send the code, try again";
+/** What a refused request for a code says, by the code the server answers; any other failure is a code not sent. */
+const SEND_REFUSALS = new Map([
+  ['too_many_codes_for_address', 'Too many codes asked for this address. Try again in an hour.'],
+]);
 /** What a refused code says, by the code the server answers, and whether only a new code can sign in. */
 const CODE_REFUSALS = new Map([
   ['INVALID_OTP', { message: 'This code is wrong or was already used.', newCodeNeeded: false }],
@@ -103,7 +107,7 @@ export function SignInScreen() {
             onSubmit={async (e) => {
               e.preventDefault();
               const sent = await authClient.emailOtp.sendVerificationOtp({ email, type: 'sign-in' });
-              setCodeRefusal(sent.error ? CODE_NOT_SENT : undefined);
+              setCodeRefusal(sent.error ? (SEND_REFUSALS.get(sent.error.code ?? '') ?? CODE_NOT_SENT) : undefined);
               if (!sent.error) setCodeSent(true);
             }}
           >
