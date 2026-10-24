@@ -3,6 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../app';
 import { createTestAccount, type TestAccount } from '../db/test-account';
+import { createHostedStore } from '../services/hosted-store';
 
 describe('session guard on the API', () => {
   let account: TestAccount;
@@ -49,5 +50,32 @@ describe('session guard while the accounts database is unreachable', () => {
 
     expect(res.status).toBe(503);
     expect(res.body.code).toBe('SERVICE_UNAVAILABLE');
+  });
+});
+
+// WAT-101 — SLICE takes an account's orders from its own page only (D16).
+describe('a request sent from another site with the session', () => {
+  let account: TestAccount;
+
+  beforeAll(async () => {
+    account = await createTestAccount();
+  });
+
+  afterAll(async () => {
+    await account?.dispose();
+  });
+
+  const signedInApp = () =>
+    createApp({ nodeEnv: 'test', auth: account.auth, hostedStore: createHostedStore(account.database) });
+
+  it('is refused with 403 FORBIDDEN when it would create an MCP', async () => {
+    const res = await request(signedInApp())
+      .post('/api/host')
+      .set('Cookie', account.cookie)
+      .set('Origin', 'https://evil.example')
+      .send({});
+
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('FORBIDDEN');
   });
 });
