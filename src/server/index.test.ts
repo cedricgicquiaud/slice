@@ -58,6 +58,8 @@ async function freePort(): Promise<number> {
 
 interface RunningServer {
   baseUrl: string;
+  /** What the server printed in its terminal so far. */
+  output(): string;
   stop(): Promise<void>;
 }
 
@@ -83,7 +85,7 @@ async function startServer(cwd: string, env: Record<string, string>): Promise<Ru
   for (let attempt = 0; attempt < 150; attempt++) {
     if (child.exitCode !== null) throw new Error(`server exited (${child.exitCode}):\n${output}`);
     try {
-      if ((await fetch(`${baseUrl}/api/health`)).ok) return { baseUrl, stop };
+      if ((await fetch(`${baseUrl}/api/health`)).ok) return { baseUrl, output: () => output, stop };
     } catch {
       // not listening yet
     }
@@ -274,6 +276,23 @@ describe('server entry point', () => {
         'https://accounts.google.com/o/oauth2/v2/auth declared-google-app',
         'https://login.microsoftonline.com/common/oauth2/v2.0/authorize declared-microsoft-app',
       ]);
+    } finally {
+      await server.stop();
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it('prints the sign-in code in its terminal when it has no Resend key', async () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    const server = await startServer(cwd, { RESEND_API_KEY: '' });
+    try {
+      await fetch(`${server.baseUrl}/api/auth/email-otp/send-verification-otp`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'ada@example.com', type: 'sign-in' }),
+      });
+
+      expect(server.output()).toMatch(/ada@example\.com: \d{6}/);
     } finally {
       await server.stop();
       rmSync(cwd, { recursive: true, force: true });
