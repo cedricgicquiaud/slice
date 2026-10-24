@@ -1,1 +1,0 @@
-ALTER TABLE "connectors" ADD CONSTRAINT "connectors_header_name_iff_api_key" CHECK (("connectors"."upstream_auth_type" = 'apiKey') = ("connectors"."upstream_header_name" is not null));

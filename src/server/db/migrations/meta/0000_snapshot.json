@@ -1,5 +1,5 @@
 {
-  "id": "843750a8-38fa-41ba-8b76-3957674ed75a",
+  "id": "c14b62b4-fa7d-4698-ac7f-59bcc5270650",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -53,8 +53,30 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
+      "foreignKeys": {
+        "connector_actions_connector_id_connectors_id_fk": {
+          "name": "connector_actions_connector_id_connectors_id_fk",
+          "tableFrom": "connector_actions",
+          "tableTo": "connectors",
+          "columnsFrom": [
+            "connector_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "connector_actions_connector_id_position_pk": {
+          "name": "connector_actions_connector_id_position_pk",
+          "columns": [
+            "connector_id",
+            "position"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -114,12 +136,37 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "connectors_created_at_idx": {
+          "name": "connectors_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "connectors_header_name_iff_api_key": {
+          "name": "connectors_header_name_iff_api_key",
+          "value": "(\"connectors\".\"upstream_auth_type\" = 'apiKey') = (\"connectors\".\"upstream_header_name\" is not null)"
+        },
+        "connectors_token_url_iff_oauth2": {
+          "name": "connectors_token_url_iff_oauth2",
+          "value": "(\"connectors\".\"upstream_auth_type\" = 'oauth2') = (\"connectors\".\"upstream_token_url\" is not null)"
+        }
+      },
       "isRLSEnabled": false
     }
   },

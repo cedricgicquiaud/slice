@@ -5,43 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1792793367567,
+      "when": 1792829641649,
       "tag": "0000_init",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1792793453846,
-      "tag": "0001_header_name_iff_api_key",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1792793491958,
-      "tag": "0002_token_url_iff_oauth2",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1792793524966,
-      "tag": "0003_actions_cascade",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1792793556721,
-      "tag": "0004_actions_position_key",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1792793588035,
-      "tag": "0005_connectors_created_at_idx",
       "breakpoints": true
     }
   ]
