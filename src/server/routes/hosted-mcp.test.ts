@@ -140,6 +140,12 @@ describe('hosted connector served from the database', () => {
     expect((await store.get(id))?.endpoints.map((e) => e.name)).toEqual(['list_things']);
   });
 
+  it("puts a connector created from screen 4 in the signed-in account's workspace, under the API's name (D15, D9)", async () => {
+    const id = (await host()).split('/m/')[1]!;
+
+    expect(await store.get(id)).toMatchObject({ workspaceId: account.workspaceId, apiName: 'Demo' });
+  });
+
   it("relays the agent's API key in the header the API expects", async () => {
     received = [];
     const { id } = await store.put(
