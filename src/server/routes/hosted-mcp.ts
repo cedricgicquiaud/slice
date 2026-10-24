@@ -46,8 +46,8 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
       res.status(404).json({ error: 'Unknown MCP id.' });
       return;
     }
+    // Kept in the database 30 days after expiry, so it keeps answering "expired".
     if (isExpired(config.createdAt, ttlHours, options.now().getTime())) {
-      await options.store.delete(req.params.id);
       res.status(410).json({
         error: 'This MCP URL has expired. Generate it again on SLICE, or ask for a permanent plan.',
       });
