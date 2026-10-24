@@ -135,6 +135,15 @@ describe('hosted store cleanup', () => {
     expect(await store.get(id)).toBeUndefined();
     expect(await database.rows(sql`select 1 from connector_actions where connector_id = ${id}`)).toEqual([]);
   });
+
+  it('keeps an expired connector for 29 days after it expired', async () => {
+    const store = createHostedStore(database);
+    const { id } = await store.put(threeActions, NOW);
+
+    await store.purgeExpired(daysAfterExpiry(29), 72);
+
+    expect((await store.get(id))?.endpoints).toHaveLength(3);
+  });
 });
 
 describe('hosted store across a restart', () => {
