@@ -1,4 +1,5 @@
 import type { ApiErrorCode, GenerateRequest, ParsedSpec, ParseErrorCode } from '@shared/types';
+import { authClient } from './auth-client';
 
 export interface ApiErrorBody {
   code: ParseErrorCode | ApiErrorCode | 'NO_FILE' | 'UNSUPPORTED_FORMAT' | string;
@@ -20,9 +21,13 @@ export class ApiError extends Error {
  * Translate a non-OK `Response` into a thrown `ApiError`. Prefers the server's
  * JSON `{ code, message }`; falls back to a generic message when the body is
  * absent or not JSON (e.g. an HTML 500 page, or empty statusText under HTTP/2)
- * so the UI never shows a blank error. Always throws — never returns.
+ * so the UI never shows a blank error. Always throws — never returns. A 401
+ * also sends the app back to the sign-in screen.
  */
 async function throwApiError(res: Response, fallbackCode: ApiErrorBody['code']): Promise<never> {
+  // No live session any more (D1): the auth client asks the server again, and
+  // the gate brings the sign-in screen back.
+  if (res.status === 401) authClient.$store.notify('$sessionSignal');
   let body: ApiErrorBody = {
     code: fallbackCode,
     message: res.statusText || `Erreur ${res.status} du serveur.`,
