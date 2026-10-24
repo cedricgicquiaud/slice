@@ -49,4 +49,16 @@ describe('a session lives seven days from the last visit', () => {
 
     expect(session?.session.expiresAt).toBe('2026-11-07T10:00:00.000Z');
   });
+
+  it('counts a visit made the day of sign-in: back six days and 22 hours after it, still signed in', async () => {
+    clockAt('2026-10-25T10:00:00Z');
+    const cookie = await signIn('same-day@example.com');
+    clockAt('2026-10-25T22:00:00Z');
+    await visit(cookie);
+
+    clockAt('2026-11-01T20:00:00Z');
+    const session = await visit(cookie);
+
+    expect(session?.user.email).toBe('same-day@example.com');
+  });
 });
