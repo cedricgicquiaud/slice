@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -293,4 +293,31 @@ describe('server entry point', () => {
       rmSync(cwd, { recursive: true, force: true });
     }
   }, 30_000);
+});
+
+describe('environment file', () => {
+  const variables = () =>
+    readFileSync(path.join(ROOT, '.env.example'), 'utf-8')
+      .split('\n')
+      .filter((line) => line.trim() !== '' && !line.startsWith('#'));
+
+  it('.env.example names the variables of accounts and sign-in applications', () => {
+    const names = variables().map((line) => line.split('=')[0]);
+
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'BETTER_AUTH_SECRET',
+        'BETTER_AUTH_URL',
+        'GOOGLE_CLIENT_ID',
+        'GOOGLE_CLIENT_SECRET',
+        'MICROSOFT_CLIENT_ID',
+        'MICROSOFT_CLIENT_SECRET',
+      ])
+    );
+  });
+
+  it('.env, where the values go, is never committed', () => {
+    // `git check-ignore` exits non-zero, so throws, when the path is not ignored.
+    expect(() => execFileSync('git', ['check-ignore', '--quiet', '.env'], { cwd: ROOT })).not.toThrow();
+  });
 });
