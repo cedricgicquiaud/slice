@@ -1,5 +1,5 @@
 import { createApp } from './app';
-import { authSecretFromEnv, createAuth } from './auth/auth';
+import { authSecretFromEnv, createAuth, oauthApplicationsFromEnv } from './auth/auth';
 import { databaseConfigFromEnv, openDatabase } from './db/client';
 import { migrateDatabase } from './db/migrate';
 import { defaultTtlHours } from './routes/hosted-mcp';
@@ -17,7 +17,12 @@ try {
   const hostedStore = createHostedStore(database);
   startHostedCleanup(hostedStore, { ttlHours: defaultTtlHours(), now: () => new Date() });
 
-  const auth = createAuth({ database, secret: authSecret, baseURL: process.env.BETTER_AUTH_URL });
+  const auth = createAuth({
+    database,
+    secret: authSecret,
+    baseURL: process.env.BETTER_AUTH_URL,
+    ...oauthApplicationsFromEnv(process.env),
+  });
 
   const app = createApp({ nodeEnv: NODE_ENV, hostedStore, auth });
 

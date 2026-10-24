@@ -72,3 +72,13 @@ export function authSecretFromEnv(env: NodeJS.ProcessEnv): string | undefined {
   }
   return undefined;
 }
+
+/** The Google and Microsoft applications of the environment; one without its ID or secret is left out. */
+export function oauthApplicationsFromEnv(env: NodeJS.ProcessEnv): Pick<AuthOptions, 'google' | 'microsoft'> {
+  const application = (clientId?: string, clientSecret?: string) =>
+    clientId && clientSecret ? { clientId, clientSecret } : undefined;
+  return {
+    google: application(env.GOOGLE_CLIENT_ID, env.GOOGLE_CLIENT_SECRET),
+    microsoft: application(env.MICROSOFT_CLIENT_ID, env.MICROSOFT_CLIENT_SECRET),
+  };
+}
