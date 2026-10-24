@@ -313,3 +313,23 @@ describe('a code that could not be sent counts in no quota (contract 14)', () =>
     expect({ status: res.status, sent: sentTo.length }).toEqual({ status: 200, sent: 5 });
   });
 });
+
+/** Asks for a code for the address from the IP `ip`, as SLICE's proxy forwards it. */
+function askForCodeFrom(ip: string, browser: Browser, email: string) {
+  return askForCode(browser, email).set('x-forwarded-for', ip);
+}
+
+describe('ten codes an hour from an IP (contract 22)', () => {
+  it('refuses an eleventh request within the hour, whatever the address, and sends no email for it', async () => {
+    const { app, sentTo } = appRecordingSends();
+    for (let i = 1; i <= 10; i++) await askForCodeFrom('203.0.113.7', request.agent(app), `visitor${i}@example.com`);
+
+    const res = await askForCodeFrom('203.0.113.7', request.agent(app), 'visitor11@example.com');
+
+    expect({ status: res.status, code: res.body.code, sent: sentTo.length }).toEqual({
+      status: 429,
+      code: 'too_many_codes_from_ip',
+      sent: 10,
+    });
+  });
+});
