@@ -8,6 +8,10 @@ import { createAuth } from './auth';
 import { createTestAccount, TEST_AUTH_SECRET, type TestAccount } from '../db/test-account';
 
 const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
+// `common` takes personal and work or school Microsoft accounts alike.
+const MICROSOFT_TOKEN_ENDPOINT = 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
+// Microsoft's fixed tenant of personal accounts.
+const PERSONAL_MICROSOFT_TENANT = '9188040d-6c67-4c5b-b112-36a304b66dad';
 
 let account: TestAccount;
 let app: Express;
@@ -18,6 +22,7 @@ beforeAll(async () => {
     database: account.database,
     secret: TEST_AUTH_SECRET,
     google: { clientId: 'google-client-id', clientSecret: 'google-client-secret' },
+    microsoft: { clientId: 'microsoft-client-id', clientSecret: 'microsoft-client-secret' },
   });
   app = createApp({ nodeEnv: 'development', auth });
 });
@@ -68,5 +73,19 @@ describe('sign-in with Google', () => {
     });
 
     expect(session.user.email).toBe('ada@gmail.com');
+  });
+});
+
+describe('sign-in with Microsoft', () => {
+  it('opens a session for a personal Microsoft account', async () => {
+    const { session } = await signInWith('microsoft', MICROSOFT_TOKEN_ENDPOINT, {
+      oid: 'microsoft-grace',
+      tid: PERSONAL_MICROSOFT_TENANT,
+      email: 'grace@outlook.com',
+      verified_primary_email: ['grace@outlook.com'],
+      name: 'Grace Hopper',
+    });
+
+    expect(session.user.email).toBe('grace@outlook.com');
   });
 });
