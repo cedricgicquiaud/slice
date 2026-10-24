@@ -157,3 +157,27 @@ describe('a code that could not be sent (contract 14)', () => {
     expect({ status: res.status, code: res.body.code }).toEqual({ status: 502, code: 'code_not_sent' });
   });
 });
+
+// WAT-99 — a wrong, worn-out, stale or used code never signs in; too many codes are not sent.
+
+/** Enters `otp` for the address; the session it opened, if any. */
+async function enterCode(browser: Browser, email: string, otp: string | undefined) {
+  const res = await browser.post('/api/auth/sign-in/email-otp').send({ email, otp });
+  return { res, session: (await browser.get('/api/auth/get-session')).body };
+}
+
+/** A code of six digits other than `code`. */
+function wrongCode(code: string | undefined) {
+  return code === '000000' ? '111111' : '000000';
+}
+
+describe('a wrong code (contract 18)', () => {
+  it('is refused and opens no session', async () => {
+    const browser = request.agent(app);
+    await askForCode(browser, 'wrong@example.com');
+
+    const { res, session } = await enterCode(browser, 'wrong@example.com', wrongCode(inbox.get('wrong@example.com')));
+
+    expect({ status: res.status, code: res.body.code, session }).toEqual({ status: 400, code: 'INVALID_OTP', session: null });
+  });
+});
