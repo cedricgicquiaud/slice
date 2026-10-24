@@ -167,6 +167,13 @@ async function enterCode(browser: Browser, email: string, otp: string | undefine
   return { res, session: (await browser.get('/api/auth/get-session')).body };
 }
 
+/** SLICE with quotas of its own, sending its codes to `inbox`: no test spends another's ten codes per IP. */
+function appWithInbox(): Express {
+  return appSendingWith(async (email, code) => {
+    inbox.set(email, code);
+  });
+}
+
 /** A code of six digits other than `code`. */
 function wrongCode(code: string | undefined) {
   return code === '000000' ? '111111' : '000000';
@@ -174,7 +181,7 @@ function wrongCode(code: string | undefined) {
 
 describe('a wrong code (contract 18)', () => {
   it('is refused and opens no session', async () => {
-    const browser = request.agent(app);
+    const browser = request.agent(appWithInbox());
     await askForCode(browser, 'wrong@example.com');
 
     const { res, session } = await enterCode(browser, 'wrong@example.com', wrongCode(inbox.get('wrong@example.com')));
@@ -193,7 +200,7 @@ async function missCode(browser: Browser, email: string, wrong: number) {
 
 describe('five tries per code (contract 18)', () => {
   it('signs in with the right code after four wrong ones', async () => {
-    const browser = request.agent(app);
+    const browser = request.agent(appWithInbox());
     const code = await missCode(browser, 'tries@example.com', 4);
 
     const { session } = await enterCode(browser, 'tries@example.com', code);
@@ -202,7 +209,7 @@ describe('five tries per code (contract 18)', () => {
   });
 
   it('refuses even the right code after five wrong ones', async () => {
-    const browser = request.agent(app);
+    const browser = request.agent(appWithInbox());
     const code = await missCode(browser, 'worn@example.com', 5);
 
     const { res, session } = await enterCode(browser, 'worn@example.com', code);
@@ -211,7 +218,7 @@ describe('five tries per code (contract 18)', () => {
   });
 
   it('signs in with a new code once the worn-out one is refused', async () => {
-    const browser = request.agent(app);
+    const browser = request.agent(appWithInbox());
     const worn = await missCode(browser, 'again@example.com', 5);
     await enterCode(browser, 'again@example.com', worn);
 
@@ -230,7 +237,7 @@ function clockAt(time: string) {
 describe('a code lives ten minutes (contract 19)', () => {
   it('still signs in at 9 min 59 s', async () => {
     clockAt('2026-10-25T10:00:00Z');
-    const browser = request.agent(app);
+    const browser = request.agent(appWithInbox());
     await askForCode(browser, 'early@example.com');
 
     clockAt('2026-10-25T10:09:59Z');
@@ -241,7 +248,7 @@ describe('a code lives ten minutes (contract 19)', () => {
 
   it('is refused at 10 min 01 s', async () => {
     clockAt('2026-10-25T10:00:00Z');
-    const browser = request.agent(app);
+    const browser = request.agent(appWithInbox());
     await askForCode(browser, 'late@example.com');
 
     clockAt('2026-10-25T10:10:01Z');
@@ -253,9 +260,10 @@ describe('a code lives ten minutes (contract 19)', () => {
 
 describe('a used code (contract 20)', () => {
   it('is refused the second time and opens no session', async () => {
-    await signInWithCode(request.agent(app), 'used@example.com');
+    const slice = appWithInbox();
+    await signInWithCode(request.agent(slice), 'used@example.com');
 
-    const { res, session } = await enterCode(request.agent(app), 'used@example.com', inbox.get('used@example.com'));
+    const { res, session } = await enterCode(request.agent(slice), 'used@example.com', inbox.get('used@example.com'));
 
     expect({ status: res.status, code: res.body.code, session }).toEqual({ status: 400, code: 'INVALID_OTP', session: null });
   });
