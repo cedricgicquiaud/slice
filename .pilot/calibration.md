@@ -57,3 +57,4 @@ Première feature mesurée sur ce projet : pas de comparaison. Le run domine, et
 |---|---|---|---|
 | SLICE — Actions classées lecture, écriture | 2026-10-23 19:58 | — (annulée : déjà en place à l'écran 2, devenue WAT-60) | 8 (contradicteur) |
 | SLICE — Les MCP rangés en base de données | 2026-10-23 21:20 | 2026-10-23 21:50 | 19 (contradicteur) + 6 (découpeur) + 1 (choix de la base) |
+| SLICE — Compte et liste de ses MCP | 2026-10-24 18:06 | 2026-10-24 22:20 | 12 (entretien, 2 rounds) + 15 (contradicteur) + 8 (découpeur) ; 1 décision reprise par l'humain (compte obligatoire pour tout SLICE) |

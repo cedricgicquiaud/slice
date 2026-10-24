@@ -2,6 +2,10 @@
 
 Chaque section correspond à une feature. Les cases se cochent pendant la recette, jamais avant.
 
+## SLICE — Compte et liste de ses MCP
+
+_Feature P-WAT-40. Une section par livraison, ajoutée par chaque PR._
+
 ## SLICE — Les MCP rangés en base de données
 
 ### Livraison 2 — Un connecteur hébergé est créé, servi et expiré depuis la base
