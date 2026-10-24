@@ -102,7 +102,12 @@ export function startHostedCleanup(
   store: HostedStore,
   options: { ttlHours: number; now: () => Date }
 ): { stop(): void } {
-  const run = () => void store.purgeExpired(options.now(), options.ttlHours);
+  const run = () => {
+    store.purgeExpired(options.now(), options.ttlHours).catch((err: unknown) => {
+      // The next run retries; an unreachable database must not bring the server down.
+      console.error('[hosted-store] cleanup failed:', err instanceof Error ? err.message : String(err));
+    });
+  };
   run();
   const timer = setInterval(run, CLEANUP_INTERVAL_MS);
   timer.unref();
