@@ -120,6 +120,30 @@ describe('database schema (D3)', () => {
   });
 });
 
+describe('deleting an account (WAT-101)', () => {
+  it('deletes its workspace, its connectors and their actions with it (D11)', async () => {
+    await rows(sql`insert into users (id, name, email) values ('leaving', '', 'leaving@example.com')`);
+    await rows(sql`insert into workspaces (id, owner_id, created_at) values ('leaving-workspace', 'leaving', now())`);
+    await rows(
+      sql`insert into connectors (id, name, base_url, upstream_auth_type, created_at, workspace_id)
+          values ('leaving-mcp', 'demo', 'https://api.example.com', 'none', now(), 'leaving-workspace')`
+    );
+    await rows(
+      sql`insert into connector_actions (connector_id, position, name, description, method, path, params)
+          values ('leaving-mcp', 0, 'ping', 'Ping', 'GET', '/ping', '[]'::jsonb)`
+    );
+
+    await rows(sql`delete from users where id = 'leaving'`);
+
+    const left = await rows<{ kind: string }>(
+      sql`select 'workspace' as kind from workspaces where id = 'leaving-workspace'
+          union all select 'connector' from connectors where id = 'leaving-mcp'
+          union all select 'action' from connector_actions where connector_id = 'leaving-mcp'`
+    );
+    expect(left).toEqual([]);
+  });
+});
+
 describe('accounts schema (WAT-96)', () => {
   it('keeps accounts, their sign-in methods and their sessions without any password column (D3)', async () => {
     const columns = await rows<{ table_name: string; column_name: string }>(
