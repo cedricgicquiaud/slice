@@ -23,6 +23,8 @@ const SEND_REFUSALS = new Map([
   ['too_many_codes_for_address', 'Too many codes asked for this address. Try again in an hour.'],
   ['too_many_codes_from_ip', 'Too many codes asked from your network. Try again in an hour.'],
 ]);
+/** Better Auth's own limit on the tries, in production: it answers 429 without a code. */
+const TOO_MANY_TRIES = 'Too many tries. Wait a minute, then try again.';
 /** What a refused code says, by the code the server answers, and whether only a new code can sign in. */
 const CODE_REFUSALS = new Map([
   ['INVALID_OTP', { message: 'This code is wrong or was already used.', newCodeNeeded: false }],
@@ -81,7 +83,7 @@ export function SignInScreen() {
               e.preventDefault();
               const signedIn = await authClient.signIn.emailOtp({ email, otp: code });
               const refusal = CODE_REFUSALS.get(signedIn.error?.code ?? '');
-              setCodeRefusal(refusal?.message);
+              setCodeRefusal(signedIn.error?.status === 429 ? TOO_MANY_TRIES : refusal?.message);
               if (refusal?.newCodeNeeded) setCodeSent(false);
             }}
           >
