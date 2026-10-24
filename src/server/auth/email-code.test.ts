@@ -260,3 +260,27 @@ describe('a used code (contract 20)', () => {
     expect({ status: res.status, code: res.body.code, session }).toEqual({ status: 400, code: 'INVALID_OTP', session: null });
   });
 });
+
+/** SLICE on its own counters, recording the addresses it sends codes to. */
+function appRecordingSends() {
+  const sentTo: string[] = [];
+  const app = appSendingWith(async (email) => {
+    sentTo.push(email);
+  });
+  return { app, sentTo };
+}
+
+describe('five codes an hour for an address (contract 21)', () => {
+  it('refuses a sixth request within the hour, and sends no email for it', async () => {
+    const { app, sentTo } = appRecordingSends();
+    for (let i = 0; i < 5; i++) await askForCode(request.agent(app), 'flood@example.com');
+
+    const res = await askForCode(request.agent(app), 'flood@example.com');
+
+    expect({ status: res.status, code: res.body.code, sent: sentTo.length }).toEqual({
+      status: 429,
+      code: 'too_many_codes_for_address',
+      sent: 5,
+    });
+  });
+});
