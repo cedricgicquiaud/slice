@@ -32,10 +32,15 @@ const server = vi.hoisted(() => {
   return { requests, answers };
 });
 
-/** Types the address, asks for a code, then enters `code` and clicks "Sign in". */
-async function signInWithCode(email: string, code: string) {
+/** Types the address and clicks "Email me a code". */
+async function askForCode(email: string) {
   await userEvent.type(screen.getByRole('textbox', { name: 'Email' }), email);
   await userEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
+}
+
+/** Asks for a code for the address, then enters `code` and clicks "Sign in". */
+async function signInWithCode(email: string, code: string) {
+  await askForCode(email);
   await userEvent.type(await screen.findByRole('textbox', { name: 'Code' }), code);
   await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 }
@@ -111,8 +116,7 @@ describe('SignInScreen', () => {
     server.answers.set('/email-otp/send-verification-otp', { status: 200, body: { success: true } });
     render(<SignInScreen />);
 
-    await userEvent.type(screen.getByRole('textbox', { name: 'Email' }), 'ada@example.com');
-    await userEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
+    await askForCode('ada@example.com');
 
     await waitFor(() =>
       expect(server.requests).toContainEqual({
@@ -143,8 +147,7 @@ describe('SignInScreen', () => {
     });
     render(<SignInScreen />);
 
-    await userEvent.type(screen.getByRole('textbox', { name: 'Email' }), 'ada@example.com');
-    await userEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
+    await askForCode('ada@example.com');
 
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't send the code, try again");
   });
@@ -188,8 +191,7 @@ describe('SignInScreen', () => {
     });
     render(<SignInScreen />);
 
-    await userEvent.type(screen.getByRole('textbox', { name: 'Email' }), 'ada@example.com');
-    await userEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
+    await askForCode('ada@example.com');
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Too many codes asked for this address. Try again in an hour.');
   });
@@ -201,8 +203,7 @@ describe('SignInScreen', () => {
     });
     render(<SignInScreen />);
 
-    await userEvent.type(screen.getByRole('textbox', { name: 'Email' }), 'ada@example.com');
-    await userEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
+    await askForCode('ada@example.com');
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Too many codes asked from your network. Try again in an hour.');
   });
