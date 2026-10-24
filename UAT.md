@@ -52,6 +52,30 @@ Préparer : copier `.env.example` en `.env`, déclarer les deux applications en 
   Microsoft account didn't confirm this email address. Get a code by email instead. » Le message seul s'affiche aussi
   en ouvrant http://localhost:5173/?error=email_not_verified.
 
+**Connexion par code reçu par e-mail (WAT-98)**
+
+Préparer : `.env` sans `RESEND_API_KEY` (ou vide) pour les trois premières cases ; garder sous les yeux le terminal où
+tourne `pnpm dev`.
+
+- [ ] Saisir son adresse dans le champ « Email » (par exemple `ada@example.com`), cliquer « Email me a code » : un
+  champ « Code » et un bouton « Sign in » remplacent le champ « Email ».
+- [ ] Sans clé Resend, le terminal de `pnpm dev` affiche une ligne
+  `Sign-in code for ada@example.com: <6 chiffres> (no RESEND_API_KEY, no email sent)`, et aucun e-mail n'arrive.
+- [ ] Recopier ces 6 chiffres dans « Code », cliquer « Sign in » : l'accueil « Any API, in any agent, in 3 clicks »
+  s'affiche, connecté.
+- [ ] Première connexion d'une adresse jamais vue : le compte est créé au premier code, sans autre étape, et rien ne
+  parle d'espace à l'écran (l'espace personnel est créé en coulisses ; contrôle automatique :
+  `src/server/auth/email-code.test.ts`).
+- [ ] Avec la clé : mettre dans `.env` une clé Resend (`RESEND_API_KEY`) et, si un domaine est vérifié chez Resend,
+  `RESEND_FROM` (sinon l'expéditeur de test de Resend ne livre qu'à l'adresse du compte Resend : faire la recette
+  avec celle-ci). Relancer `pnpm dev`, demander un code : l'e-mail « <6 chiffres> is your SLICE code » arrive dans
+  la boîte, le terminal n'affiche pas le code, et ce code connecte.
+- [ ] Refus : un envoi qui échoue affiche « Couldn't send the code, try again » et le champ « Code » n'apparaît pas.
+  Pour le voir : mettre une clé invalide (`RESEND_API_KEY=re_invalide`), relancer `pnpm dev`, demander un code.
+- [ ] Refus : un envoi en échec ne compte pas dans les plafonds de demandes (5 par heure par adresse, 10 par IP) :
+  après l'échec ci-dessus, remettre une clé valide, relancer, et demander cinq codes pour la même adresse dans
+  l'heure : les cinq partent. (Les plafonds arrivent avec WAT-99 : cette case se joue après elle.)
+
 ## SLICE — Les MCP rangés en base de données
 
 ### Livraison 2 — Un connecteur hébergé est créé, servi et expiré depuis la base
