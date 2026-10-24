@@ -238,4 +238,15 @@ describe('a code lives ten minutes (contract 19)', () => {
 
     expect(session?.user.email).toBe('early@example.com');
   });
+
+  it('is refused at 10 min 01 s', async () => {
+    clockAt('2026-10-25T10:00:00Z');
+    const browser = request.agent(app);
+    await askForCode(browser, 'late@example.com');
+
+    clockAt('2026-10-25T10:10:01Z');
+    const { res, session } = await enterCode(browser, 'late@example.com', inbox.get('late@example.com'));
+
+    expect({ status: res.status, code: res.body.code, session }).toEqual({ status: 400, code: 'OTP_EXPIRED', session: null });
+  });
 });
