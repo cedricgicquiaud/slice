@@ -2,12 +2,13 @@
  * Accounts and sessions of SLICE (Better Auth), kept in SLICE's own database.
  * No password anywhere: Better Auth's email-and-password sign-in stays off.
  */
+import { randomUUID } from 'node:crypto';
 import { betterAuth } from 'better-auth';
 import { APIError } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { emailOTP } from 'better-auth/plugins';
 import type { Database } from '../db/client';
-import { accounts, sessions, users, verifications } from '../db/schema';
+import { accounts, sessions, users, verifications, workspaces } from '../db/schema';
 
 export interface AuthOptions {
   database: Database;
@@ -56,6 +57,10 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
                 message: 'The provider did not verify this email address.',
               });
             }
+          },
+          // D15: every account gets its personal workspace, never shown.
+          after: async (user) => {
+            await database.db.insert(workspaces).values({ id: randomUUID(), ownerId: user.id, createdAt: new Date() });
           },
         },
       },
