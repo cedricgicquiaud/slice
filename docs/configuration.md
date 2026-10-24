@@ -7,7 +7,11 @@ kit it generates. Everything here reflects what the code supports today.
 
 ### Environment variables
 
-The server reads its configuration from the process environment only. It does not load a `.env` file.
+The server reads its configuration from the process environment. In development, `pnpm dev` (through
+`pnpm dev:server`) also reads a `.env` file at the repository root when there is one: copy `.env.example`, which
+lists the variables without values, and fill in what you need. A variable already set in the environment wins over
+`.env`, and an empty one keeps its default. `.env` is never committed. `pnpm start` and the tests never read it:
+in production, set the variables in the platform's settings.
 
 | Variable | Default | Effect |
 |---|---|---|
@@ -16,6 +20,8 @@ The server reads its configuration from the process environment only. It does no
 | `DATABASE_URL` | (none) | PostgreSQL connection string (`postgres://user:password@host:5432/database`) where hosted MCPs are stored. **Required when `NODE_ENV=production`**: without it the server refuses to start and says why. Elsewhere, leaving it unset uses the embedded database below. |
 | `BETTER_AUTH_SECRET` | (none) | Signs the session cookies of SLICE accounts. **Required when `NODE_ENV=production`**: without it the server refuses to start and says why. Use a long random value (`openssl rand -hex 32`), kept in the platform's secret settings. Elsewhere, Better Auth falls back to a public development secret. |
 | `BETTER_AUTH_URL` | (none) | SLICE's public address (`https://slice.example.com`, or `http://localhost:5173` behind the Vite proxy in development). Better Auth builds its sign-in links from it; without it, it reads the address of each request and logs a warning. An `https://` address makes the session cookie `Secure`. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | (none) | The Google application SLICE signs in with ([oauth-apps.md](oauth-apps.md)). With both set, "Continue with Google" works; without them, the server offers no Google sign-in. |
+| `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | (none) | The Microsoft application SLICE signs in with, personal and work or school accounts ([oauth-apps.md](oauth-apps.md)). Same rule as Google. |
 | `SLICE_DATA_DIR` | `./data` | Without `DATABASE_URL` only: folder of the embedded PostgreSQL (PGlite, nothing to install), kept in its `pglite/` subfolder. Resolved from the working directory; created if missing. |
 | `SLICE_HOSTED_TTL_HOURS` | `72` | Lifetime of a hosted MCP URL, in hours. `0` disables expiry (useful for a private self-hosted instance). A negative or non-numeric value falls back to `72`. An expired MCP is kept 30 more days, then deleted (see [Persistent data](#persistent-data)). |
 | `PARSE_MAX_CONCURRENT` | `3` | Maximum number of spec parses running at the same time (minimum 1). Each parse is a child process with a 512 MB heap cap, so peak parse memory is about this value × 512 MB. |
@@ -73,7 +79,7 @@ Expiry and cleanup:
   again. It runs at startup, then **every hour**. With `SLICE_HOSTED_TTL_HOURS=0`, nothing expires and nothing is deleted.
 
 Accounts and their sessions live in the same database (`users`, `sessions`, `accounts`, `verifications`, managed by
-Better Auth; no password column). Every `/api/*` route except `GET /api/health`, Better Auth's own `/api/auth/*` and,
+Better Auth; no password column). An account rests on a verified email address: a Google or Microsoft address the provider did not verify creates no account and opens none. One verified address is one account, whichever way its owner signs in. Every `/api/*` route except `GET /api/health`, Better Auth's own `/api/auth/*` and,
 outside production, `POST /api/dev/sign-in` answers `401 UNAUTHORIZED` without a live session.
 
 When the database is unreachable, the server stays up: every API call that checks the session fails with

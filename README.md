@@ -49,6 +49,9 @@ pnpm dev        # http://localhost:5173
 
 `pnpm test` runs the test suite; `pnpm build && pnpm start` runs the production build.
 
+Signing in with Google or Microsoft needs SLICE declared with each provider: copy `.env.example` to `.env`, then
+follow [docs/oauth-apps.md](docs/oauth-apps.md).
+
 No database to install for development: without `DATABASE_URL`, hosted connectors are kept in an embedded PostgreSQL
 (PGlite) under `./data` (`SLICE_DATA_DIR`), and each test file gets its own in-memory one. In production
 (`NODE_ENV=production`), `DATABASE_URL` must point to a PostgreSQL database; the server refuses to start without it.
@@ -118,6 +121,7 @@ docs/                  Reference documentation
 |---|---|
 | [API reference](docs/API.md) | Every route, request and response shapes, error codes, limits |
 | [Configuration](docs/configuration.md) | Environment variables, production run, self-hosting the generated kit |
+| [Sign-in applications](docs/oauth-apps.md) | Declaring SLICE with Google and Microsoft, step by step |
 | [Generated server](docs/mcp-template.md) | How a selection becomes an MCP server: templates, tool naming, input schemas |
 | [Token estimator](docs/token-estimator.md) | How the context cost is computed and calibrated |
 
