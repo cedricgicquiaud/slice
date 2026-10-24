@@ -88,4 +88,16 @@ describe('sign-in with Microsoft', () => {
 
     expect(session.user.email).toBe('grace@outlook.com');
   });
+
+  it('opens a session for a work or school Microsoft account', async () => {
+    const { session } = await signInWith('microsoft', MICROSOFT_TOKEN_ENDPOINT, {
+      oid: 'microsoft-katherine',
+      tid: 'a1b2c3d4-0000-4000-8000-00000000c0de',
+      email: 'katherine@contoso.com',
+      verified_primary_email: ['katherine@contoso.com'],
+      name: 'Katherine Johnson',
+    });
+
+    expect(session.user.email).toBe('katherine@contoso.com');
+  });
 });
