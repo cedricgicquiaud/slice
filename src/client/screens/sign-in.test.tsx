@@ -112,4 +112,21 @@ describe('SignInScreen', () => {
       })
     );
   });
+
+  it('signs in with the code received, entered once it was sent', async () => {
+    server.answers.set('/email-otp/send-verification-otp', { status: 200, body: { success: true } });
+    render(<SignInScreen />);
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Email' }), 'ada@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
+    await userEvent.type(await screen.findByRole('textbox', { name: 'Code' }), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() =>
+      expect(server.requests).toContainEqual({
+        url: expect.stringMatching(/\/api\/auth\/sign-in\/email-otp$/),
+        body: { email: 'ada@example.com', otp: '123456' },
+      })
+    );
+  });
 });
