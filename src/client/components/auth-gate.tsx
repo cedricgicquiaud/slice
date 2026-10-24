@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
+import { SignInScreen } from '../screens/sign-in';
 
-export function AuthGate({ children }: { children: ReactNode }) {
-  return <>{children}</>;
+export function AuthGate(_props: { children: ReactNode }) {
+  return <SignInScreen />;
 }
