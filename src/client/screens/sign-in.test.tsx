@@ -1,6 +1,7 @@
 // WAT-96 — the sign-in screen: Google, Microsoft or a code by email, never a password.
 // WAT-97 — Google or Microsoft lead to their sign-in; an unverified address sends to the code.
 // WAT-98 — a code by email: asked for with the address, then entered to sign in.
+// WAT-99 — every refused code, or refused request for one, says why.
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -141,5 +142,18 @@ describe('SignInScreen', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't send the code, try again");
+  });
+
+  it('says the code is wrong when the server refuses it (contract 18)', async () => {
+    server.answers.set('/email-otp/send-verification-otp', { status: 200, body: { success: true } });
+    server.answers.set('/sign-in/email-otp', { status: 400, body: { code: 'INVALID_OTP', message: 'Invalid OTP' } });
+    render(<SignInScreen />);
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Email' }), 'ada@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
+    await userEvent.type(await screen.findByRole('textbox', { name: 'Code' }), '000000');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('This code is wrong or was already used.');
   });
 });
