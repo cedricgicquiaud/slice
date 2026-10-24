@@ -20,6 +20,7 @@ declare global {
 }
 
 const UNAUTHORIZED: ApiErrorPayload = { code: 'UNAUTHORIZED', message: 'Sign in to continue.' };
+const FOREIGN_ORIGIN: ApiErrorPayload = { code: 'FORBIDDEN', message: 'SLICE takes orders from its own page only.' };
 const UNAVAILABLE: ApiErrorPayload = {
   code: 'SERVICE_UNAVAILABLE',
   message: 'SLICE is unavailable for the moment. Try again in a few minutes.',
@@ -45,5 +46,22 @@ export function requireSession(auth: SliceAuth | undefined): RequestHandler {
       }
       next(err);
     }
+  };
+}
+
+const READS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/**
+ * SLICE takes an account's orders from its own page only (D16): a write sent
+ * by a browser from another site is refused, session or not.
+ */
+export function requireSameOrigin(): RequestHandler {
+  return (req, res, next) => {
+    const origin = req.get('origin');
+    if (READS.has(req.method) || origin === undefined || origin === `${req.protocol}://${req.get('host')}`) {
+      next();
+      return;
+    }
+    res.status(403).json(FOREIGN_ORIGIN);
   };
 }

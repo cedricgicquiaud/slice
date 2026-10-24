@@ -11,7 +11,7 @@ import { createHostedMcpRouter } from './routes/hosted-mcp';
 import type { HostedStore } from './services/hosted-store';
 import type { SliceAuth } from './auth/auth';
 import { devSignIn } from './auth/dev-sign-in';
-import { requireSession } from './middleware/require-session';
+import { requireSameOrigin, requireSession } from './middleware/require-session';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -84,6 +84,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   if (options.auth && nodeEnv !== 'production') app.post('/api/dev/sign-in', devSignIn(options.auth));
 
   app.use('/api/', apiLimiter);
+  app.use('/api/', requireSameOrigin());
   app.use('/api/', requireSession(options.auth));
 
   // POST /api/upload — phase 02 (multer applies its own 10 MB limit before json parser)
