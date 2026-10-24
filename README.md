@@ -49,6 +49,14 @@ pnpm dev        # http://localhost:5173
 
 `pnpm test` runs the test suite; `pnpm build && pnpm start` runs the production build.
 
+No database to install for development: without `DATABASE_URL`, hosted connectors are kept in an embedded PostgreSQL
+(PGlite) under `./data` (`SLICE_DATA_DIR`), and each test file gets its own in-memory one. In production
+(`NODE_ENV=production`), `DATABASE_URL` must point to a PostgreSQL database; the server refuses to start without it.
+
+A free hosted URL expires after 72 hours (`SLICE_HOSTED_TTL_HOURS`, `0` = never) and then answers "expired". Its
+connector is kept 30 more days, then a cleanup that runs at startup and every hour deletes it. All variables:
+[docs/configuration.md](docs/configuration.md).
+
 ## Architecture
 
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
@@ -93,8 +101,9 @@ src/
 │   ├── screens/       Upload, Select, Configure, Done
 │   └── components/    UI components; ui/ holds shadcn/ui primitives
 ├── server/            Express API and hosted MCP runtime
+│   ├── db/            PostgreSQL schema, connection and versioned migrations (Drizzle)
 │   ├── routes/        upload, generate, host, hosted MCP endpoint
-│   ├── services/      parsing, format conversion, SSRF guard, generation
+│   ├── services/      parsing, format conversion, SSRF guard, generation, hosted store
 │   └── templates/     Handlebars templates of the generated server
 └── shared/            Types and Zod schemas shared by client and server
 scripts/               Real-world corpus check, token calibration, production smoke test
