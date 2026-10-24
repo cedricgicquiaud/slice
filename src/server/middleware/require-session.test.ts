@@ -12,6 +12,18 @@ describe('session guard on the API', () => {
     expect(res.body.code).toBe('UNAUTHORIZED');
   });
 
+  it('leaves the sign-in routes open: without a session, the current session reads as none', async () => {
+    const account = await createTestAccount();
+    try {
+      const res = await request(createApp({ nodeEnv: 'test', auth: account.auth })).get('/api/auth/get-session');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toBeNull();
+    } finally {
+      await account.dispose();
+    }
+  });
+
   it('answers 503 SERVICE_UNAVAILABLE, not unauthorized, while the accounts database is unreachable', async () => {
     const account = await createTestAccount();
     await account.database.close();
