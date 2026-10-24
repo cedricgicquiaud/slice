@@ -295,3 +295,21 @@ describe('five codes an hour for an address (contract 21)', () => {
     expect({ status: res.status, sent: sentTo.length }).toEqual({ status: 200, sent: 6 });
   });
 });
+
+describe('a code that could not be sent counts in no quota (contract 14)', () => {
+  it('leaves the address its five codes for the hour', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const sentTo: string[] = [];
+    let failures = 1;
+    const app = appSendingWith(async (email) => {
+      if (failures-- > 0) throw new Error('Resend is down');
+      sentTo.push(email);
+    });
+    await askForCode(request.agent(app), 'unlucky@example.com');
+    for (let i = 0; i < 4; i++) await askForCode(request.agent(app), 'unlucky@example.com');
+
+    const res = await askForCode(request.agent(app), 'unlucky@example.com');
+
+    expect({ status: res.status, sent: sentTo.length }).toEqual({ status: 200, sent: 5 });
+  });
+});
