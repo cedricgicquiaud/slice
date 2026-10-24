@@ -144,6 +144,15 @@ describe('hosted store cleanup', () => {
 
     expect((await store.get(id))?.endpoints).toHaveLength(3);
   });
+
+  it('never deletes a connector when expiry is disabled (TTL 0)', async () => {
+    const store = createHostedStore(database);
+    const { id } = await store.put(threeActions, NOW);
+
+    await store.purgeExpired(daysAfterExpiry(365), 0);
+
+    expect(await store.get(id)).toBeDefined();
+  });
 });
 
 describe('hosted store across a restart', () => {
