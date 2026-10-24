@@ -33,12 +33,14 @@ export interface OAuthApplication {
   clientSecret: string;
 }
 
+const HOUR_MS = 60 * 60 * 1000;
+
 export function createAuth({ database, secret, baseURL, google, microsoft, sendCode }: AuthOptions) {
   // Better Auth logs a failed send and answers success anyway: the requests
   // whose code did not leave are marked here, and answered as such below.
   const unsent = new WeakSet<object>();
-  // D13: codes asked for, by address.
-  const codesAskedFor = new Map<string, number>();
+  // D13: when codes were asked for, by address, over the last hour.
+  const codesAskedFor = new Map<string, number[]>();
   return betterAuth({
     secret,
     baseURL,
@@ -79,14 +81,15 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
       before: createAuthMiddleware(async (ctx) => {
         if (ctx.path !== '/email-otp/send-verification-otp') return;
         const email = String(ctx.body?.email).toLowerCase();
-        const asked = codesAskedFor.get(email) ?? 0;
-        if (asked >= 5) {
+        const now = Date.now();
+        const asked = (codesAskedFor.get(email) ?? []).filter((at) => now - at < HOUR_MS);
+        if (asked.length >= 5) {
           throw new APIError('TOO_MANY_REQUESTS', {
             code: 'too_many_codes_for_address',
             message: 'Too many codes asked for this address. Try again in an hour.',
           });
         }
-        codesAskedFor.set(email, asked + 1);
+        codesAskedFor.set(email, [...asked, now]);
       }),
       after: createAuthMiddleware(async (ctx) => {
         if (unsent.has(ctx.context)) {
