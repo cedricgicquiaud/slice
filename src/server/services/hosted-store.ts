@@ -76,7 +76,7 @@ export function createHostedStore(database: Database): HostedStore {
           params,
         })),
         createdAt: connector.createdAt.toISOString(),
-        ...(connector.workspaceId !== null && { workspaceId: connector.workspaceId }),
+        workspaceId: connector.workspaceId,
       };
     },
     async purgeExpired(now, ttlHours) {
