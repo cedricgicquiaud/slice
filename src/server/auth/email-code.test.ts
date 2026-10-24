@@ -44,14 +44,12 @@ async function signInWithCode(browser: Browser, email: string) {
 
 describe('sign-in with a code by email', () => {
   it('sends a 6-digit code to the address, and entering it opens a session', async () => {
-    const browser = request.agent(app);
+    const session = await signInWithCode(request.agent(app), 'ada@example.com');
 
-    await askForCode(browser, 'ada@example.com');
-    const code = inbox.get('ada@example.com');
-    await browser.post('/api/auth/sign-in/email-otp').send({ email: 'ada@example.com', otp: code });
-    const session = await browser.get('/api/auth/get-session');
-
-    expect({ code, email: session.body?.user.email }).toEqual({ code: expect.stringMatching(/^\d{6}$/), email: 'ada@example.com' });
+    expect({ code: inbox.get('ada@example.com'), email: session?.user.email }).toEqual({
+      code: expect.stringMatching(/^\d{6}$/),
+      email: 'ada@example.com',
+    });
   });
 
   it('creates the account of an unknown address and its personal workspace at its first code', async () => {
