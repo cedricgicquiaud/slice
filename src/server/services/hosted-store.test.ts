@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { createHostedStore } from './hosted-store';
+import { createHostedStore, startHostedCleanup } from './hosted-store';
 import type { HttpMethod } from '@shared/types';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
@@ -152,6 +152,24 @@ describe('hosted store cleanup', () => {
     await store.purgeExpired(daysAfterExpiry(365), 0);
 
     expect(await store.get(id)).toBeDefined();
+  });
+
+  it('cleans up at startup, then every hour', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const store = createHostedStore(database);
+    const before = await store.put(threeActions, NOW);
+    const cleanup = startHostedCleanup(store, { ttlHours: 72, now: () => daysAfterExpiry(31) });
+    try {
+      await vi.waitFor(async () => expect(await store.get(before.id)).toBeUndefined());
+
+      const after = await store.put(threeActions, NOW);
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+
+      await vi.waitFor(async () => expect(await store.get(after.id)).toBeUndefined());
+    } finally {
+      cleanup.stop();
+      vi.useRealTimers();
+    }
   });
 });
 
