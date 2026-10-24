@@ -1,30 +1,40 @@
 // WAT-96 — the sign-in screen: Google, Microsoft or a code by email, never a password.
 // WAT-97 — Google or Microsoft lead to their sign-in; an unverified address sends to the code.
+// WAT-98 — a code by email: asked for with the address, then entered to sign in.
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SignInScreen } from './sign-in';
 
 /**
- * The server, as the auth client calls it: every request is recorded, and a
- * sign-in start answers with the provider's address to go to.
+ * The server, as the auth client calls it: every request is recorded; a route
+ * answers what `answers` holds for the end of its path, and otherwise, like a
+ * sign-in start, with the provider's address to go to.
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
 const server = vi.hoisted(() => {
   const requests: { url: string; body: unknown }[] = [];
+  const answers = new Map<string, { status: number; body: unknown }>();
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : String(input);
     requests.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined });
-    return new Response(JSON.stringify({ url: 'https://provider.example/authorize', redirect: true }), {
+    const path = new URL(url, 'http://slice.test').pathname;
+    const answer = [...answers].find(([end]) => path.endsWith(end))?.[1] ?? {
+      status: 200,
+      body: { url: 'https://provider.example/authorize', redirect: true },
+    };
+    return new Response(JSON.stringify(answer.body), {
+      status: answer.status,
       headers: { 'content-type': 'application/json' },
     });
   }) as typeof fetch;
-  return { requests };
+  return { requests, answers };
 });
 
 afterEach(() => {
   window.history.pushState({}, '', '/');
   server.requests.length = 0;
+  server.answers.clear();
 });
 
 describe('SignInScreen', () => {
@@ -84,6 +94,21 @@ describe('SignInScreen', () => {
       expect(server.requests).toContainEqual({
         url: expect.stringMatching(/\/api\/auth\/sign-in\/social$/),
         body: expect.objectContaining({ provider, errorCallbackURL: '/' }),
+      })
+    );
+  });
+
+  it('asks the server for a code sent to the address typed', async () => {
+    server.answers.set('/email-otp/send-verification-otp', { status: 200, body: { success: true } });
+    render(<SignInScreen />);
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Email' }), 'ada@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
+
+    await waitFor(() =>
+      expect(server.requests).toContainEqual({
+        url: expect.stringMatching(/\/api\/auth\/email-otp\/send-verification-otp$/),
+        body: { email: 'ada@example.com', type: 'sign-in' },
       })
     );
   });
