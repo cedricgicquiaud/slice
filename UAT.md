@@ -123,6 +123,46 @@ Préparer : se connecter par l'un des moyens ci-dessus (le plus simple : code pa
   ensuite http://localhost:5173/mcps : l'écran « Sign in to SLICE » s'affiche toujours. (L'ancien cookie de session
   n'ouvre plus rien, ni l'écran ni l'API : `src/server/auth/sign-out.test.ts`.)
 
+**Connecté, je crée mes MCP comme avant, et l'API refuse sans compte (WAT-101)**
+
+Préparer : se connecter (le plus simple : code par e-mail, sans clé Resend). `BETTER_AUTH_URL` peut rester vide dans
+`.env` : hors production, SLICE prend `http://localhost:5173` par défaut. Pour les cases jouées au terminal, copier la
+valeur du cookie `better-auth.session_token` (outils du navigateur : Application, puis Cookies, puis
+http://localhost:5173).
+
+- [ ] Connecté, déposer une description d'API (par exemple coller l'adresse
+  `https://petstore3.swagger.io/api/v3/openapi.json`), cocher deux actions, continuer, choisir SLICE Cloud et cliquer
+  « Deploy to SLICE Cloud » : l'écran 4 affiche l'adresse du MCP, comme avant. Recommencer avec le kit : le fichier
+  `.zip` se télécharge, comme avant.
+- [ ] Le MCP créé appartient à l'espace personnel du compte et garde le nom de l'API lu dans la description (ici
+  « Swagger Petstore - OpenAPI 3.0 »). Rien ne le montre à l'écran avant la page « My MCPs » de la livraison 2 ;
+  contrôle automatique : « puts a connector created from screen 4 in the signed-in account's workspace »
+  (`src/server/routes/hosted-mcp.test.ts`).
+- [ ] Une session expirée au clic mène à l'écran de connexion, sans MCP créé. Aller jusqu'au bouton « Deploy to SLICE
+  Cloud » sans cliquer ; dans les outils du navigateur, supprimer le cookie `better-auth.session_token` (sans quitter
+  l'onglet) ; cliquer « Deploy to SLICE Cloud » : l'écran « Sign in to SLICE » remplace l'application, et l'écran 4
+  n'apparaît pas. Qu'aucun MCP n'est rangé est prouvé par le test automatique « is refused with 401 and stores
+  nothing » (`src/server/routes/hosted-mcp.test.ts`).
+- [ ] La base repart d'une migration unique régénérée : après suppression du dossier `data/` (voir « Préparer la
+  recette »), `pnpm dev` démarre sans erreur, et un MCP créé avant cette livraison répond comme une adresse inconnue.
+  Qu'un MCP sans propriétaire soit refusé par la base est prouvé par le test automatique « refuses a connector that
+  belongs to no workspace » (`src/server/db/schema.test.ts`).
+- [ ] Supprimer un compte efface son espace, ses MCP et leurs actions. L'écran de suppression arrive en livraison 3 ;
+  contrôle automatique : « deletes its workspace, its connectors and their actions with it »
+  (`src/server/db/schema.test.ts`).
+- [ ] Refus : sans session, créer un MCP par l'API répond 401. Dans un terminal :
+  `curl -i -X POST http://localhost:3001/api/host -H 'content-type: application/json' -d '{}'` affiche
+  `HTTP/1.1 401` et `{"code":"UNAUTHORIZED","message":"Sign in to continue."}` ; rien n'est créé.
+- [ ] Refus : sans session, lire une description d'API ou télécharger le kit par l'API répond 401.
+  `curl -i -X POST http://localhost:3001/api/upload-url -H 'content-type: application/json' -d '{"url":"https://petstore3.swagger.io/api/v3/openapi.json"}'`
+  et `curl -i -X POST http://localhost:3001/api/generate -H 'content-type: application/json' -d '{}'` affichent
+  chacun `HTTP/1.1 401` et `{"code":"UNAUTHORIZED","message":"Sign in to continue."}`.
+- [ ] Refus : une demande envoyée depuis un autre site avec ma session est refusée. Avec la valeur du cookie copiée :
+  `curl -i -X POST http://localhost:3001/api/host -H 'Origin: https://evil.example' -H 'Cookie: better-auth.session_token=<valeur>' -H 'content-type: application/json' -d '{}'`
+  affiche `HTTP/1.1 403` et `{"code":"FORBIDDEN","message":"SLICE takes orders from its own page only."}`. La même
+  commande sans la ligne `Origin` répond `HTTP/1.1 400` et `INVALID_SPEC` : la session était bonne, seul l'autre site
+  est refusé.
+
 ## SLICE — Les MCP rangés en base de données
 
 ### Livraison 2 — Un connecteur hébergé est créé, servi et expiré depuis la base
