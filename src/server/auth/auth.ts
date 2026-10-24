@@ -51,6 +51,8 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
     basePath: '/api/auth',
     // The check expects Better Auth's `account.password` column, deliberately absent.
     advanced: { database: { validateSchema: false } },
+    // D8: seven days from the last visit, whenever it falls; every visit renews the session.
+    session: { expiresIn: 7 * 24 * 60 * 60, updateAge: 0 },
     database: drizzleAdapter(database.db, {
       provider: 'pg',
       schema: { user: users, session: sessions, account: accounts, verification: verifications },
