@@ -80,6 +80,15 @@ describe('a request sent from another site with the session', () => {
     expect(res.body.code).toBe('FORBIDDEN');
   });
 
+  it('is refused with 403 FORBIDDEN when it would delete, whatever the route', async () => {
+    const res = await request(signedInApp())
+      .delete('/api/mcps/some-id')
+      .set('Cookie', account.cookie)
+      .set('Origin', 'https://evil.example');
+
+    expect(res.status).toBe(403);
+  });
+
   it("goes through from SLICE's public address, though the API answers under another one (Vite proxy)", async () => {
     const auth = createAuth({ database: account.database, secret: TEST_AUTH_SECRET, baseURL: 'http://localhost:5173' });
     const app = createApp({ nodeEnv: 'test', auth, hostedStore: createHostedStore(account.database) });
