@@ -418,3 +418,49 @@ describe('hosted routes when the database is unreachable', () => {
     expect(await res.json()).toMatchObject({ ok: false, status: 'database unreachable' });
   });
 });
+
+// WAT-92 — a storage error that is not an outage is a server error, never "unavailable".
+describe('hosted routes when storing or reading fails for another reason', () => {
+  let buggyApp: Server;
+  let buggyBase: string;
+
+  beforeAll(async () => {
+    const constraintViolation = Object.assign(new Error('violates check constraint'), { code: '23514' });
+    const buggy: HostedStore = {
+      put: () => Promise.reject(new Error('Failed query: insert', { cause: constraintViolation })),
+      get: () => Promise.reject(new TypeError("Cannot read properties of undefined (reading 'params')")),
+      purgeExpired: () => Promise.resolve(),
+      ping: () => Promise.resolve(),
+    };
+    buggyApp = createApp({ nodeEnv: 'test', hostedStore: buggy }).listen(0);
+    await new Promise<void>((r) => buggyApp.once('listening', r));
+    buggyBase = `http://127.0.0.1:${(buggyApp.address() as AddressInfo).port}`;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((r) => (buggyApp ? buggyApp.close(() => r()) : r()));
+  });
+
+  it('refuses a creation with a server error, not SERVICE_UNAVAILABLE', async () => {
+    const res = await hostRequest(buggyBase);
+
+    expect(res.status).toBe(500);
+    expect(await res.text()).not.toContain('SERVICE_UNAVAILABLE');
+  });
+
+  it('answers a server error, not unavailable, at an address', async () => {
+    const res = await fetch(`${buggyBase}/m/some-id`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+    });
+
+    expect(res.status).toBe(500);
+  });
+
+  it('keeps the server healthy: the database itself answers', async () => {
+    const res = await fetch(`${buggyBase}/api/health`);
+
+    expect(res.status).toBe(200);
+  });
+});

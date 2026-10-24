@@ -13,6 +13,7 @@ import { reparseAndSelect } from '../services/reparse-and-select';
 import { specToHostedConfig } from '../services/spec-to-hosted-config';
 import type { HostedStore } from '../services/hosted-store';
 import { assertPublicUrl, SsrfError } from '../services/ssrf-guard';
+import { isDatabaseUnreachable } from '../db/errors';
 import { defaultTtlHours } from './hosted-mcp';
 
 const BODY_LIMIT = '15mb';
@@ -82,6 +83,8 @@ const makeHandleHost = (
     const { id, createdAt } = await store.put(config, now()).catch((err: unknown) => {
       // eslint-disable-next-line no-console
       console.error('[host] storing the connector failed:', err instanceof Error ? err.message : err);
+      // Anything but an outage is a bug: let it surface as a server error.
+      if (!isDatabaseUnreachable(err)) throw err;
       throw new ApiError(
         'SERVICE_UNAVAILABLE',
         'Hosting is unavailable for the moment. Try again in a few minutes.',
