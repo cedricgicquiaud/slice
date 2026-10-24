@@ -12,9 +12,20 @@ import type { Database } from './client';
 const migrationsFolder = path.join(path.dirname(fileURLToPath(import.meta.url)), 'migrations');
 
 export async function migrateDatabase(database: Database): Promise<void> {
-  if (database.driver === 'pglite') {
-    await migratePglite(database.db, { migrationsFolder });
-    return;
+  try {
+    if (database.driver === 'pglite') {
+      await migratePglite(database.db, { migrationsFolder });
+      return;
+    }
+    await migratePostgres(database.db, { migrationsFolder });
+  } catch (err) {
+    throw new Error(`Database migrations failed: ${rootMessage(err)}`, { cause: err });
   }
-  await migratePostgres(database.db, { migrationsFolder });
+}
+
+/** The database's own words: Drizzle wraps them in a "Failed query" error. */
+function rootMessage(err: unknown): string {
+  let current = err;
+  while (current instanceof Error && current.cause instanceof Error) current = current.cause;
+  return current instanceof Error ? current.message : String(current);
 }
