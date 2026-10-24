@@ -3,8 +3,9 @@
  *
  * Re-validates and re-parses the spec (same hardening as /api/generate —
  * never trust the client parse), distills the selection into a HostedMcpConfig,
- * stores it under an unguessable id, and returns `{ id, url }`. The hosted
- * runtime (`/m/:id`) then serves it on demand. No secret is stored.
+ * stores it under an unguessable id in the signed-in account's workspace, and
+ * returns `{ id, url }`. The hosted runtime (`/m/:id`) then serves it on demand.
+ * No secret is stored.
  */
 import { Router, type RequestHandler, json } from 'express';
 import { generateRequestSchema } from '@shared/config-schema';
