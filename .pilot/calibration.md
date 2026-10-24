@@ -43,3 +43,17 @@ days_per_week: observed   # remplacer par un nombre (ex. 2) pour forcer la capac
 
 | Feature | Taille | Tâches | Début | PR ouverte | Mergée | Heures réelles |
 |---|---|---|---|---|---|---|
+| SLICE — Les MCP rangés en base de données | L | 6 (WAT-61 à 66), 2 livraisons (S + L) | 2026-10-23 23:26 | #57 le 24/10 00:02, #58 le 24/10 07:48 | 2026-10-24 09:06 (les deux) | L1 (S) 0,12 h ; L2 (L) 0,85 h — colonne « actif ». Horloge L2 8 h 51, dont 7 h bloqué sur une commande en attente d'autorisation. Coût par étape : non attribué par `cout-agents --projet` (production en worktrees, rangée « hors méthode ») |
+
+| Feature | Calendrier (jours) | Cadrage | Runs | Attente de merge | Le reste |
+|---|---|---|---|---|---|
+| SLICE — Les MCP rangés en base de données | 0,5 (23/10 21:20 → 24/10 09:06, 11,8 h) | 0,5 h | 8,4 h (23:26 → 07:48, PR #57 attendant pendant le run de L2) | 1,3 h (dernière PR ouverte → merge) | 1,6 h (entre découpage et run) |
+
+Première feature mesurée sur ce projet : pas de comparaison. Le run domine, et il est gonflé par 7 h de blocage sur une autorisation de commande la nuit ; le travail réel des agents est d'environ 1 h.
+
+## Durées de cadrage
+
+| Feature | Lancement `feature` | Découpage validé | Questions posées |
+|---|---|---|---|
+| SLICE — Actions classées lecture, écriture | 2026-10-23 19:58 | — (annulée : déjà en place à l'écran 2, devenue WAT-60) | 8 (contradicteur) |
+| SLICE — Les MCP rangés en base de données | 2026-10-23 21:20 | 2026-10-23 21:50 | 19 (contradicteur) + 6 (découpeur) + 1 (choix de la base) |

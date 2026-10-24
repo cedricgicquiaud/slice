@@ -223,7 +223,20 @@ _seulement ce qui est propre à ce dépôt._
 
 - Lancer l'app : `pnpm dev` (front http://localhost:5173, API http://localhost:3001)
 - Testeur : `passe visuelle automatisée`
-- Échéance : à fixer — date de la certification de développeur
+- Échéance : 2027-01-15 — date de la certification de développeur
 
 **Le contrat de ce projet** : aucun développement sans fiche Linear ; rien n'est créé dans
 Linear sans liste validée. Dépôt public : aucune idée stratégique ni secret dans le dépôt.
+
+## Idiomes de code
+
+_Leçons des audits, ajoutées par `sync` après validation. Chaque agent les applique._
+
+- **503 `SERVICE_UNAVAILABLE` seulement pour une base injoignable** (erreurs de connexion
+  `pg` 57P01 / 08xxx, `ECONNREFUSED`, `ETIMEDOUT`). Toute autre erreur de stockage part en
+  500 via `next(err)` : un bug ne doit pas se faire passer pour une panne. *(audit PR #58)*
+- **Un test qui démarre le serveur le lance depuis la racine du dépôt** (`cwd`), comme
+  `pnpm dev` : ailleurs, le processus enfant d'analyse ne trouve pas `tsx`. *(PR #58)*
+- **Tant que rien n'est en ligne, le schéma tient en une seule migration** : on régénère
+  la migration au lieu d'en empiler une par contrainte. Une fois déployé, on n'en réécrit
+  plus aucune. *(PR #58)*
