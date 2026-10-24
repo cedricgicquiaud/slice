@@ -3,6 +3,7 @@
  * given, otherwise PGlite (embedded PostgreSQL, nothing to install) — on disk
  * in `dataDir`, or in memory without one.
  */
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import type { SQL } from 'drizzle-orm';
@@ -51,6 +52,7 @@ export function openDatabase(config: DatabaseConfig): Database {
       close: () => pool.end(),
     };
   }
+  if (config.dataDir) mkdirSync(config.dataDir, { recursive: true });
   const client = new PGlite(config.dataDir);
   const db = drizzlePglite(client, { schema });
   return {
