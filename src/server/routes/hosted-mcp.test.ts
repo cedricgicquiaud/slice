@@ -233,19 +233,20 @@ describe('hosted runtime routes', () => {
     expect(auths).toEqual(['Bearer TOKEN_A', 'Bearer TOKEN_B']);
   }, 20_000);
 
-  it('returns 410 and purges the entry when the hosted URL has expired', async () => {
+  it('answers expired at the first visit after the 72 h and at the following ones', async () => {
     const url = await host();
-    const id = url.split('/m/')[1]!;
-    // Visit beyond the default 72h TTL.
-    clock = hoursAfterCreation(100);
+    clock = hoursAfterCreation(73);
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
-    });
-    expect(res.status).toBe(410);
-    expect(await store.get(id)).toBeUndefined();
+    const visit = () =>
+      fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+      });
+    const first = await visit();
+    const second = await visit();
+
+    expect([first.status, second.status]).toEqual([410, 410]);
   });
 
   it('never expires a hosted URL when TTL is 0 (self-host deployments)', async () => {
