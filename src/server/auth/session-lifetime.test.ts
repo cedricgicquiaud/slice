@@ -61,4 +61,14 @@ describe('a session lives seven days from the last visit', () => {
 
     expect(session?.user.email).toBe('same-day@example.com');
   });
+
+  it('is refused seven days and one minute after the last visit', async () => {
+    clockAt('2026-10-25T10:00:00Z');
+    const cookie = await signIn('gone@example.com');
+
+    clockAt('2026-11-01T10:01:00Z');
+    const session = await visit(cookie);
+
+    expect(session).toBeNull();
+  });
 });
