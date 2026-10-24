@@ -1,10 +1,11 @@
 // WAT-98 — signing in with a code received by email.
-import { describe, it, expect, afterAll, beforeAll } from 'vitest';
+import { describe, it, expect, afterAll, afterEach, beforeAll, vi } from 'vitest';
 import request from 'supertest';
 import { sql } from 'drizzle-orm';
 import type { Express } from 'express';
 import { createApp } from '../app';
-import { createAuth } from './auth';
+import { createAuth, type SendCode } from './auth';
+import { codeSenderFromEnv } from './email-code';
 import { createTestAccount, TEST_AUTH_SECRET, type TestAccount } from '../db/test-account';
 
 let account: TestAccount;
@@ -27,6 +28,25 @@ beforeAll(async () => {
 afterAll(async () => {
   await account?.dispose();
 });
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+/** SLICE on the same database, sending its codes with `sendCode`. */
+function appSendingWith(sendCode: SendCode): Express {
+  return createApp({ nodeEnv: 'development', auth: createAuth({ database: account.database, secret: TEST_AUTH_SECRET, sendCode }) });
+}
+
+/** Any network call fails the test: nothing may leave SLICE. */
+function noNetwork() {
+  const fetch = vi.fn(async (input: string | URL | Request) => {
+    throw new Error(`Unexpected network call: ${input instanceof Request ? input.url : String(input)}`);
+  });
+  vi.stubGlobal('fetch', fetch);
+  return fetch;
+}
 
 type Browser = ReturnType<typeof request.agent>;
 
@@ -59,5 +79,29 @@ describe('sign-in with a code by email', () => {
       sql`select owner_id from workspaces where owner_id = ${session.user.id}`
     );
     expect(owned).toHaveLength(1);
+  });
+});
+
+describe('without a Resend key', () => {
+  it('prints the code in the server output, and that code signs in', async () => {
+    noNetwork();
+    const output = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const browser = request.agent(appSendingWith(codeSenderFromEnv({})));
+
+    await askForCode(browser, 'grace@example.com');
+    const printed = output.mock.calls.flat().join(' ').match(/\b\d{6}\b/)?.[0];
+    await browser.post('/api/auth/sign-in/email-otp').send({ email: 'grace@example.com', otp: printed });
+    const session = await browser.get('/api/auth/get-session');
+
+    expect(session.body?.user.email).toBe('grace@example.com');
+  });
+
+  it('sends no email', async () => {
+    const network = noNetwork();
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await askForCode(request.agent(appSendingWith(codeSenderFromEnv({}))), 'grace@example.com');
+
+    expect(network).not.toHaveBeenCalled();
   });
 });
