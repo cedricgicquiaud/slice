@@ -208,4 +208,14 @@ describe('five tries per code (contract 18)', () => {
 
     expect({ status: res.status, code: res.body.code, session }).toEqual({ status: 403, code: 'TOO_MANY_ATTEMPTS', session: null });
   });
+
+  it('signs in with a new code once the worn-out one is refused', async () => {
+    const browser = request.agent(app);
+    const worn = await missCode(browser, 'again@example.com', 5);
+    await enterCode(browser, 'again@example.com', worn);
+
+    const session = await signInWithCode(browser, 'again@example.com');
+
+    expect(session?.user.email).toBe('again@example.com');
+  });
 });
