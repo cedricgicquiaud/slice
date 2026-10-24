@@ -131,4 +131,23 @@ describe('apiHost', () => {
       code: 'NO_ENDPOINT_SELECTED',
     });
   });
+
+  it('carries the server message when hosting is unavailable (503 SERVICE_UNAVAILABLE)', async () => {
+    globalThis.fetch = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'Hosting is unavailable for the moment. Try again in a few minutes.',
+        }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } }
+      )
+    ) as typeof fetch;
+
+    await expect(apiHost(FAKE_REQ)).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 503,
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'Hosting is unavailable for the moment. Try again in a few minutes.',
+    });
+  });
 });

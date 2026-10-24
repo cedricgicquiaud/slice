@@ -1,15 +1,97 @@
+/**
+ * Hosted connectors in the database: created with their actions in one
+ * transaction, read back by id, and purged 30 days after they expired.
+ */
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { asc, eq, lt, sql } from 'drizzle-orm';
+import type { HttpMethod, UpstreamAuth } from '@shared/types';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
+import type { Database } from '../db/client';
+import { connectorActions, connectors } from '../db/schema';
+
+/** An expired connector stays this long, answering "expired", before the cleanup deletes it. */
+export const EXPIRED_RETENTION_DAYS = 30;
 
 export interface HostedStore {
-  /** Store a config (stamping `createdAt` when absent), return its unguessable id. */
-  put(config: HostedMcpConfig): string;
-  /** Retrieve a config by id, or `undefined` if unknown. */
-  get(id: string): HostedMcpConfig | undefined;
-  /** Remove a config by id (no-op if unknown). */
-  delete(id: string): void;
+  /** Store a connector and its actions at once, created at `now`; return its unguessable id. */
+  put(config: HostedMcpConfig, now: Date): Promise<{ id: string; createdAt: string }>;
+  /** Read a connector back (`createdAt` set), or `undefined` if unknown. */
+  get(id: string): Promise<HostedMcpConfig | undefined>;
+  /** Delete, with their actions, the connectors expired for more than the retention period at `now`. */
+  purgeExpired(now: Date, ttlHours: number): Promise<void>;
+  /** Resolve when the database answers, reject when it is out of reach. */
+  ping(): Promise<void>;
+}
+
+export function createHostedStore(database: Database): HostedStore {
+  const { db } = database;
+  return {
+    async put(config, now) {
+      const id = newId();
+      const auth = config.upstreamAuth;
+      await db.transaction(async (tx) => {
+        await tx.insert(connectors).values({
+          id,
+          name: config.name,
+          baseUrl: config.baseUrl,
+          upstreamAuthType: auth.type,
+          upstreamHeaderName: auth.type === 'apiKey' ? auth.headerName : null,
+          upstreamTokenUrl: auth.type === 'oauth2' ? auth.tokenUrl : null,
+          upstreamScopes: auth.type === 'oauth2' ? auth.scopes : null,
+          createdAt: now,
+        });
+        if (config.endpoints.length === 0) return;
+        await tx.insert(connectorActions).values(
+          config.endpoints.map((endpoint, position) => ({
+            connectorId: id,
+            position,
+            ...endpoint,
+            // Older paths may carry a lowercase method; the column only takes uppercase.
+            method: endpoint.method.toUpperCase() as HttpMethod,
+          }))
+        );
+      });
+      return { id, createdAt: now.toISOString() };
+    },
+    async get(id) {
+      const [connector] = await db.select().from(connectors).where(eq(connectors.id, id));
+      if (!connector) return undefined;
+      const actions = await db
+        .select()
+        .from(connectorActions)
+        .where(eq(connectorActions.connectorId, id))
+        .orderBy(asc(connectorActions.position));
+      return {
+        name: connector.name,
+        baseUrl: connector.baseUrl,
+        upstreamAuth: upstreamAuthOf(connector),
+        endpoints: actions.map(({ name, description, method, path, params }) => ({
+          name,
+          description,
+          method,
+          path,
+          params,
+        })),
+        createdAt: connector.createdAt.toISOString(),
+      };
+    },
+    async purgeExpired(now, ttlHours) {
+      if (ttlHours <= 0) return;
+      const cutoff = new Date(now.getTime() - ttlHours * 3_600_000 - EXPIRED_RETENTION_DAYS * 86_400_000);
+      await db.delete(connectors).where(lt(connectors.createdAt, cutoff));
+    },
+    async ping() {
+      await database.rows(sql`select 1`);
+    },
+  };
+}
+
+function upstreamAuthOf(connector: typeof connectors.$inferSelect): UpstreamAuth {
+  const auth: UpstreamAuth = { type: connector.upstreamAuthType };
+  if (connector.upstreamHeaderName !== null) auth.headerName = connector.upstreamHeaderName;
+  if (connector.upstreamTokenUrl !== null) auth.tokenUrl = connector.upstreamTokenUrl;
+  if (connector.upstreamScopes !== null) auth.scopes = connector.upstreamScopes;
+  return auth;
 }
 
 /** 16 random bytes → 22 url-safe base64 chars (~128 bits of entropy). */
@@ -17,72 +99,22 @@ function newId(): string {
   return randomBytes(16).toString('base64url');
 }
 
-function stamped(config: HostedMcpConfig): HostedMcpConfig {
-  return config.createdAt ? config : { ...config, createdAt: new Date().toISOString() };
-}
+const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 
-export function createHostedStore(): HostedStore {
-  const configs = new Map<string, HostedMcpConfig>();
-  return {
-    put(config) {
-      const id = newId();
-      configs.set(id, stamped(config));
-      return id;
-    },
-    get(id) {
-      return configs.get(id);
-    },
-    delete(id) {
-      configs.delete(id);
-    },
+/** Purge the long-expired connectors now, then every hour, until stopped. */
+export function startHostedCleanup(
+  store: HostedStore,
+  options: { ttlHours: number; now: () => Date }
+): { stop(): void } {
+  const run = () => {
+    store.purgeExpired(options.now(), options.ttlHours).catch((err: unknown) => {
+      // The next run retries; an unreachable database must not bring the server down.
+      // eslint-disable-next-line no-console
+      console.error('[hosted-store] cleanup failed:', err instanceof Error ? err.message : String(err));
+    });
   };
+  run();
+  const timer = setInterval(run, CLEANUP_INTERVAL_MS);
+  timer.unref();
+  return { stop: () => clearInterval(timer) };
 }
-
-/** File-backed store — survives restarts. Writes are synchronous (low-frequency). */
-export function createFileHostedStore(filePath: string): HostedStore {
-  mkdirSync(dirname(filePath), { recursive: true });
-
-  let configs = new Map<string, HostedMcpConfig>();
-  let needsMigrationPersist = false;
-  try {
-    const data = JSON.parse(readFileSync(filePath, 'utf-8')) as Record<string, HostedMcpConfig>;
-    // Legacy records predate the expiry feature — stamp them at load so they
-    // enter a normal TTL cycle instead of breaking or dying instantly.
-    configs = new Map(
-      Object.entries(data).map(([id, cfg]) => {
-        if (!cfg.createdAt) needsMigrationPersist = true;
-        return [id, stamped(cfg)];
-      })
-    );
-  } catch {
-    // File absent or corrupt — start fresh
-  }
-
-  function persist(): void {
-    writeFileSync(filePath, JSON.stringify(Object.fromEntries(configs)), 'utf-8');
-  }
-
-  // Write the stamped dates back once, so a legacy record's TTL window starts
-  // now — not anew at every restart.
-  if (needsMigrationPersist) persist();
-
-  return {
-    put(config) {
-      const id = newId();
-      configs.set(id, stamped(config));
-      persist();
-      return id;
-    },
-    get(id) {
-      return configs.get(id);
-    },
-    delete(id) {
-      if (configs.delete(id)) persist();
-    },
-  };
-}
-
-/** Process-wide store — file-backed on VPS, path via SLICE_STORE_PATH env. */
-export const hostedStore = createFileHostedStore(
-  process.env.SLICE_STORE_PATH ?? './data/hosted.json'
-);

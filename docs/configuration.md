@@ -13,8 +13,9 @@ The server reads its configuration from the process environment only. It does no
 |---|---|---|
 | `PORT` | `3001` | HTTP port the server listens on. |
 | `NODE_ENV` | `development` | `production` serves the built front end from `dist/client` (with a single-page-app fallback) and turns on the SSRF guard for hosted MCPs (`config.baseUrl` in `POST /api/host`, and every hosted tool call). Any other value leaves that guard off so a local upstream can be reached. The value is also reported by `GET /api/health`. `pnpm start` sets it to `production`. |
-| `SLICE_STORE_PATH` | `./data/hosted.json` | JSON file that stores hosted MCP configurations. Resolved from the working directory; the parent directory is created if missing. |
-| `SLICE_HOSTED_TTL_HOURS` | `72` | Lifetime of a hosted MCP URL, in hours. `0` disables expiry (useful for a private self-hosted instance). A negative or non-numeric value falls back to `72`. |
+| `DATABASE_URL` | (none) | PostgreSQL connection string (`postgres://user:password@host:5432/database`) where hosted MCPs are stored. **Required when `NODE_ENV=production`**: without it the server refuses to start and says why. Elsewhere, leaving it unset uses the embedded database below. |
+| `SLICE_DATA_DIR` | `./data` | Without `DATABASE_URL` only: folder of the embedded PostgreSQL (PGlite, nothing to install), kept in its `pglite/` subfolder. Resolved from the working directory; created if missing. |
+| `SLICE_HOSTED_TTL_HOURS` | `72` | Lifetime of a hosted MCP URL, in hours. `0` disables expiry (useful for a private self-hosted instance). A negative or non-numeric value falls back to `72`. An expired MCP is kept 30 more days, then deleted (see [Persistent data](#persistent-data)). |
 | `PARSE_MAX_CONCURRENT` | `3` | Maximum number of spec parses running at the same time (minimum 1). Each parse is a child process with a 512 MB heap cap, so peak parse memory is about this value × 512 MB. |
 | `PARSE_MAX_QUEUE` | `12` | Maximum number of parses waiting for a slot (minimum 0). Requests beyond it get `429 PARSE_BUSY`. |
 
@@ -33,24 +34,42 @@ Requirements: Node.js 22 or later, pnpm 9.
 
 ```bash
 pnpm install          # full install: the build tools and the MCP SDK used by the hosted runtime are devDependencies
-pnpm build            # front end to dist/client, server to dist/server/server (templates copied alongside)
-pnpm start            # NODE_ENV=production node dist/server/server/index.js
+pnpm build            # front end to dist/client, server to dist/server/server (templates and migrations copied alongside)
+DATABASE_URL=postgres://… pnpm start   # NODE_ENV=production node dist/server/server/index.js
 ```
 
-- Run `pnpm start` from the repository root: the default store path and the parse child process both resolve from the working directory.
+- Provide a PostgreSQL database through `DATABASE_URL`; the server refuses to start in production without one. Keep its
+  password in the platform's secret settings, never in the repository.
+- At startup the server creates or updates its tables before it accepts any request. The migrations run under a
+  PostgreSQL lock, so several instances starting together migrate only once. If they fail, the server refuses to start
+  and prints the database's reason.
+- Run `pnpm start` from the repository root: the parse child process resolves from the working directory.
 - `pnpm prod:smoke` builds the project, boots the compiled server on port 3099 (or `PORT`), runs a set of checks against
-  the real production paths, and stops it. `SKIP_BUILD=1 pnpm prod:smoke` reuses an existing `dist/`.
+  the real production paths, and stops it. `SKIP_BUILD=1 pnpm prod:smoke` reuses an existing `dist/`. It starts the
+  server in production mode, so it needs `DATABASE_URL` too; a disposable local PostgreSQL works:
+  `docker run --rm -d -p 54329:5432 -e POSTGRES_PASSWORD=smoke postgres:16`, then
+  `DATABASE_URL=postgres://postgres:smoke@localhost:54329/postgres pnpm prod:smoke`.
 - The repository ships no Dockerfile for SLICE itself.
 
 ### Persistent data
 
-Hosted MCP configurations live in memory and in the `SLICE_STORE_PATH` file, rewritten synchronously on every
-creation and deletion. To keep hosted URLs across restarts and redeploys, put that file on a persistent volume.
-The file holds no credentials (see [API.md](API.md#post-apihost) for what is stored).
+Hosted MCPs live in the database: one row per MCP in `connectors`, one row per selected endpoint in
+`connector_actions`, both written in a single transaction. They hold no credentials and not the API description (see
+[API.md](API.md#post-apihost) for what is stored). Several server instances can share the same database.
 
-Each server process keeps its own in-memory copy of the store, so run a single instance per store file.
+- **Production:** the PostgreSQL of `DATABASE_URL`. Hosted URLs survive restarts and redeploys.
+- **Development and tests:** without `DATABASE_URL`, `pnpm dev` uses PGlite on disk under `SLICE_DATA_DIR`, and
+  `pnpm test` uses a fresh in-memory PGlite per test file. Nothing to install.
 
-Expired configurations are removed when they are next requested; there is no background cleanup.
+Expiry and cleanup:
+
+- An expired hosted URL answers `410` at every visit; its MCP stays in the database for **30 days** after expiring.
+- A cleanup deletes the MCPs expired for more than 30 days, with their endpoints, even if their URL is never visited
+  again. It runs at startup, then **every hour**. With `SLICE_HOSTED_TTL_HOURS=0`, nothing expires and nothing is deleted.
+
+When the database is unreachable, the server stays up: creating a hosted MCP fails with `503 SERVICE_UNAVAILABLE`,
+an existing hosted URL answers `503` (never "unknown"), and `GET /api/health` answers `503`. Everything works again as
+soon as the database is back, without a restart.
 
 ### Running behind a reverse proxy
 

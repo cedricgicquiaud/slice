@@ -7,7 +7,7 @@ The browser front end uses the `/api/*` routes; AI agents use the hosted runtime
 
 | Method | Path | Purpose | Rate-limited |
 |---|---|---|---|
-| `GET` | `/api/health` | Liveness probe | No |
+| `GET` | `/api/health` | Liveness and database probe | No |
 | `POST` | `/api/upload` | Parse an uploaded API description file | Yes |
 | `POST` | `/api/upload-url` | Fetch an API description from a public HTTPS URL, then parse it | Yes |
 | `POST` | `/api/generate` | Build a self-hostable MCP server and stream it as a ZIP | Yes |
@@ -178,7 +178,8 @@ The format is detected from the content, not from the file name.
 
 ## `GET /api/health`
 
-Liveness probe. Not rate-limited, so monitors behind a shared NAT can poll it freely.
+Liveness probe, which also checks that the database answers. Not rate-limited, so monitors behind a shared NAT can
+poll it freely.
 
 **Response `200`**
 
@@ -192,6 +193,17 @@ Liveness probe. Not rate-limited, so monitors behind a shared NAT can poll it fr
 ```
 
 `env` is the server's `NODE_ENV` (default `development`).
+
+**Response `503`** while the database is unreachable (it returns to `200` by itself once the database is back):
+
+```json
+{
+  "ok": false,
+  "status": "database unreachable",
+  "env": "production",
+  "timestamp": "2026-10-05T17:30:00.000Z"
+}
+```
 
 ---
 
@@ -379,6 +391,7 @@ otherwise the request fails with `BLOCKED_HOST`. In development this check is of
 | 422 | `PARSE_TOO_COMPLEX` | The re-parse crashed or ran out of memory |
 | 429 | `PARSE_BUSY` | Too many parses in flight; retry shortly |
 | 429 | (none) | Rate limit exceeded |
+| 503 | `SERVICE_UNAVAILABLE` | The database is unreachable, so nothing could be stored. Message: "Hosting is unavailable for the moment. Try again in a few minutes." Retry later; the server recovers by itself |
 | 504 | `TIMEOUT` | The re-parse timed out |
 
 ---
@@ -418,16 +431,17 @@ goes out without a credential, and the upstream API's own error comes back to th
 - A JSON response is returned as pretty-printed JSON text; anything else is returned as text.
 
 **Expiry:** a configuration older than the TTL (`SLICE_HOSTED_TTL_HOURS`, default 72 hours, `0` for no expiry)
-is deleted the first time it is requested after expiring, and that request gets `410`.
-There is no background sweep: an expired configuration that is never requested again stays in the store file.
+gets `410` at every request. It is kept 30 days after expiring, then a cleanup that runs at startup and every hour
+deletes it; its id then gets `404`.
 
 **Responses outside the MCP protocol**
 
 | HTTP | Body | Cause |
 |---|---|---|
 | 404 | `{ "error": "Unknown MCP id." }` | No configuration under this id |
-| 410 | `{ "error": "This MCP URL has expired. Generate it again on SLICE, or ask for a permanent plan." }` | The configuration has expired (it is deleted) |
+| 410 | `{ "error": "This MCP URL has expired. Generate it again on SLICE, or ask for a permanent plan." }` | The configuration has expired (kept 30 days, then deleted) |
 | 500 | `{ "error": "Internal error." }` | The MCP transport failed before sending a response |
+| 503 | `{ "error": "This MCP is unavailable for the moment. Try again in a few minutes." }` | The database is unreachable; the id may well exist, so it is never reported unknown |
 
 Protocol-level errors (wrong `Accept` header, unsupported method, invalid JSON-RPC) are returned by the MCP SDK.
 
@@ -445,8 +459,8 @@ Protocol-level errors (wrong `Accept` header, unsupported method, invalid JSON-R
 | SSRF guard | Outbound URLs must be `http(s)` and resolve only to public addresses. Blocked: `0.0.0.0/8`, `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16` (including cloud metadata `169.254.169.254`), `100.64.0.0/10`, IPv6 `::`, `::1`, `fe80::/10`, `fc00::/7`, and IPv4-mapped IPv6 forms of the above. Applied to `/api/upload-url` (always, on every redirect and candidate), to `config.baseUrl` in `/api/host`, and again before every hosted tool call (both production only). |
 | Token relayed, never stored | The hosted runtime reads the caller's `Authorization` header per request (Node.js `AsyncLocalStorage`), forwards it upstream, and keeps nothing. Stored configurations contain no credential. |
 | Unguessable hosted URLs | Ids are 128-bit random values. |
-| Hosted URL expiry | Configurations expire after `SLICE_HOSTED_TTL_HOURS` (default 72). |
-| No disk writes for uploads and bundles | Uploads use in-memory storage; ZIPs are built in memory and streamed. The only file the server writes is the hosted configuration store. |
+| Hosted URL expiry | Configurations expire after `SLICE_HOSTED_TTL_HOURS` (default 72), and are deleted 30 days later. |
+| No disk writes for uploads and bundles | Uploads use in-memory storage; ZIPs are built in memory and streamed. Hosted configurations live in the database (PostgreSQL, or the embedded PGlite files under `SLICE_DATA_DIR` outside production). |
 | Header-injection safe download name | The `Content-Disposition` file name is reduced to `[a-z0-9-]` before use. |
 
 **Known limitation:** the SSRF guard checks DNS resolution before the request, not the connection itself.

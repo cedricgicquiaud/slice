@@ -7,6 +7,7 @@ import { createUploadRouter, createUploadUrlRouter } from './routes/upload';
 import { createGenerateRouter } from './routes/generate';
 import { createHostRouter } from './routes/host';
 import { createHostedMcpRouter } from './routes/hosted-mcp';
+import type { HostedStore } from './services/hosted-store';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,6 +26,10 @@ export interface CreateAppOptions {
    * (self-host deployments). Defaults to SLICE_HOSTED_TTL_HOURS or 72.
    */
   hostedTtlHours?: number;
+  /** Where hosted connectors live. Without it, the hosted routes are not mounted. */
+  hostedStore?: HostedStore;
+  /** Clock for hosted connectors (creation date, expiry). Defaults to the system clock. */
+  now?: () => Date;
 }
 
 export function createApp(options: CreateAppOptions = {}): Express {
@@ -54,8 +59,15 @@ export function createApp(options: CreateAppOptions = {}): Express {
 
   // Health check is exempted from rate limiting so monitoring/CI behind
   // shared NAT can probe freely without exhausting the IP quota.
-  app.get('/api/health', (_req, res) => {
-    res.json({ ok: true, status: 'ok', env: nodeEnv, timestamp: new Date().toISOString() });
+  app.get('/api/health', async (_req, res) => {
+    const timestamp = new Date().toISOString();
+    try {
+      await options.hostedStore?.ping();
+    } catch {
+      res.status(503).json({ ok: false, status: 'database unreachable', env: nodeEnv, timestamp });
+      return;
+    }
+    res.json({ ok: true, status: 'ok', env: nodeEnv, timestamp });
   });
 
   app.use('/api/', apiLimiter);
@@ -72,8 +84,16 @@ export function createApp(options: CreateAppOptions = {}): Express {
   // Pivot-4 — SLICE Cloud. POST /api/host stores a config and returns a URL;
   // /m/:id is the hosted MCP runtime (not under /api/, so not rate-limited
   // like the upload/generate endpoints — agents call it freely).
-  app.use('/api/host', createHostRouter({ allowPrivateHosts, ttlHours: options.hostedTtlHours }));
-  app.use('/m', createHostedMcpRouter({ allowPrivateHosts, ttlHours: options.hostedTtlHours }));
+  if (options.hostedStore) {
+    const hosted = {
+      store: options.hostedStore,
+      now: options.now ?? (() => new Date()),
+      allowPrivateHosts,
+      ttlHours: options.hostedTtlHours,
+    };
+    app.use('/api/host', createHostRouter(hosted));
+    app.use('/m', createHostedMcpRouter(hosted));
+  }
 
   if (nodeEnv === 'production') {
     const clientDist = options.clientDist ?? path.resolve(__dirname, '../../client');

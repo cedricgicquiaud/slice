@@ -1,0 +1,1 @@
+CREATE INDEX "connectors_created_at_idx" ON "connectors" USING btree ("created_at");

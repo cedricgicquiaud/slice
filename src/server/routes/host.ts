@@ -11,20 +11,24 @@ import { generateRequestSchema } from '@shared/config-schema';
 import { ApiError, type ApiErrorPayload, type SliceConfig } from '@shared/types';
 import { reparseAndSelect } from '../services/reparse-and-select';
 import { specToHostedConfig } from '../services/spec-to-hosted-config';
-import { hostedStore } from '../services/hosted-store';
+import type { HostedStore } from '../services/hosted-store';
 import { assertPublicUrl, SsrfError } from '../services/ssrf-guard';
 import { defaultTtlHours } from './hosted-mcp';
 
 const BODY_LIMIT = '15mb';
 
 export interface HostRouterOptions {
+  /** Where the created connectors are stored. */
+  store: HostedStore;
+  /** Clock that dates a created connector. */
+  now: () => Date;
   /** When false (production default), SSRF-guard the user-supplied baseUrl. */
   allowPrivateHosts?: boolean;
   /** Free-tier TTL in hours; 0 disables expiry. Defaults to SLICE_HOSTED_TTL_HOURS or 72. */
   ttlHours?: number;
 }
 
-export function createHostRouter(options: HostRouterOptions = {}): Router {
+export function createHostRouter(options: HostRouterOptions): Router {
   const router = Router();
   router.use(json({ limit: BODY_LIMIT }));
   router.use(((err, _req, res, next) => {
@@ -34,11 +38,19 @@ export function createHostRouter(options: HostRouterOptions = {}): Router {
     }
     next(err);
   }) as import('express').ErrorRequestHandler);
-  router.post('/', makeHandleHost(options.allowPrivateHosts ?? false, options.ttlHours ?? defaultTtlHours()));
+  router.post(
+    '/',
+    makeHandleHost(options.store, options.now, options.allowPrivateHosts ?? false, options.ttlHours ?? defaultTtlHours())
+  );
   return router;
 }
 
-const makeHandleHost = (allowPrivateHosts: boolean, ttlHours: number): RequestHandler => async (req, res, next) => {
+const makeHandleHost = (
+  store: HostedStore,
+  now: () => Date,
+  allowPrivateHosts: boolean,
+  ttlHours: number
+): RequestHandler => async (req, res, next) => {
   const parsed = generateRequestSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json(payload('INVALID_SPEC', firstZodMessage(parsed.error)));
@@ -67,13 +79,18 @@ const makeHandleHost = (allowPrivateHosts: boolean, ttlHours: number): RequestHa
       }
     }
 
-    const id = hostedStore.put(config);
+    const { id, createdAt } = await store.put(config, now()).catch((err: unknown) => {
+      // eslint-disable-next-line no-console
+      console.error('[host] storing the connector failed:', err instanceof Error ? err.message : err);
+      throw new ApiError(
+        'SERVICE_UNAVAILABLE',
+        'Hosting is unavailable for the moment. Try again in a few minutes.',
+        503
+      );
+    });
     const url = `${req.protocol}://${req.get('host')}/m/${id}`;
-    const createdAt = hostedStore.get(id)?.createdAt;
     const expiresAt =
-      ttlHours > 0 && createdAt
-        ? new Date(Date.parse(createdAt) + ttlHours * 3_600_000).toISOString()
-        : null;
+      ttlHours > 0 ? new Date(Date.parse(createdAt) + ttlHours * 3_600_000).toISOString() : null;
     res.status(200).json({ id, url, expiresAt });
   } catch (err) {
     if (err instanceof ApiError) {

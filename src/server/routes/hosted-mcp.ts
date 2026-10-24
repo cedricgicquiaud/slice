@@ -9,10 +9,14 @@
  */
 import { Router } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { buildHostedMcpServer, relayStore } from '../services/hosted-mcp-factory';
-import { hostedStore } from '../services/hosted-store';
+import { buildHostedMcpServer, relayStore, type HostedMcpConfig } from '../services/hosted-mcp-factory';
+import type { HostedStore } from '../services/hosted-store';
 
 export interface HostedMcpRouterOptions {
+  /** Where the hosted connectors are read from. */
+  store: HostedStore;
+  /** Clock used to tell an expired connector. */
+  now: () => Date;
   /** Forwarded to the engine — disables the SSRF guard (tests/dev only). */
   allowPrivateHosts?: boolean;
   /** Free-tier TTL in hours; 0 disables expiry. Defaults to SLICE_HOSTED_TTL_HOURS or 72. */
@@ -32,18 +36,27 @@ export function isExpired(createdAt: string | undefined, ttlHours: number, now =
   return now - created > ttlHours * 3_600_000;
 }
 
-export function createHostedMcpRouter(options: HostedMcpRouterOptions = {}): Router {
+export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
   const router = Router();
   const ttlHours = options.ttlHours ?? defaultTtlHours();
 
   router.all('/:id', async (req, res) => {
-    const config = hostedStore.get(req.params.id);
+    let config: HostedMcpConfig | undefined;
+    try {
+      config = await options.store.get(req.params.id);
+    } catch (err) {
+      // The database is out of reach: the connector may well exist, never call it unknown.
+      // eslint-disable-next-line no-console
+      console.error('[hosted-mcp] reading the connector failed:', err instanceof Error ? err.message : err);
+      res.status(503).json({ error: 'This MCP is unavailable for the moment. Try again in a few minutes.' });
+      return;
+    }
     if (!config) {
       res.status(404).json({ error: 'Unknown MCP id.' });
       return;
     }
-    if (isExpired(config.createdAt, ttlHours)) {
-      hostedStore.delete(req.params.id);
+    // Kept in the database 30 days after expiry, so it keeps answering "expired".
+    if (isExpired(config.createdAt, ttlHours, options.now().getTime())) {
       res.status(410).json({
         error: 'This MCP URL has expired. Generate it again on SLICE, or ask for a permanent plan.',
       });

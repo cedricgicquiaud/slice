@@ -237,7 +237,8 @@ export type ApiErrorCode =
   | 'BLOCKED_HOST'
   | 'PARSE_TOO_COMPLEX'
   | 'PARSE_BUSY'
-  | 'TIMEOUT';
+  | 'TIMEOUT'
+  | 'SERVICE_UNAVAILABLE';
 
 export interface ApiErrorPayload {
   code: ApiErrorCode;

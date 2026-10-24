@@ -1,0 +1,1 @@
+ALTER TABLE "connector_actions" ADD CONSTRAINT "connector_actions_connector_id_position_pk" PRIMARY KEY("connector_id","position");
