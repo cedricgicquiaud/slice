@@ -349,10 +349,22 @@ describe('hosted runtime routes', () => {
   });
 });
 
-function hostRequest(base: string): Promise<Response> {
+// WAT-101 — nothing is created without an account (contract 15).
+describe('creating an MCP without a session', () => {
+  it('is refused with 401 and stores nothing', async () => {
+    const before = await database.rows(sql`select id from connectors`);
+
+    const res = await hostRequest(baseUrl, { cookie: '' });
+
+    expect(res.status).toBe(401);
+    expect(await database.rows(sql`select id from connectors`)).toEqual(before);
+  });
+});
+
+function hostRequest(base: string, headers: Record<string, string> = {}): Promise<Response> {
   return fetch(`${base}/api/host`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', cookie: account.cookie },
+    headers: { 'content-type': 'application/json', cookie: account.cookie, ...headers },
     body: JSON.stringify({
       parsedSpec: {},
       rawSpec: SPEC,
