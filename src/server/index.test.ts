@@ -27,6 +27,17 @@ describe('Express app', () => {
   });
 });
 
+const SPEC = `openapi: 3.0.3
+info: { title: Demo, version: "1.0" }
+servers: [{ url: http://placeholder }]
+paths:
+  /things:
+    get:
+      operationId: listThings
+      summary: List things
+      responses: { '200': { description: ok } }
+`;
+
 // The real entry point, run as `pnpm dev:server` runs it (tsx binary, no package manager).
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const TSX = path.join(ROOT, 'node_modules/.bin/tsx');
@@ -128,6 +139,50 @@ describe('server entry point', () => {
       rmSync(cwd, { recursive: true, force: true });
     }
   }, 30_000);
+
+  it('creates its tables on a first start in an empty folder, and keeps connectors across a restart', async () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    try {
+      const first = await startServer(cwd, { SLICE_HOSTED_TTL_HOURS: '0' });
+      let url: string;
+      try {
+        const res = await fetch(`${first.baseUrl}/api/host`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            parsedSpec: {},
+            rawSpec: SPEC,
+            selectedIds: ['GET /things'],
+            config: {
+              mcpName: 'demo',
+              baseUrl: 'http://127.0.0.1:9',
+              upstreamAuth: { type: 'none' },
+              hosting: 'cloud',
+              mode: 'remote',
+              includeParamDescriptions: false,
+              retryOnServerError: false,
+            },
+          }),
+        });
+        expect(res.status).toBe(200);
+        url = ((await res.json()) as { url: string }).url;
+      } finally {
+        await first.stop();
+      }
+
+      const restarted = await startServer(cwd, { SLICE_HOSTED_TTL_HOURS: '0' });
+      try {
+        const res = await postToolsList(`${restarted.baseUrl}${new URL(url).pathname}`);
+
+        expect(res.status).toBe(200);
+        expect(await res.text()).toContain('list_things');
+      } finally {
+        await restarted.stop();
+      }
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   it('refuses to start in production without DATABASE_URL, and says why', async () => {
     const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
