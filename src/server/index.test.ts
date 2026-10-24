@@ -316,6 +316,32 @@ describe('server entry point', () => {
       rmSync(cwd, { recursive: true, force: true });
     }
   }, 30_000);
+
+  // WAT-101 — in development the page is Vite's, whose proxy hands the API another address.
+  it('takes orders from the Vite page (http://localhost:5173) in development, without BETTER_AUTH_URL', async () => {
+    const scratch = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    try {
+      const database = openDatabase({ driver: 'pglite', dataDir: path.join(scratch, 'pglite') });
+      await migrateDatabase(database);
+      const { cookie } = await createTestAccount({ database });
+      await database.close();
+
+      const server = await startServer(ROOT, { SLICE_DATA_DIR: scratch, BETTER_AUTH_URL: '' });
+      try {
+        const res = await fetch(`${server.baseUrl}/api/host`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', cookie, origin: 'http://localhost:5173' },
+          body: '{}',
+        });
+
+        expect(((await res.json()) as { code: string }).code).toBe('INVALID_SPEC');
+      } finally {
+        await server.stop();
+      }
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
 
 describe('environment file', () => {
