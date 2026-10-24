@@ -25,9 +25,15 @@ export type Database =
   | (DatabaseHandle & { driver: 'postgres'; db: NodePgDatabase<Schema>; pool: pg.Pool })
   | (DatabaseHandle & { driver: 'pglite'; db: PgliteDatabase<Schema>; client: PGlite });
 
-/** `DATABASE_URL` when set; otherwise PGlite on disk under `SLICE_DATA_DIR` (default `./data`). */
+/**
+ * `DATABASE_URL` when set; otherwise PGlite on disk under `SLICE_DATA_DIR`
+ * (default `./data`) — refused in production, where a redeploy would lose it.
+ */
 export function databaseConfigFromEnv(env: NodeJS.ProcessEnv): DatabaseConfig {
   if (env.DATABASE_URL) return { driver: 'postgres', url: env.DATABASE_URL };
+  if (env.NODE_ENV === 'production') {
+    throw new Error('DATABASE_URL is required in production (an embedded database would be lost at the next deploy).');
+  }
   return { driver: 'pglite', dataDir: path.resolve(env.SLICE_DATA_DIR ?? './data', 'pglite') };
 }
 
