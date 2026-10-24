@@ -1,6 +1,7 @@
 // WAT-100 — signed in, my address shows at the top right; its menu leads to my MCPs, sign-out and account deletion.
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { authClient } from '../lib/auth-client';
 import { AccountMenu } from './account-menu';
 
@@ -35,5 +36,19 @@ describe('AccountMenu', () => {
     render(<AccountMenu />);
 
     expect(await screen.findByRole('button', { name: 'ada@example.com' })).toBeInTheDocument();
+  });
+
+  it('offers My MCPs, Sign out and Delete account once the address is clicked', async () => {
+    signedInAs('ada@example.com');
+    render(<AccountMenu />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'ada@example.com' }));
+
+    const menu = within(screen.getByRole('menu'));
+    expect({
+      myMcps: menu.getByRole('menuitem', { name: 'My MCPs' }).getAttribute('href'),
+      signOut: menu.queryByRole('menuitem', { name: 'Sign out' }) !== null,
+      deleteAccount: menu.getByRole('menuitem', { name: 'Delete account' }).getAttribute('href'),
+    }).toEqual({ myMcps: '/mcps', signOut: true, deleteAccount: '/account/delete' });
   });
 });
