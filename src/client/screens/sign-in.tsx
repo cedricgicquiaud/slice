@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { authClient } from '../lib/auth-client';
 
 const ENTRY_CLASS =
@@ -19,6 +20,7 @@ function signInWith(provider: 'google' | 'microsoft') {
 
 /** The only screen without an account (D1, D3): Google, Microsoft or a code by email. */
 export function SignInScreen() {
+  const [email, setEmail] = useState('');
   const error = SIGN_IN_ERRORS.get(new URLSearchParams(window.location.search).get('error') ?? '');
   return (
     <main className="flex min-h-screen flex-col bg-background text-foreground">
@@ -52,7 +54,13 @@ export function SignInScreen() {
           <span className="h-px flex-1 bg-border" />
         </div>
 
-        <form className="flex w-full flex-col gap-3 text-left" onSubmit={(e) => e.preventDefault()}>
+        <form
+          className="flex w-full flex-col gap-3 text-left"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void authClient.emailOtp.sendVerificationOtp({ email, type: 'sign-in' });
+          }}
+        >
           <label htmlFor="sign-in-email" className="text-sm font-medium">
             Email
           </label>
@@ -61,6 +69,8 @@ export function SignInScreen() {
             type="email"
             autoComplete="email"
             placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             className="w-full rounded-lg border border-border bg-background px-4 py-3 font-mono text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground"
           />
           <button
