@@ -11,6 +11,7 @@ import type { HostedMcpConfig } from '../services/hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
 import { createTestDatabase, type TestDatabase } from '../db/test-database';
+import { createTestAccount, type TestAccount } from '../db/test-account';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
@@ -31,6 +32,7 @@ let received: Array<{ url: string; auth: string | undefined; apiKey: string | un
 let testDb: TestDatabase;
 let database: Database;
 let store: HostedStore;
+let account: TestAccount;
 let app: Server;
 let baseUrl: string;
 
@@ -57,8 +59,9 @@ beforeAll(async () => {
   database = openDatabase(testDb.config);
   await migrateDatabase(database);
   store = createHostedStore(database);
+  account = await createTestAccount({ database });
 
-  app = createApp({ nodeEnv: 'test', hostedStore: store, now }).listen(0);
+  app = createApp({ nodeEnv: 'test', hostedStore: store, now, auth: account.auth }).listen(0);
   await new Promise<void>((r) => app.once('listening', r));
   baseUrl = `http://127.0.0.1:${(app.address() as AddressInfo).port}`;
 });
@@ -154,7 +157,7 @@ describe('hosted connector served from the database', () => {
   it('keeps no upstream key or token in the database', async () => {
     const res = await fetch(`${baseUrl}/api/host`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', cookie: account.cookie },
       body: JSON.stringify({
         parsedSpec: {},
         rawSpec: SPEC,
@@ -233,7 +236,7 @@ describe('hosted runtime routes', () => {
   });
 
   it('never expires a hosted URL when TTL is 0 (self-host deployments)', async () => {
-    const ttl0 = createApp({ nodeEnv: 'test', hostedStore: store, hostedTtlHours: 0, now }).listen(0);
+    const ttl0 = createApp({ nodeEnv: 'test', hostedStore: store, hostedTtlHours: 0, now, auth: account.auth }).listen(0);
     await new Promise<void>((r) => ttl0.once('listening', r));
     const ttl0Base = `http://127.0.0.1:${(ttl0.address() as AddressInfo).port}`;
     try {
@@ -254,7 +257,7 @@ describe('hosted runtime routes', () => {
   it('POST /api/host returns expiresAt aligned with the TTL (null when TTL is 0)', async () => {
     const res = await fetch(`${baseUrl}/api/host`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', cookie: account.cookie },
       body: JSON.stringify({
         parsedSpec: {},
         rawSpec: SPEC,
@@ -276,12 +279,12 @@ describe('hosted runtime routes', () => {
     expect(body.expiresAt).toBe('2026-10-27T09:00:00.000Z');
 
     // TTL 0 (self-host) → no expiry advertised.
-    const ttl0 = createApp({ nodeEnv: 'test', hostedStore: store, hostedTtlHours: 0, now }).listen(0);
+    const ttl0 = createApp({ nodeEnv: 'test', hostedStore: store, hostedTtlHours: 0, now, auth: account.auth }).listen(0);
     await new Promise<void>((r) => ttl0.once('listening', r));
     try {
       const res0 = await fetch(`http://127.0.0.1:${(ttl0.address() as AddressInfo).port}/api/host`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', cookie: account.cookie },
         body: JSON.stringify({
           parsedSpec: {},
           rawSpec: SPEC,
@@ -315,13 +318,13 @@ describe('hosted runtime routes', () => {
 
   it('rejects a private/loopback baseUrl with 400 BLOCKED_HOST when the SSRF guard is on', async () => {
     // A production-like instance: allowPrivateHosts off → guard active.
-    const guarded = createApp({ nodeEnv: 'test', allowPrivateHosts: false, hostedStore: store }).listen(0);
+    const guarded = createApp({ nodeEnv: 'test', allowPrivateHosts: false, hostedStore: store, auth: account.auth }).listen(0);
     await new Promise<void>((r) => guarded.once('listening', r));
     const guardedUrl = `http://127.0.0.1:${(guarded.address() as AddressInfo).port}`;
     try {
       const res = await fetch(`${guardedUrl}/api/host`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', cookie: account.cookie },
         body: JSON.stringify({
           parsedSpec: {},
           rawSpec: SPEC,
@@ -346,10 +349,10 @@ describe('hosted runtime routes', () => {
   });
 });
 
-function hostRequest(base: string): Promise<Response> {
+function hostRequest(base: string, cookie = account.cookie): Promise<Response> {
   return fetch(`${base}/api/host`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', cookie },
     body: JSON.stringify({
       parsedSpec: {},
       rawSpec: SPEC,
@@ -373,12 +376,15 @@ describe('hosted routes when the database is unreachable', () => {
   let downApp: Server;
   let downBase: string;
   let existingId: string;
+  // Signed in on a database of its own: these tests are about the connectors' storage.
+  let signedIn: TestAccount;
 
   beforeAll(async () => {
     downDb = await createTestDatabase();
     down = openDatabase(downDb.config);
     await migrateDatabase(down);
-    downApp = createApp({ nodeEnv: 'test', hostedStore: createHostedStore(down) }).listen(0);
+    signedIn = await createTestAccount();
+    downApp = createApp({ nodeEnv: 'test', hostedStore: createHostedStore(down), auth: signedIn.auth }).listen(0);
     await new Promise<void>((r) => downApp.once('listening', r));
     downBase = `http://127.0.0.1:${(downApp.address() as AddressInfo).port}`;
     existingId = (await createHostedStore(down).put(threeActions(), new Date())).id;
@@ -388,10 +394,11 @@ describe('hosted routes when the database is unreachable', () => {
   afterAll(async () => {
     await new Promise<void>((r) => (downApp ? downApp.close(() => r()) : r()));
     await downDb?.dispose();
+    await signedIn?.dispose();
   });
 
   it('refuses a creation with SERVICE_UNAVAILABLE and a clear message', async () => {
-    const res = await hostRequest(downBase);
+    const res = await hostRequest(downBase, signedIn.cookie);
 
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({
@@ -423,8 +430,10 @@ describe('hosted routes when the database is unreachable', () => {
 describe('hosted routes when storing or reading fails for another reason', () => {
   let buggyApp: Server;
   let buggyBase: string;
+  let signedIn: TestAccount;
 
   beforeAll(async () => {
+    signedIn = await createTestAccount();
     const constraintViolation = Object.assign(new Error('violates check constraint'), { code: '23514' });
     const buggy: HostedStore = {
       put: () => Promise.reject(new Error('Failed query: insert', { cause: constraintViolation })),
@@ -432,17 +441,18 @@ describe('hosted routes when storing or reading fails for another reason', () =>
       purgeExpired: () => Promise.resolve(),
       ping: () => Promise.resolve(),
     };
-    buggyApp = createApp({ nodeEnv: 'test', hostedStore: buggy }).listen(0);
+    buggyApp = createApp({ nodeEnv: 'test', hostedStore: buggy, auth: signedIn.auth }).listen(0);
     await new Promise<void>((r) => buggyApp.once('listening', r));
     buggyBase = `http://127.0.0.1:${(buggyApp.address() as AddressInfo).port}`;
   });
 
   afterAll(async () => {
     await new Promise<void>((r) => (buggyApp ? buggyApp.close(() => r()) : r()));
+    await signedIn?.dispose();
   });
 
   it('refuses a creation with a server error, not SERVICE_UNAVAILABLE', async () => {
-    const res = await hostRequest(buggyBase);
+    const res = await hostRequest(buggyBase, signedIn.cookie);
 
     expect(res.status).toBe(500);
     expect(await res.text()).not.toContain('SERVICE_UNAVAILABLE');

@@ -1,6 +1,17 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../app';
+import { createTestAccount, type TestAccount } from '../db/test-account';
+
+let account: TestAccount;
+
+beforeAll(async () => {
+  account = await createTestAccount();
+});
+
+afterAll(async () => {
+  await account?.dispose();
+});
 
 const VALID_YAML = `openapi: "3.0.3"
 info:
@@ -18,8 +29,8 @@ paths:
 `;
 
 function uploadFile(buffer: Buffer, filename: string, field: 'file' | 'spec' = 'file') {
-  const app = createApp({ nodeEnv: 'test' });
-  return request(app).post('/api/upload').attach(field, buffer, filename);
+  const app = createApp({ nodeEnv: 'test', auth: account.auth });
+  return request(app).post('/api/upload').set('Cookie', account.cookie).attach(field, buffer, filename);
 }
 
 describe('POST /api/upload', () => {
@@ -114,8 +125,8 @@ paths: {}
   });
 
   it('returns 400 when no file is provided', async () => {
-    const app = createApp({ nodeEnv: 'test' });
-    const res = await request(app).post('/api/upload');
+    const app = createApp({ nodeEnv: 'test', auth: account.auth });
+    const res = await request(app).post('/api/upload').set('Cookie', account.cookie);
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('NO_FILE');
   });

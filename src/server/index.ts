@@ -1,4 +1,5 @@
 import { createApp } from './app';
+import { createAuth } from './auth/auth';
 import { databaseConfigFromEnv, openDatabase } from './db/client';
 import { migrateDatabase } from './db/migrate';
 import { defaultTtlHours } from './routes/hosted-mcp';
@@ -14,7 +15,10 @@ try {
   const hostedStore = createHostedStore(database);
   startHostedCleanup(hostedStore, { ttlHours: defaultTtlHours(), now: () => new Date() });
 
-  const app = createApp({ nodeEnv: NODE_ENV, hostedStore });
+  // Secret and public address come from BETTER_AUTH_SECRET and BETTER_AUTH_URL.
+  const auth = createAuth({ database });
+
+  const app = createApp({ nodeEnv: NODE_ENV, hostedStore, auth });
 
   app.listen(PORT, () => {
     console.log(`SLICE server running on http://localhost:${PORT} (${NODE_ENV})`);

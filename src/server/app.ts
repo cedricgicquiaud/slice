@@ -8,6 +8,8 @@ import { createGenerateRouter } from './routes/generate';
 import { createHostRouter } from './routes/host';
 import { createHostedMcpRouter } from './routes/hosted-mcp';
 import type { HostedStore } from './services/hosted-store';
+import type { SliceAuth } from './auth/auth';
+import { requireSession } from './middleware/require-session';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,6 +32,8 @@ export interface CreateAppOptions {
   hostedStore?: HostedStore;
   /** Clock for hosted connectors (creation date, expiry). Defaults to the system clock. */
   now?: () => Date;
+  /** Accounts and sessions. Without it, every `/api/*` call but health is refused. */
+  auth?: SliceAuth;
 }
 
 export function createApp(options: CreateAppOptions = {}): Express {
@@ -71,6 +75,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   });
 
   app.use('/api/', apiLimiter);
+  app.use('/api/', requireSession(options.auth));
 
   // POST /api/upload — phase 02 (multer applies its own 10 MB limit before json parser)
   app.use('/api/upload', createUploadRouter());

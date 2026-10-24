@@ -11,6 +11,7 @@ import { createApp } from './app';
 import { openDatabase } from './db/client';
 import { migrateDatabase } from './db/migrate';
 import { createHostedStore } from './services/hosted-store';
+import { createTestAccount, TEST_AUTH_SECRET } from './db/test-account';
 
 describe('Express app', () => {
   it('GET /api/health responds 200 with status ok', async () => {
@@ -66,7 +67,7 @@ async function startServer(cwd: string, env: Record<string, string>): Promise<Ru
   const { DATABASE_URL: _ignored, ...inherited } = process.env;
   const child: ChildProcess = spawn(TSX, ['--tsconfig', path.join(ROOT, 'tsconfig.server.json'), ENTRY], {
     cwd,
-    env: { ...inherited, NODE_ENV: 'development', PORT: String(port), ...env },
+    env: { ...inherited, NODE_ENV: 'development', PORT: String(port), BETTER_AUTH_SECRET: TEST_AUTH_SECRET, ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
@@ -149,12 +150,18 @@ describe('server entry point', () => {
     const scratch = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
     const env = { SLICE_HOSTED_TTL_HOURS: '0', SLICE_DATA_DIR: path.join(scratch, 'data') };
     try {
+      // An account signed in on the database the server will open.
+      const database = openDatabase({ driver: 'pglite', dataDir: path.join(scratch, 'data', 'pglite') });
+      await migrateDatabase(database);
+      const { cookie } = await createTestAccount({ database });
+      await database.close();
+
       const first = await startServer(ROOT, env);
       let url: string;
       try {
         const res = await fetch(`${first.baseUrl}/api/host`, {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', cookie },
           body: JSON.stringify({
             parsedSpec: {},
             rawSpec: SPEC,

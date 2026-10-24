@@ -10,6 +10,7 @@ import { createHostedStore } from '../services/hosted-store';
 import { openDatabase } from './client';
 import { migrateDatabase } from './migrate';
 import { createTestDatabase } from './test-database';
+import { createTestAccount } from './test-account';
 
 const SPEC = `openapi: 3.0.3
 info: { title: Demo, version: "1.0" }
@@ -67,11 +68,13 @@ withPostgres('a database outage (runs only with DATABASE_URL)', () => {
     viaRelay.hostname = '127.0.0.1';
     viaRelay.port = String(relay.port());
     const database = openDatabase({ driver: 'postgres', url: viaRelay.toString() });
+    // Signed in on a database of its own, out of the relay: this test is about the connectors' storage.
+    const signedIn = await createTestAccount();
     let app: Server | undefined;
     try {
       await migrateDatabase(database);
       const store = createHostedStore(database);
-      app = createApp({ nodeEnv: 'test', hostedStore: store }).listen(0);
+      app = createApp({ nodeEnv: 'test', hostedStore: store, auth: signedIn.auth }).listen(0);
       await new Promise<void>((r) => app!.once('listening', r));
       const base = `http://127.0.0.1:${(app.address() as AddressInfo).port}`;
       const { id } = await store.put(
@@ -79,7 +82,7 @@ withPostgres('a database outage (runs only with DATABASE_URL)', () => {
         new Date()
       );
       const statuses = async () => [
-        (await create(base)).status,
+        (await create(base, signedIn.cookie)).status,
         (await visit(`${base}/m/${id}`)).status,
         (await fetch(`${base}/api/health`)).status,
       ];
@@ -94,14 +97,15 @@ withPostgres('a database outage (runs only with DATABASE_URL)', () => {
       await relay.cut().catch(() => {});
       await database.close().catch(() => {});
       await testDb.dispose();
+      await signedIn.dispose();
     }
   }, 30_000);
 });
 
-function create(base: string): Promise<Response> {
+function create(base: string, cookie: string): Promise<Response> {
   return fetch(`${base}/api/host`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', cookie },
     body: JSON.stringify({
       parsedSpec: {},
       rawSpec: SPEC,
