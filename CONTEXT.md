@@ -1,6 +1,6 @@
 # SLICE
 
-Service web qui transforme la description d'une API en connecteur pour agent IA, limité aux
+Service web qui transforme la description d'une API en MCP pour agent IA, limité aux
 actions que l'utilisateur autorise.
 
 ## Vocabulaire
@@ -19,31 +19,42 @@ _Éviter_ : route, outil (dans l'interface)
 L'ensemble des actions cochées par l'utilisateur ; tout le reste n'existe pas pour l'agent.
 _Éviter_ : filtre, curation (dans l'interface)
 
-**Connecteur** :
-Le serveur MCP produit par SLICE à partir d'une sélection.
-_Éviter_ : MCP (dans l'interface), bot, plugin
+**MCP** :
+Le serveur MCP produit par SLICE à partir d'une sélection. Le mot que cherchent les
+utilisateurs dans leur agent ; c'est celui de l'interface (décision du 24/10/2026).
+_Éviter_ : connecteur (dans l'interface), bot, plugin
 
-**Connecteur hébergé** :
-Un connecteur que SLICE fait tourner et rend accessible par une adresse.
+**MCP hébergé** :
+Un MCP que SLICE fait tourner et rend accessible par une adresse.
 _Éviter_ : SLICE Cloud (nom commercial seulement), instance
 
 **Adresse** :
-L'URL d'un connecteur hébergé, à coller dans l'agent.
+L'URL d'un MCP hébergé, à coller dans l'agent.
 _Éviter_ : endpoint, lien
 
 **Kit** :
-Le dossier téléchargeable (code + Docker) pour faire tourner un connecteur sur son propre
+Le dossier téléchargeable (code + Docker) pour faire tourner un MCP sur son propre
 serveur.
 _Éviter_ : bundle, ZIP, self-host (dans l'interface)
 
 **Accès amont** :
-Ce qui autorise le connecteur auprès de l'API d'origine : clé d'API, jeton, OAuth2.
+Ce qui autorise le MCP auprès de l'API d'origine : clé d'API, jeton, OAuth2.
 _Éviter_ : auth, credentials
 
 **Relai** :
-Le fait que le connecteur transmette à l'API l'accès amont fourni par l'agent, à chaque appel.
+Le fait que le MCP transmette à l'API l'accès amont fourni par l'agent, à chaque appel.
 _Éviter_ : proxy, passthrough
 
 **Expiration** :
 La fin de vie d'une adresse gratuite, 72 h après sa création par défaut.
 _Éviter_ : TTL (dans l'interface)
+
+**Compte** :
+La personne connectée à SLICE, identifiée par son adresse e-mail vérifiée. Sans compte,
+SLICE ne sert à rien.
+_Éviter_ : utilisateur (pour la donnée), profil, login
+
+**Espace** :
+Ce à quoi appartiennent les MCP. Chaque compte a son espace personnel, invisible tant que
+les espaces d'équipe n'existent pas.
+_Éviter_ : workspace, organisation, équipe (pour l'espace personnel)
