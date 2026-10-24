@@ -427,4 +427,11 @@ describe('hosted routes when the database is unreachable', () => {
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({ error: 'This MCP is unavailable for the moment. Try again in a few minutes.' });
   });
+
+  it('reports the server unhealthy', async () => {
+    const res = await fetch(`${downBase}/api/health`);
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ ok: false, status: 'database unreachable' });
+  });
 });
