@@ -3,12 +3,13 @@
  * No password anywhere: Better Auth's email-and-password sign-in stays off.
  */
 import { randomUUID } from 'node:crypto';
-import { betterAuth } from 'better-auth';
+import { betterAuth, type BetterAuthOptions } from 'better-auth';
 import { APIError, createAuthMiddleware, getIP } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { emailOTP } from 'better-auth/plugins';
 import type { Database } from '../db/client';
 import { accounts, sessions, users, verifications, workspaces } from '../db/schema';
+import { createCodeQuotas, type CodeQuota } from './code-quotas';
 
 export interface AuthOptions {
   database: Database;
@@ -33,15 +34,17 @@ export interface OAuthApplication {
   clientSecret: string;
 }
 
-const HOUR_MS = 60 * 60 * 1000;
+/** What a refused request for a code answers, by the quota it would exceed. */
+const QUOTA_REFUSALS: Record<CodeQuota, { code: string; message: string }> = {
+  address: { code: 'too_many_codes_for_address', message: 'Too many codes asked for this address. Try again in an hour.' },
+  ip: { code: 'too_many_codes_from_ip', message: 'Too many codes asked from your network. Try again in an hour.' },
+};
 
 export function createAuth({ database, secret, baseURL, google, microsoft, sendCode }: AuthOptions) {
   // Better Auth logs a failed send and answers success anyway: the requests
   // whose code did not leave are marked here, and answered as such below.
   const unsent = new WeakSet<object>();
-  // D13: when codes left, by address and by IP, over the last hour. A code not sent counts not.
-  const codesSent = new Map<string, number[]>();
-  const sentWithinHour = (key: string) => (codesSent.get(key) ?? []).filter((at) => Date.now() - at < HOUR_MS);
+  const quotas = createCodeQuotas();
   return betterAuth({
     secret,
     baseURL,
@@ -82,19 +85,8 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
       before: createAuthMiddleware(async (ctx) => {
         if (ctx.path !== '/email-otp/send-verification-otp') return;
         const email = String(ctx.body?.email).toLowerCase();
-        if (sentWithinHour(`address:${email}`).length >= 5) {
-          throw new APIError('TOO_MANY_REQUESTS', {
-            code: 'too_many_codes_for_address',
-            message: 'Too many codes asked for this address. Try again in an hour.',
-          });
-        }
-        const ip = ctx.headers && getIP(ctx.headers, ctx.context.options);
-        if (ip && sentWithinHour(`ip:${ip}`).length >= 10) {
-          throw new APIError('TOO_MANY_REQUESTS', {
-            code: 'too_many_codes_from_ip',
-            message: 'Too many codes asked from your network. Try again in an hour.',
-          });
-        }
+        const exceeded = quotas.exceeded(email, ipOf(ctx));
+        if (exceeded) throw new APIError('TOO_MANY_REQUESTS', QUOTA_REFUSALS[exceeded]);
       }),
       after: createAuthMiddleware(async (ctx) => {
         if (unsent.has(ctx.context)) {
@@ -111,9 +103,7 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
             sendVerificationOTP: async ({ email, otp }, ctx) => {
               try {
                 await sendCode(email, otp);
-                codesSent.set(`address:${email}`, [...sentWithinHour(`address:${email}`), Date.now()]);
-                const ip = ctx?.headers && getIP(ctx.headers, ctx.context.options);
-                if (ip) codesSent.set(`ip:${ip}`, [...sentWithinHour(`ip:${ip}`), Date.now()]);
+                quotas.count(email, ctx ? ipOf(ctx) : null);
               } catch (err) {
                 if (ctx) unsent.add(ctx.context);
                 throw err;
@@ -126,6 +116,11 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
 }
 
 export type SliceAuth = ReturnType<typeof createAuth>;
+
+/** The caller's IP as Better Auth reads it (`x-forwarded-for`, set by SLICE's proxy), if known. */
+function ipOf(ctx: { headers?: Headers; context: { options: BetterAuthOptions } }): string | null {
+  return ctx.headers ? getIP(ctx.headers, ctx.context.options) : null;
+}
 
 /** BETTER_AUTH_SECRET; refused missing in production, where sessions would be signed with a public default. */
 export function authSecretFromEnv(env: NodeJS.ProcessEnv): string | undefined {
