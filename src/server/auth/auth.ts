@@ -3,6 +3,7 @@
  * No password anywhere: Better Auth's email-and-password sign-in stays off.
  */
 import { randomUUID } from 'node:crypto';
+import { eq } from 'drizzle-orm';
 import { betterAuth, type BetterAuthOptions } from 'better-auth';
 import { APIError, createAuthMiddleware, getIP } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
@@ -45,7 +46,7 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
   // whose code did not leave are marked here, and answered as such below.
   const unsent = new WeakSet<object>();
   const quotas = createCodeQuotas();
-  return betterAuth({
+  const auth = betterAuth({
     secret,
     baseURL,
     basePath: '/api/auth',
@@ -114,6 +115,16 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
           }),
         ]
       : [],
+  });
+  return Object.assign(auth, {
+    /** The personal workspace of an account (D15), `undefined` if it has none. */
+    async workspaceOf(userId: string): Promise<string | undefined> {
+      const [workspace] = await database.db
+        .select({ id: workspaces.id })
+        .from(workspaces)
+        .where(eq(workspaces.ownerId, userId));
+      return workspace?.id;
+    },
   });
 }
 
