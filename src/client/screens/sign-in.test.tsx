@@ -169,4 +169,15 @@ describe('SignInScreen', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Too many wrong codes. Ask for a new one.');
     expect(screen.getByRole('button', { name: 'Email me a code' })).toBeInTheDocument();
   });
+
+  it('asks for a new code, and offers to send one, when the code expired (contract 19)', async () => {
+    server.answers.set('/email-otp/send-verification-otp', { status: 200, body: { success: true } });
+    server.answers.set('/sign-in/email-otp', { status: 400, body: { code: 'OTP_EXPIRED', message: 'OTP expired' } });
+    render(<SignInScreen />);
+
+    await signInWithCode('ada@example.com', '123456');
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('This code has expired. Ask for a new one.');
+    expect(screen.getByRole('button', { name: 'Email me a code' })).toBeInTheDocument();
+  });
 });
