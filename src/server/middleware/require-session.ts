@@ -4,7 +4,7 @@
  * `res.locals.workspaceId`. Without `auth`, no session can exist, so every call
  * is refused. An unreachable database is an outage (503), never a missing session.
  */
-import type { RequestHandler } from 'express';
+import type { Request, RequestHandler } from 'express';
 import { fromNodeHeaders } from 'better-auth/node';
 import type { ApiErrorPayload } from '@shared/types';
 import type { SliceAuth } from '../auth/auth';
@@ -55,13 +55,19 @@ const READS = new Set(['GET', 'HEAD', 'OPTIONS']);
  * SLICE takes an account's orders from its own page only (D16): a write sent
  * by a browser from another site is refused, session or not.
  */
-export function requireSameOrigin(): RequestHandler {
-  return (req, res, next) => {
+export function requireSameOrigin(auth: SliceAuth | undefined): RequestHandler {
+  return async (req, res, next) => {
     const origin = req.get('origin');
-    if (READS.has(req.method) || origin === undefined || origin === `${req.protocol}://${req.get('host')}`) {
+    if (READS.has(req.method) || origin === undefined || (await isSliceOrigin(origin, req, auth))) {
       next();
       return;
     }
     res.status(403).json(FOREIGN_ORIGIN);
   };
+}
+
+/** The address the request reached, or SLICE's public address (`BETTER_AUTH_URL`) as Better Auth trusts it. */
+async function isSliceOrigin(origin: string, req: Request, auth: SliceAuth | undefined): Promise<boolean> {
+  if (origin === `${req.protocol}://${req.get('host')}`) return true;
+  return auth ? (await auth.$context).isTrustedOrigin(origin) : false;
 }

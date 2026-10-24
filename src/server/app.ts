@@ -84,7 +84,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   if (options.auth && nodeEnv !== 'production') app.post('/api/dev/sign-in', devSignIn(options.auth));
 
   app.use('/api/', apiLimiter);
-  app.use('/api/', requireSameOrigin());
+  app.use('/api/', requireSameOrigin(options.auth));
   app.use('/api/', requireSession(options.auth));
 
   // POST /api/upload — phase 02 (multer applies its own 10 MB limit before json parser)
