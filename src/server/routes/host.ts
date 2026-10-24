@@ -79,7 +79,15 @@ const makeHandleHost = (
       }
     }
 
-    const { id, createdAt } = await store.put(config, now());
+    const { id, createdAt } = await store.put(config, now()).catch((err: unknown) => {
+      // eslint-disable-next-line no-console
+      console.error('[host] storing the connector failed:', err instanceof Error ? err.message : err);
+      throw new ApiError(
+        'SERVICE_UNAVAILABLE',
+        'Hosting is unavailable for the moment. Try again in a few minutes.',
+        503
+      );
+    });
     const url = `${req.protocol}://${req.get('host')}/m/${id}`;
     const expiresAt =
       ttlHours > 0 ? new Date(Date.parse(createdAt) + ttlHours * 3_600_000).toISOString() : null;
