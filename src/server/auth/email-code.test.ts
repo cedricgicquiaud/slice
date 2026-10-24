@@ -32,6 +32,7 @@ afterAll(async () => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 /** SLICE on the same database, sending its codes with `sendCode`. */
@@ -217,5 +218,24 @@ describe('five tries per code (contract 18)', () => {
     const session = await signInWithCode(browser, 'again@example.com');
 
     expect(session?.user.email).toBe('again@example.com');
+  });
+});
+
+/** Simulated clock, set at `time`: only the date is simulated, so the database and HTTP keep their own timers. */
+function clockAt(time: string) {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(time));
+}
+
+describe('a code lives ten minutes (contract 19)', () => {
+  it('still signs in at 9 min 59 s', async () => {
+    clockAt('2026-10-25T10:00:00Z');
+    const browser = request.agent(app);
+    await askForCode(browser, 'early@example.com');
+
+    clockAt('2026-10-25T10:09:59Z');
+    const { session } = await enterCode(browser, 'early@example.com', inbox.get('early@example.com'));
+
+    expect(session?.user.email).toBe('early@example.com');
   });
 });
