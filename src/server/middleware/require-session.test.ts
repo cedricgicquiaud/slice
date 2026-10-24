@@ -2,7 +2,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../app';
-import { createTestAccount, type TestAccount } from '../db/test-account';
+import { createTestAccount, TEST_AUTH_SECRET, type TestAccount } from '../db/test-account';
+import { createAuth } from '../auth/auth';
 import { createHostedStore } from '../services/hosted-store';
 
 describe('session guard on the API', () => {
@@ -77,5 +78,18 @@ describe('a request sent from another site with the session', () => {
 
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('FORBIDDEN');
+  });
+
+  it("goes through from SLICE's public address, though the API answers under another one (Vite proxy)", async () => {
+    const auth = createAuth({ database: account.database, secret: TEST_AUTH_SECRET, baseURL: 'http://localhost:5173' });
+    const app = createApp({ nodeEnv: 'test', auth, hostedStore: createHostedStore(account.database) });
+
+    const res = await request(app)
+      .post('/api/host')
+      .set('Cookie', account.cookie)
+      .set('Origin', 'http://localhost:5173')
+      .send({});
+
+    expect(res.body.code).toBe('INVALID_SPEC');
   });
 });
