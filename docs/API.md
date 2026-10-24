@@ -32,6 +32,12 @@ account `recette@slice.local`; used by the visual test pass). Without a live ses
 `401 { "code": "UNAUTHORIZED", "message": "Sign in to continue." }`; while the database is unreachable,
 `503 SERVICE_UNAVAILABLE`.
 
+SLICE takes an account's orders from its own page only. A write (any method but `GET`, `HEAD`, `OPTIONS`) to `/api/*`
+whose `Origin` header is neither the address the request reached nor SLICE's public address (`BETTER_AUTH_URL`; in
+development, `http://localhost:5173` by default — see [configuration.md](configuration.md)) is refused, session or
+not: `403 { "code": "FORBIDDEN", "message": "SLICE takes orders from its own page only." }`. A request without
+`Origin` (a script, an agent, `curl`) is not concerned: browsers always send it on a write from another site.
+
 Google and Microsoft sign-in (Better Auth's social sign-in): `POST /api/auth/sign-in/social` with
 `{ "provider": "google" | "microsoft", "callbackURL": "/", "errorCallbackURL": "/" }` answers `{ "url" }`, the
 provider's sign-in page. The provider sends the person back to `/api/auth/callback/<provider>`, which sets the session
@@ -66,7 +72,8 @@ The hosted runtime `/m/:id` is protected by the unguessable id in its URL (see [
 
 ### CORS
 
-CORS is enabled for all origins (`cors()` with default options).
+CORS is enabled for all origins on the hosted runtime `/m/:id` only, so an agent can call a hosted MCP from any site.
+`/api/*` sends no CORS header: only SLICE's own page, on the same origin, reads its answers.
 
 ### Request body limits
 
@@ -393,8 +400,9 @@ Creates a hosted MCP: stores a configuration and returns the URL agents connect 
 The server re-parses `rawSpec` and filters `selectedIds` in the same way.
 
 **Stored configuration:** the MCP name, `baseUrl`, `upstreamAuth` (type, plus header name, token URL and scopes when relevant),
-and for each selected endpoint its tool name, one-line description, method, path and parameters, plus a creation date.
-The raw spec, `mcpServerToken` and any upstream credential are not stored.
+and for each selected endpoint its tool name, one-line description, method, path and parameters, plus a creation date,
+the API's name as read in the spec (`info.title`, else `Untitled API`) and the personal workspace of the signed-in account, which owns the
+MCP. The raw spec, `mcpServerToken` and any upstream credential are not stored.
 
 **SSRF check:** when the server runs with `NODE_ENV=production`, `config.baseUrl` must resolve only to public addresses;
 otherwise the request fails with `BLOCKED_HOST`. In development this check is off so a local upstream can be used.
@@ -422,6 +430,8 @@ otherwise the request fails with `BLOCKED_HOST`. In development this check is of
 | 400 | `INVALID_SPEC` | The body fails schema validation, or `rawSpec` fails to re-parse |
 | 400 | `NO_ENDPOINT_SELECTED` | None of `selectedIds` exists in the re-parsed spec |
 | 400 | `BLOCKED_HOST` | `config.baseUrl` points to a non-public host (production only) |
+| 401 | `UNAUTHORIZED` | No live session; nothing is stored |
+| 403 | `FORBIDDEN` | Sent from another site than SLICE's page; nothing is stored |
 | 413 | `PAYLOAD_TOO_LARGE` | Body larger than 15 MB |
 | 422 | `PARSE_TOO_COMPLEX` | The re-parse crashed or ran out of memory |
 | 429 | `PARSE_BUSY` | Too many parses in flight; retry shortly |

@@ -229,7 +229,8 @@ export class ParseError extends Error {
  * - 500 `GENERATION_FAILED` — unexpected template / archiver failure
  * - 504 `TIMEOUT` — generation took > 30s
  * - 401 `UNAUTHORIZED` — no live session (any `/api/*` route but health and sign-in)
- * - 403 `FORBIDDEN` / 404 `NOT_FOUND` — reserved for the account's own MCPs
+ * - 403 `FORBIDDEN` — a write sent from another site than SLICE's page (any `/api/*` route);
+ *   also reserved, with 404 `NOT_FOUND`, for the account's own MCPs
  */
 export type ApiErrorCode =
   | 'UNAUTHORIZED'
