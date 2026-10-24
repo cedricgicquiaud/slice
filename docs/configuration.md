@@ -46,7 +46,9 @@ DATABASE_URL=postgres://… pnpm start   # NODE_ENV=production node dist/server/
 - Run `pnpm start` from the repository root: the parse child process resolves from the working directory.
 - `pnpm prod:smoke` builds the project, boots the compiled server on port 3099 (or `PORT`), runs a set of checks against
   the real production paths, and stops it. `SKIP_BUILD=1 pnpm prod:smoke` reuses an existing `dist/`. It starts the
-  server in production mode, so it needs `DATABASE_URL` too; a disposable local PostgreSQL works:
+  server in production mode, so it needs `DATABASE_URL` too. It creates a throwaway database on that server, runs the
+  compiled server against it and drops it afterwards: the database user needs the right to create databases, and the
+  smoke connector never lands in the database the URL names. A disposable local PostgreSQL works:
   `docker run --rm -d -p 54329:5432 -e POSTGRES_PASSWORD=smoke postgres:16`, then
   `DATABASE_URL=postgres://postgres:smoke@localhost:54329/postgres pnpm prod:smoke`.
 - The repository ships no Dockerfile for SLICE itself.

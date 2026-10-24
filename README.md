@@ -125,7 +125,7 @@ docs/                  Reference documentation
 
 Functional, not yet deployed.
 
-- 556 automated tests, strict typing, CI on every pull request.
+- Automated tests, strict typing, CI on every pull request (against a real PostgreSQL).
 - 500 real public API descriptions run through the pipeline: 412 converted, 83 rejected cleanly, 5 too large,
   0 crashes (`corpus` workflow, on demand).
 - Verified end to end in Claude Desktop against the Notion API.
