@@ -31,11 +31,8 @@ export function SignInScreen() {
   const [email, setEmail] = useState('');
   const [codeSent, setCodeSent] = useState(false);
   const [code, setCode] = useState('');
-  const [codeNotSent, setCodeNotSent] = useState(false);
   const [codeRefusal, setCodeRefusal] = useState<string>();
-  const error = codeNotSent
-    ? CODE_NOT_SENT
-    : codeRefusal ?? SIGN_IN_ERRORS.get(new URLSearchParams(window.location.search).get('error') ?? '');
+  const error = codeRefusal ?? SIGN_IN_ERRORS.get(new URLSearchParams(window.location.search).get('error') ?? '');
   return (
     <main className="flex min-h-screen flex-col bg-background text-foreground">
       <section className="mx-auto flex w-full max-w-sm flex-1 flex-col items-center justify-center gap-10 px-6 py-12 text-center">
@@ -100,7 +97,7 @@ export function SignInScreen() {
             onSubmit={async (e) => {
               e.preventDefault();
               const sent = await authClient.emailOtp.sendVerificationOtp({ email, type: 'sign-in' });
-              setCodeNotSent(Boolean(sent.error));
+              setCodeRefusal(sent.error ? CODE_NOT_SENT : undefined);
               if (!sent.error) setCodeSent(true);
             }}
           >
