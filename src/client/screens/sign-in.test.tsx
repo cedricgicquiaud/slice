@@ -156,4 +156,18 @@ describe('SignInScreen', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('This code is wrong or was already used.');
   });
+
+  it('asks for a new code, and offers to send one, after too many wrong codes (contract 18)', async () => {
+    server.answers.set('/email-otp/send-verification-otp', { status: 200, body: { success: true } });
+    server.answers.set('/sign-in/email-otp', { status: 403, body: { code: 'TOO_MANY_ATTEMPTS', message: 'Too many attempts' } });
+    render(<SignInScreen />);
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Email' }), 'ada@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
+    await userEvent.type(await screen.findByRole('textbox', { name: 'Code' }), '123456');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Too many wrong codes. Ask for a new one.');
+    expect(screen.getByRole('button', { name: 'Email me a code' })).toBeInTheDocument();
+  });
 });
