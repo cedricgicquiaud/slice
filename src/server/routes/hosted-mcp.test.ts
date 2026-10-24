@@ -362,3 +362,56 @@ describe('hosted runtime routes', () => {
     }
   });
 });
+
+function hostRequest(base: string): Promise<Response> {
+  return fetch(`${base}/api/host`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      parsedSpec: {},
+      rawSpec: SPEC,
+      selectedIds: ['GET /things'],
+      config: {
+        mcpName: 'demo',
+        baseUrl: upstreamUrl,
+        upstreamAuth: { type: 'bearer' },
+        hosting: 'cloud',
+        mode: 'remote',
+        includeParamDescriptions: false,
+        retryOnServerError: false,
+      },
+    }),
+  });
+}
+
+describe('hosted routes when the database is unreachable', () => {
+  let downDb: TestDatabase;
+  let down: Database;
+  let downApp: Server;
+  let downBase: string;
+
+  beforeAll(async () => {
+    downDb = await createTestDatabase();
+    down = openDatabase(downDb.config);
+    await migrateDatabase(down);
+    downApp = createApp({ nodeEnv: 'test', hostedStore: createHostedStore(down) }).listen(0);
+    await new Promise<void>((r) => downApp.once('listening', r));
+    downBase = `http://127.0.0.1:${(downApp.address() as AddressInfo).port}`;
+    await down.close();
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((r) => (downApp ? downApp.close(() => r()) : r()));
+    await downDb?.dispose();
+  });
+
+  it('refuses a creation with SERVICE_UNAVAILABLE and a clear message', async () => {
+    const res = await hostRequest(downBase);
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'Hosting is unavailable for the moment. Try again in a few minutes.',
+    });
+  });
+});
