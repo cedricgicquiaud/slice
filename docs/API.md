@@ -40,6 +40,14 @@ account is created, and the redirect goes to `errorCallbackURL` with `?error=ema
 `?error=account_not_linked` (address of an existing account). A provider without its application
 ([oauth-apps.md](oauth-apps.md)) is not offered.
 
+Sign-in with a code by email (Better Auth's email OTP): `POST /api/auth/email-otp/send-verification-otp` with
+`{ "email": "<address>", "type": "sign-in" }` sends a 6-digit code to the address and answers `{ "success": true }`
+(by Resend with `RESEND_API_KEY`, otherwise printed in the server's terminal — see
+[configuration.md](configuration.md)). When the email could not be sent, the answer is
+`502 { "code": "code_not_sent", "message": "Couldn't send the code, try again." }`. Then
+`POST /api/auth/sign-in/email-otp` with `{ "email", "otp" }` sets the session cookie; the first code of an unknown
+address creates its account (and its personal workspace, never shown).
+
 The hosted runtime `/m/:id` is protected by the unguessable id in its URL (see [Hosted runtime](#any-mid)).
 
 ### CORS
