@@ -389,6 +389,7 @@ describe('hosted routes when the database is unreachable', () => {
   let down: Database;
   let downApp: Server;
   let downBase: string;
+  let existingId: string;
 
   beforeAll(async () => {
     downDb = await createTestDatabase();
@@ -397,6 +398,7 @@ describe('hosted routes when the database is unreachable', () => {
     downApp = createApp({ nodeEnv: 'test', hostedStore: createHostedStore(down) }).listen(0);
     await new Promise<void>((r) => downApp.once('listening', r));
     downBase = `http://127.0.0.1:${(downApp.address() as AddressInfo).port}`;
+    existingId = (await createHostedStore(down).put(threeActions(), new Date())).id;
     await down.close();
   });
 
@@ -413,5 +415,16 @@ describe('hosted routes when the database is unreachable', () => {
       code: 'SERVICE_UNAVAILABLE',
       message: 'Hosting is unavailable for the moment. Try again in a few minutes.',
     });
+  });
+
+  it('answers unavailable for the moment, never unknown, at an existing address', async () => {
+    const res = await fetch(`${downBase}/m/${existingId}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+    });
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: 'This MCP is unavailable for the moment. Try again in a few minutes.' });
   });
 });
