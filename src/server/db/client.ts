@@ -40,7 +40,12 @@ export function databaseConfigFromEnv(env: NodeJS.ProcessEnv): DatabaseConfig {
 
 export function openDatabase(config: DatabaseConfig): Database {
   if (config.driver === 'postgres') {
-    const pool = new pg.Pool({ connectionString: config.url });
+    // Give up on an unreachable server instead of waiting forever: the caller answers 503.
+    const pool = new pg.Pool({ connectionString: config.url, connectionTimeoutMillis: 5_000 });
+    // An idle connection dropped by the server must not crash the process; the pool reconnects.
+    pool.on('error', (err) => {
+      console.error('[db] lost an idle database connection:', err.message);
+    });
     const db = drizzlePostgres(pool, { schema });
     return {
       driver: 'postgres',
