@@ -248,6 +248,36 @@ describe('server entry point', () => {
     }
   }, 30_000);
 
+  it('starts the Google and Microsoft sign-ins with the applications declared in its environment', async () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    const server = await startServer(cwd, {
+      GOOGLE_CLIENT_ID: 'declared-google-app',
+      GOOGLE_CLIENT_SECRET: 'google-secret',
+      MICROSOFT_CLIENT_ID: 'declared-microsoft-app',
+      MICROSOFT_CLIENT_SECRET: 'microsoft-secret',
+    });
+    try {
+      const startAt = async (provider: string) => {
+        const res = await fetch(`${server.baseUrl}/api/auth/sign-in/social`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ provider, callbackURL: '/' }),
+        });
+        const { url } = (await res.json()) as { url: string };
+        const authorize = new URL(url);
+        return `${authorize.origin}${authorize.pathname} ${authorize.searchParams.get('client_id')}`;
+      };
+
+      expect([await startAt('google'), await startAt('microsoft')]).toEqual([
+        'https://accounts.google.com/o/oauth2/v2/auth declared-google-app',
+        'https://login.microsoftonline.com/common/oauth2/v2.0/authorize declared-microsoft-app',
+      ]);
+    } finally {
+      await server.stop();
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   it('refuses to start in production without BETTER_AUTH_SECRET, and says why', async () => {
     const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
     try {
