@@ -15,6 +15,8 @@ export interface AuthOptions {
   baseURL?: string;
   /** Google sign-in; left out when SLICE has no Google application. */
   google?: OAuthApplication;
+  /** Microsoft sign-in, personal and work or school accounts (tenant `common`); left out without an application. */
+  microsoft?: OAuthApplication;
 }
 
 /** An application declared with a provider (`docs/oauth-apps.md`). */
@@ -23,7 +25,7 @@ export interface OAuthApplication {
   clientSecret: string;
 }
 
-export function createAuth({ database, secret, baseURL, google }: AuthOptions) {
+export function createAuth({ database, secret, baseURL, google, microsoft }: AuthOptions) {
   return betterAuth({
     secret,
     baseURL,
@@ -34,7 +36,11 @@ export function createAuth({ database, secret, baseURL, google }: AuthOptions) {
       provider: 'pg',
       schema: { user: users, session: sessions, account: accounts, verification: verifications },
     }),
-    socialProviders: { ...(google && { google }) },
+    socialProviders: {
+      ...(google && { google }),
+      // SLICE shows no profile picture: no extra call to Microsoft Graph.
+      ...(microsoft && { microsoft: { ...microsoft, tenantId: 'common', disableProfilePhoto: true } }),
+    },
   });
 }
 
