@@ -283,4 +283,15 @@ describe('five codes an hour for an address (contract 21)', () => {
       sent: 5,
     });
   });
+
+  it('sends a code again once the hour of the first ones has passed', async () => {
+    const { app, sentTo } = appRecordingSends();
+    clockAt('2026-10-25T10:00:00Z');
+    for (let i = 0; i < 5; i++) await askForCode(request.agent(app), 'patient@example.com');
+
+    clockAt('2026-10-25T11:00:01Z');
+    const res = await askForCode(request.agent(app), 'patient@example.com');
+
+    expect({ status: res.status, sent: sentTo.length }).toEqual({ status: 200, sent: 6 });
+  });
 });
