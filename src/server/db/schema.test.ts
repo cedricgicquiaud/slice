@@ -24,11 +24,11 @@ function rows<T>(query: SQL): Promise<T[]> {
 }
 
 describe('database schema (D3)', () => {
-  it('creates connectors and connector_actions with the columns of the schema', async () => {
+  it('creates connectors, connector_actions and workspaces with the columns of the schema', async () => {
     const columns = await rows<{ table_name: string; column_name: string; udt_name: string; is_nullable: string }>(
       sql`select table_name, column_name, udt_name, is_nullable
           from information_schema.columns
-          where table_schema = 'public' and table_name in ('connectors', 'connector_actions')
+          where table_schema = 'public' and table_name in ('connectors', 'connector_actions', 'workspaces')
           order by table_name, ordinal_position`
     );
 
@@ -48,6 +48,11 @@ describe('database schema (D3)', () => {
       'connectors.upstream_token_url text YES',
       'connectors.upstream_scopes _text YES',
       'connectors.created_at timestamptz NO',
+      'connectors.workspace_id text YES',
+      'connectors.api_name text YES',
+      'workspaces.id text NO',
+      'workspaces.owner_id text NO',
+      'workspaces.created_at timestamptz NO',
     ]);
   });
 
