@@ -4,7 +4,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { betterAuth } from 'better-auth';
-import { APIError } from 'better-auth/api';
+import { APIError, createAuthMiddleware } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { emailOTP } from 'better-auth/plugins';
 import type { Database } from '../db/client';
@@ -34,6 +34,9 @@ export interface OAuthApplication {
 }
 
 export function createAuth({ database, secret, baseURL, google, microsoft, sendCode }: AuthOptions) {
+  // Better Auth logs a failed send and answers success anyway: the requests
+  // whose code did not leave are marked here, and answered as such below.
+  const unsent = new WeakSet<object>();
   return betterAuth({
     secret,
     baseURL,
@@ -70,7 +73,27 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
       // SLICE shows no profile picture: no extra call to Microsoft Graph.
       ...(microsoft && { microsoft: { ...microsoft, tenantId: 'common', disableProfilePhoto: true } }),
     },
-    plugins: sendCode ? [emailOTP({ sendVerificationOTP: ({ email, otp }) => sendCode(email, otp) })] : [],
+    hooks: {
+      after: createAuthMiddleware(async (ctx) => {
+        if (unsent.has(ctx.context)) {
+          throw new APIError('BAD_GATEWAY', { code: 'code_not_sent', message: "Couldn't send the code, try again." });
+        }
+      }),
+    },
+    plugins: sendCode
+      ? [
+          emailOTP({
+            sendVerificationOTP: async ({ email, otp }, ctx) => {
+              try {
+                await sendCode(email, otp);
+              } catch (err) {
+                if (ctx) unsent.add(ctx.context);
+                throw err;
+              }
+            },
+          }),
+        ]
+      : [],
   });
 }
 

@@ -14,7 +14,7 @@ export function codeSenderFromEnv(env: NodeJS.ProcessEnv): SendCode {
 /** Resend's API (https://resend.com/docs/api-reference/emails/send-email). */
 function emailCodeByResend(apiKey: string, from: string): SendCode {
   return async (email, code) => {
-    await fetch('https://api.resend.com/emails', {
+    const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
       body: JSON.stringify({
@@ -24,6 +24,7 @@ function emailCodeByResend(apiKey: string, from: string): SendCode {
         text: `Your SLICE sign-in code: ${code}\n\nIf you didn't ask for it, ignore this email.`,
       }),
     });
+    if (!res.ok) throw new Error(`Resend refused the sign-in email (HTTP ${res.status})`);
   };
 }
 
