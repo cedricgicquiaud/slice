@@ -60,7 +60,9 @@ async function signInWith(provider: string, tokenEndpoint: string, claims: Recor
   providerAnswers(tokenEndpoint, claims);
   const callback = await browser.get(`/api/auth/callback/${provider}`).query({ code: 'authorization-code', state });
   const session = await browser.get('/api/auth/get-session');
-  return { callback, session: session.body };
+  // Where the provider's return lands: SLICE's page, with `?error=<code>` on a refusal.
+  const landing = new URL(callback.headers.location, 'http://slice.test');
+  return { callback, landing, session: session.body };
 }
 
 describe('sign-in with Google', () => {
@@ -121,5 +123,18 @@ describe('one account per verified address (D7)', () => {
     });
 
     expect([google.session.user.id, microsoft.session.user.id]).toEqual([existing.body.user.id, existing.body.user.id]);
+  });
+});
+
+describe('an address the provider did not verify (D6)', () => {
+  it('opens no session and sends back the unverified-address code', async () => {
+    const { landing, session } = await signInWith('google', GOOGLE_TOKEN_ENDPOINT, {
+      sub: 'google-eve',
+      email: 'eve@example.com',
+      email_verified: false,
+      name: 'Eve',
+    });
+
+    expect({ session, error: landing.searchParams.get('error') }).toEqual({ session: null, error: 'email_not_verified' });
   });
 });
