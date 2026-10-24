@@ -21,6 +21,7 @@ const CODE_NOT_SENT = "Couldn't send the code, try again";
 /** What a refused request for a code says, by the code the server answers; any other failure is a code not sent. */
 const SEND_REFUSALS = new Map([
   ['too_many_codes_for_address', 'Too many codes asked for this address. Try again in an hour.'],
+  ['too_many_codes_from_ip', 'Too many codes asked from your network. Try again in an hour.'],
 ]);
 /** What a refused code says, by the code the server answers, and whether only a new code can sign in. */
 const CODE_REFUSALS = new Map([
