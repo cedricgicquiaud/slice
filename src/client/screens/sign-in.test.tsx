@@ -1,7 +1,12 @@
 // WAT-96 — the sign-in screen: Google, Microsoft or a code by email, never a password.
-import { describe, it, expect } from 'vitest';
+// WAT-97 — Google or Microsoft lead to their sign-in; an unverified address sends to the code.
+import { describe, it, expect, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { SignInScreen } from './sign-in';
+
+afterEach(() => {
+  window.history.pushState({}, '', '/');
+});
 
 describe('SignInScreen', () => {
   it('offers three ways in: Google, Microsoft and a code sent by email', () => {
@@ -24,5 +29,16 @@ describe('SignInScreen', () => {
     const { container } = render(<SignInScreen />);
 
     expect(container.textContent).not.toMatch(/space/i);
+  });
+
+  it('sends to the code by email when Google or Microsoft did not verify the address', () => {
+    // Where the server sends a refused sign-in back (D6).
+    window.history.pushState({}, '', '/?error=email_not_verified');
+
+    render(<SignInScreen />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      "Your Google or Microsoft account didn't confirm this email address. Get a code by email instead."
+    );
   });
 });
