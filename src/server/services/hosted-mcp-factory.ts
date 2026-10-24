@@ -35,11 +35,7 @@ export interface HostedMcpConfig {
   baseUrl: string;
   upstreamAuth: UpstreamAuth;
   endpoints: HostedEndpoint[];
-  /**
-   * ISO creation date, stamped by the store on `put` (kept as-is when already
-   * present — migration and tests). Absent only on pre-expiry legacy records,
-   * which the file store stamps at load time.
-   */
+  /** ISO creation date: set by the store, which stamps the connector on `put` and returns it on `get`. */
   createdAt?: string;
 }
 
