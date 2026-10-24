@@ -108,6 +108,35 @@ describe('hosted store in the database', () => {
   });
 });
 
+describe('hosted store cleanup', () => {
+  let testDb: TestDatabase;
+  let database: Database;
+
+  beforeAll(async () => {
+    testDb = await createTestDatabase();
+    database = openDatabase(testDb.config);
+    await migrateDatabase(database);
+  });
+
+  afterAll(async () => {
+    await database?.close();
+    await testDb?.dispose();
+  });
+
+  /** Created at NOW (2026-10-24 09:00 UTC) with a 72 h expiry: expired from 2026-10-27 09:00 UTC. */
+  const daysAfterExpiry = (days: number) => new Date(Date.UTC(2026, 9, 27 + days, 9));
+
+  it('deletes a connector and its actions 30 days after it expired, without any visit', async () => {
+    const store = createHostedStore(database);
+    const { id } = await store.put(threeActions, NOW);
+
+    await store.purgeExpired(daysAfterExpiry(31), 72);
+
+    expect(await store.get(id)).toBeUndefined();
+    expect(await database.rows(sql`select 1 from connector_actions where connector_id = ${id}`)).toEqual([]);
+  });
+});
+
 describe('hosted store across a restart', () => {
   it('serves the same connector after the database is reopened', async () => {
     const testDb = await createTestDatabase({ persistent: true });
