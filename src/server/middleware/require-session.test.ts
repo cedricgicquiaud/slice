@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../app';
+import { createTestAccount } from '../db/test-account';
 
 describe('session guard on the API', () => {
   it('answers 401 UNAUTHORIZED to an API call without a session', async () => {
@@ -9,5 +10,20 @@ describe('session guard on the API', () => {
 
     expect(res.status).toBe(401);
     expect(res.body.code).toBe('UNAUTHORIZED');
+  });
+
+  it('answers 503 SERVICE_UNAVAILABLE, not unauthorized, while the accounts database is unreachable', async () => {
+    const account = await createTestAccount();
+    await account.database.close();
+    try {
+      const res = await request(createApp({ nodeEnv: 'test', auth: account.auth }))
+        .post('/api/upload')
+        .set('Cookie', account.cookie);
+
+      expect(res.status).toBe(503);
+      expect(res.body.code).toBe('SERVICE_UNAVAILABLE');
+    } finally {
+      await account.dispose().catch(() => {});
+    }
   });
 });
