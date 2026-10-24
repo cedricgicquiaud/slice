@@ -32,6 +32,14 @@ const server = vi.hoisted(() => {
   return { requests, answers };
 });
 
+/** Types the address, asks for a code, then enters `code` and clicks "Sign in". */
+async function signInWithCode(email: string, code: string) {
+  await userEvent.type(screen.getByRole('textbox', { name: 'Email' }), email);
+  await userEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
+  await userEvent.type(await screen.findByRole('textbox', { name: 'Code' }), code);
+  await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+}
+
 afterEach(() => {
   window.history.pushState({}, '', '/');
   server.requests.length = 0;
@@ -118,10 +126,7 @@ describe('SignInScreen', () => {
     server.answers.set('/email-otp/send-verification-otp', { status: 200, body: { success: true } });
     render(<SignInScreen />);
 
-    await userEvent.type(screen.getByRole('textbox', { name: 'Email' }), 'ada@example.com');
-    await userEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
-    await userEvent.type(await screen.findByRole('textbox', { name: 'Code' }), '123456');
-    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await signInWithCode('ada@example.com', '123456');
 
     await waitFor(() =>
       expect(server.requests).toContainEqual({
@@ -149,10 +154,7 @@ describe('SignInScreen', () => {
     server.answers.set('/sign-in/email-otp', { status: 400, body: { code: 'INVALID_OTP', message: 'Invalid OTP' } });
     render(<SignInScreen />);
 
-    await userEvent.type(screen.getByRole('textbox', { name: 'Email' }), 'ada@example.com');
-    await userEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
-    await userEvent.type(await screen.findByRole('textbox', { name: 'Code' }), '000000');
-    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await signInWithCode('ada@example.com', '000000');
 
     expect(await screen.findByRole('alert')).toHaveTextContent('This code is wrong or was already used.');
   });
@@ -162,10 +164,7 @@ describe('SignInScreen', () => {
     server.answers.set('/sign-in/email-otp', { status: 403, body: { code: 'TOO_MANY_ATTEMPTS', message: 'Too many attempts' } });
     render(<SignInScreen />);
 
-    await userEvent.type(screen.getByRole('textbox', { name: 'Email' }), 'ada@example.com');
-    await userEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
-    await userEvent.type(await screen.findByRole('textbox', { name: 'Code' }), '123456');
-    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    await signInWithCode('ada@example.com', '123456');
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Too many wrong codes. Ask for a new one.');
     expect(screen.getByRole('button', { name: 'Email me a code' })).toBeInTheDocument();
