@@ -316,6 +316,10 @@ describe('environment file', () => {
     );
   });
 
+  it('.env.example carries no value', () => {
+    expect(variables().filter((line) => !/^[A-Z][A-Z0-9_]*=$/.test(line))).toEqual([]);
+  });
+
   it('.env, where the values go, is never committed', () => {
     // `git check-ignore` exits non-zero, so throws, when the path is not ignored.
     expect(() => execFileSync('git', ['check-ignore', '--quiet', '.env'], { cwd: ROOT })).not.toThrow();
