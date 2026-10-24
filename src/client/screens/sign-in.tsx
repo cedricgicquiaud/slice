@@ -86,10 +86,7 @@ export function SignInScreen() {
               onChange={(e) => setCode(e.target.value)}
               className={FIELD_CLASS}
             />
-            <button
-              type="submit"
-              className={SUBMIT_CLASS}
-            >
+            <button type="submit" className={SUBMIT_CLASS}>
               Sign in
             </button>
           </form>
@@ -115,10 +112,7 @@ export function SignInScreen() {
               onChange={(e) => setEmail(e.target.value)}
               className={FIELD_CLASS}
             />
-            <button
-              type="submit"
-              className={SUBMIT_CLASS}
-            >
+            <button type="submit" className={SUBMIT_CLASS}>
               Email me a code
             </button>
           </form>
