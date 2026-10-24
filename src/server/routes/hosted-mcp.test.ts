@@ -349,10 +349,10 @@ describe('hosted runtime routes', () => {
   });
 });
 
-function hostRequest(base: string, cookie = account.cookie): Promise<Response> {
+function hostRequest(base: string): Promise<Response> {
   return fetch(`${base}/api/host`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', cookie },
+    headers: { 'content-type': 'application/json', cookie: account.cookie },
     body: JSON.stringify({
       parsedSpec: {},
       rawSpec: SPEC,
@@ -376,15 +376,13 @@ describe('hosted routes when the database is unreachable', () => {
   let downApp: Server;
   let downBase: string;
   let existingId: string;
-  // Signed in on a database of its own: these tests are about the connectors' storage.
-  let signedIn: TestAccount;
 
   beforeAll(async () => {
     downDb = await createTestDatabase();
     down = openDatabase(downDb.config);
     await migrateDatabase(down);
-    signedIn = await createTestAccount();
-    downApp = createApp({ nodeEnv: 'test', hostedStore: createHostedStore(down), auth: signedIn.auth }).listen(0);
+    // Signed in on the file's healthy database: these tests are about the connectors' storage.
+    downApp = createApp({ nodeEnv: 'test', hostedStore: createHostedStore(down), auth: account.auth }).listen(0);
     await new Promise<void>((r) => downApp.once('listening', r));
     downBase = `http://127.0.0.1:${(downApp.address() as AddressInfo).port}`;
     existingId = (await createHostedStore(down).put(threeActions(), new Date())).id;
@@ -394,11 +392,10 @@ describe('hosted routes when the database is unreachable', () => {
   afterAll(async () => {
     await new Promise<void>((r) => (downApp ? downApp.close(() => r()) : r()));
     await downDb?.dispose();
-    await signedIn?.dispose();
   });
 
   it('refuses a creation with SERVICE_UNAVAILABLE and a clear message', async () => {
-    const res = await hostRequest(downBase, signedIn.cookie);
+    const res = await hostRequest(downBase);
 
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({
@@ -430,10 +427,8 @@ describe('hosted routes when the database is unreachable', () => {
 describe('hosted routes when storing or reading fails for another reason', () => {
   let buggyApp: Server;
   let buggyBase: string;
-  let signedIn: TestAccount;
 
   beforeAll(async () => {
-    signedIn = await createTestAccount();
     const constraintViolation = Object.assign(new Error('violates check constraint'), { code: '23514' });
     const buggy: HostedStore = {
       put: () => Promise.reject(new Error('Failed query: insert', { cause: constraintViolation })),
@@ -441,18 +436,17 @@ describe('hosted routes when storing or reading fails for another reason', () =>
       purgeExpired: () => Promise.resolve(),
       ping: () => Promise.resolve(),
     };
-    buggyApp = createApp({ nodeEnv: 'test', hostedStore: buggy, auth: signedIn.auth }).listen(0);
+    buggyApp = createApp({ nodeEnv: 'test', hostedStore: buggy, auth: account.auth }).listen(0);
     await new Promise<void>((r) => buggyApp.once('listening', r));
     buggyBase = `http://127.0.0.1:${(buggyApp.address() as AddressInfo).port}`;
   });
 
   afterAll(async () => {
     await new Promise<void>((r) => (buggyApp ? buggyApp.close(() => r()) : r()));
-    await signedIn?.dispose();
   });
 
   it('refuses a creation with a server error, not SERVICE_UNAVAILABLE', async () => {
-    const res = await hostRequest(buggyBase, signedIn.cookie);
+    const res = await hostRequest(buggyBase);
 
     expect(res.status).toBe(500);
     expect(await res.text()).not.toContain('SERVICE_UNAVAILABLE');
