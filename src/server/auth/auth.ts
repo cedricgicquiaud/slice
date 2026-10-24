@@ -13,9 +13,17 @@ export interface AuthOptions {
   secret?: string;
   /** SLICE's public address. Defaults to BETTER_AUTH_URL, else read from each request. */
   baseURL?: string;
+  /** Google sign-in; left out when SLICE has no Google application. */
+  google?: OAuthApplication;
 }
 
-export function createAuth({ database, secret, baseURL }: AuthOptions) {
+/** An application declared with a provider (`docs/oauth-apps.md`). */
+export interface OAuthApplication {
+  clientId: string;
+  clientSecret: string;
+}
+
+export function createAuth({ database, secret, baseURL, google }: AuthOptions) {
   return betterAuth({
     secret,
     baseURL,
@@ -26,6 +34,7 @@ export function createAuth({ database, secret, baseURL }: AuthOptions) {
       provider: 'pg',
       schema: { user: users, session: sessions, account: accounts, verification: verifications },
     }),
+    socialProviders: { ...(google && { google }) },
   });
 }
 
