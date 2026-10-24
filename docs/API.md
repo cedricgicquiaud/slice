@@ -31,6 +31,15 @@ Better Auth under `/api/auth/*`, and, outside production only, `POST /api/dev/si
 account `recette@slice.local`; used by the visual test pass). Without a live session the answer is
 `401 { "code": "UNAUTHORIZED", "message": "Sign in to continue." }`; while the database is unreachable,
 `503 SERVICE_UNAVAILABLE`.
+
+Google and Microsoft sign-in (Better Auth's social sign-in): `POST /api/auth/sign-in/social` with
+`{ "provider": "google" | "microsoft", "callbackURL": "/", "errorCallbackURL": "/" }` answers `{ "url" }`, the
+provider's sign-in page. The provider sends the person back to `/api/auth/callback/<provider>`, which sets the session
+cookie and redirects to `callbackURL`. When the provider did not verify the email address, no session opens, no
+account is created, and the redirect goes to `errorCallbackURL` with `?error=email_not_verified` (new address) or
+`?error=account_not_linked` (address of an existing account). A provider without its application
+([oauth-apps.md](oauth-apps.md)) is not offered.
+
 The hosted runtime `/m/:id` is protected by the unguessable id in its URL (see [Hosted runtime](#any-mid)).
 
 ### CORS
