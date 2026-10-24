@@ -105,3 +105,35 @@ describe('without a Resend key', () => {
     expect(network).not.toHaveBeenCalled();
   });
 });
+
+const RESEND_EMAILS = 'https://api.resend.com/emails';
+
+/** Resend's API answers `status`, recording what it was asked to send; any other network call fails the test. */
+function resendAnswers(status: number) {
+  const sent: { authorization: string | null; email: { to: string | string[]; text: string } }[] = [];
+  vi.stubGlobal('fetch', async (input: string | URL | Request, init?: RequestInit) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (url !== RESEND_EMAILS) throw new Error(`Unexpected network call: ${url}`);
+    sent.push({ authorization: new Headers(init?.headers).get('authorization'), email: JSON.parse(String(init?.body)) });
+    return Response.json(status === 200 ? { id: 'email-id' } : { name: 'internal_server_error' }, { status });
+  });
+  return sent;
+}
+
+describe('with a Resend key', () => {
+  it('emails the address, through Resend, the code that signs in', async () => {
+    const sent = resendAnswers(200);
+    const browser = request.agent(appSendingWith(codeSenderFromEnv({ RESEND_API_KEY: 're_test_key' })));
+
+    await askForCode(browser, 'katherine@example.com');
+    const code = sent[0]?.email.text.match(/\b\d{6}\b/)?.[0];
+    await browser.post('/api/auth/sign-in/email-otp').send({ email: 'katherine@example.com', otp: code });
+    const session = await browser.get('/api/auth/get-session');
+
+    expect({ authorization: sent[0]?.authorization, to: sent[0]?.email.to, signedIn: session.body?.user.email }).toEqual({
+      authorization: 'Bearer re_test_key',
+      to: 'katherine@example.com',
+      signedIn: 'katherine@example.com',
+    });
+  });
+});
