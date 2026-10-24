@@ -9,7 +9,7 @@
  */
 import { Router } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { buildHostedMcpServer, relayStore } from '../services/hosted-mcp-factory';
+import { buildHostedMcpServer, relayStore, type HostedMcpConfig } from '../services/hosted-mcp-factory';
 import type { HostedStore } from '../services/hosted-store';
 
 export interface HostedMcpRouterOptions {
@@ -41,7 +41,16 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
   const ttlHours = options.ttlHours ?? defaultTtlHours();
 
   router.all('/:id', async (req, res) => {
-    const config = await options.store.get(req.params.id);
+    let config: HostedMcpConfig | undefined;
+    try {
+      config = await options.store.get(req.params.id);
+    } catch (err) {
+      // The database is out of reach: the connector may well exist, never call it unknown.
+      // eslint-disable-next-line no-console
+      console.error('[hosted-mcp] reading the connector failed:', err instanceof Error ? err.message : err);
+      res.status(503).json({ error: 'This MCP is unavailable for the moment. Try again in a few minutes.' });
+      return;
+    }
     if (!config) {
       res.status(404).json({ error: 'Unknown MCP id.' });
       return;
