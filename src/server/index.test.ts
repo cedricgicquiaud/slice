@@ -118,6 +118,19 @@ function postToolsList(url: string): Promise<Response> {
   });
 }
 
+/** Where the server sends a sign-in with `provider`: the provider's address and the application's ID. */
+async function signInStart(baseUrl: string, provider: string): Promise<string> {
+  const res = await fetch(`${baseUrl}/api/auth/sign-in/social`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ provider, callbackURL: '/' }),
+  });
+  const { url } = (await res.json()) as { url?: string };
+  if (!url) return 'no sign-in';
+  const authorize = new URL(url);
+  return `${authorize.origin}${authorize.pathname} ${authorize.searchParams.get('client_id')}`;
+}
+
 describe('server entry point', () => {
   it('starts without DATABASE_URL and never reads the old hosted.json file', async () => {
     const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
@@ -257,21 +270,24 @@ describe('server entry point', () => {
       MICROSOFT_CLIENT_SECRET: 'microsoft-secret',
     });
     try {
-      const startAt = async (provider: string) => {
-        const res = await fetch(`${server.baseUrl}/api/auth/sign-in/social`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ provider, callbackURL: '/' }),
-        });
-        const { url } = (await res.json()) as { url: string };
-        const authorize = new URL(url);
-        return `${authorize.origin}${authorize.pathname} ${authorize.searchParams.get('client_id')}`;
-      };
-
-      expect([await startAt('google'), await startAt('microsoft')]).toEqual([
+      expect([await signInStart(server.baseUrl, 'google'), await signInStart(server.baseUrl, 'microsoft')]).toEqual([
         'https://accounts.google.com/o/oauth2/v2/auth declared-google-app',
         'https://login.microsoftonline.com/common/oauth2/v2.0/authorize declared-microsoft-app',
       ]);
+    } finally {
+      await server.stop();
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it('outside production, takes its values from the .env of its folder (D5)', async () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    writeFileSync(path.join(cwd, '.env'), 'GOOGLE_CLIENT_ID=google-app-from-dotenv\nGOOGLE_CLIENT_SECRET=google-secret\n');
+    const server = await startServer(cwd, {});
+    try {
+      expect(await signInStart(server.baseUrl, 'google')).toBe(
+        'https://accounts.google.com/o/oauth2/v2/auth google-app-from-dotenv'
+      );
     } finally {
       await server.stop();
       rmSync(cwd, { recursive: true, force: true });
