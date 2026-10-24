@@ -181,3 +181,22 @@ describe('a wrong code (contract 18)', () => {
     expect({ status: res.status, code: res.body.code, session }).toEqual({ status: 400, code: 'INVALID_OTP', session: null });
   });
 });
+
+/** Asks for a code for the address, then enters `wrong` wrong codes; the code received. */
+async function missCode(browser: Browser, email: string, wrong: number) {
+  await askForCode(browser, email);
+  const code = inbox.get(email);
+  for (let i = 0; i < wrong; i++) await enterCode(browser, email, wrongCode(code));
+  return code;
+}
+
+describe('five tries per code (contract 18)', () => {
+  it('signs in with the right code after four wrong ones', async () => {
+    const browser = request.agent(app);
+    const code = await missCode(browser, 'tries@example.com', 4);
+
+    const { session } = await enterCode(browser, 'tries@example.com', code);
+
+    expect(session?.user.email).toBe('tries@example.com');
+  });
+});
