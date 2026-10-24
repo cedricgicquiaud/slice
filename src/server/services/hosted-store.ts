@@ -1,3 +1,7 @@
+/**
+ * Hosted connectors in the database: created with their actions in one
+ * transaction, read back by id, and purged 30 days after they expired.
+ */
 import { randomBytes } from 'node:crypto';
 import { asc, eq, lt, sql } from 'drizzle-orm';
 import type { HttpMethod, UpstreamAuth } from '@shared/types';
@@ -105,6 +109,7 @@ export function startHostedCleanup(
   const run = () => {
     store.purgeExpired(options.now(), options.ttlHours).catch((err: unknown) => {
       // The next run retries; an unreachable database must not bring the server down.
+      // eslint-disable-next-line no-console
       console.error('[hosted-store] cleanup failed:', err instanceof Error ? err.message : String(err));
     });
   };

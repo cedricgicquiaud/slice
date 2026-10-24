@@ -44,6 +44,7 @@ export function openDatabase(config: DatabaseConfig): Database {
     const pool = new pg.Pool({ connectionString: config.url, connectionTimeoutMillis: 5_000 });
     // An idle connection dropped by the server must not crash the process; the pool reconnects.
     pool.on('error', (err) => {
+      // eslint-disable-next-line no-console
       console.error('[db] lost an idle database connection:', err.message);
     });
     const db = drizzlePostgres(pool, { schema });
