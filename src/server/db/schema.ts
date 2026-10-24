@@ -92,6 +92,16 @@ export const verifications = pgTable(
   (table) => [index('verifications_identifier_idx').on(table.identifier)]
 );
 
+/** What connectors belong to: one personal workspace per account, never shown. */
+export const workspaces = pgTable('workspaces', {
+  id: text('id').primaryKey(),
+  ownerId: text('owner_id')
+    .notNull()
+    .unique()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+});
+
 export const upstreamAuthType = pgEnum('upstream_auth_type', ['none', 'apiKey', 'bearer', 'oauth2']);
 
 export const httpMethod = pgEnum('http_method', ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
@@ -107,6 +117,9 @@ export const connectors = pgTable(
     upstreamTokenUrl: text('upstream_token_url'),
     upstreamScopes: text('upstream_scopes').array(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    workspaceId: text('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+    /** The API's name as read in its description, shown in the account's list. */
+    apiName: text('api_name'),
   },
   (table) => [
     index('connectors_created_at_idx').on(table.createdAt),
