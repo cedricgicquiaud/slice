@@ -111,6 +111,16 @@ describe('POST /api/generate', () => {
   const signedIn = () =>
     request.agent(createApp({ nodeEnv: 'test', auth: account.auth })).set('Cookie', account.cookie);
 
+  // WAT-101 — downloading the kit takes an account (contract 16).
+  it('answers 401 without a session, even to a valid request', async () => {
+    const res = await request(createApp({ nodeEnv: 'test', auth: account.auth }))
+      .post('/api/generate')
+      .send(buildBody());
+
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('UNAUTHORIZED');
+  });
+
   it('returns 200 + Content-Disposition with the configured mcpName', async () => {
     const res = await signedIn()
       .post('/api/generate')

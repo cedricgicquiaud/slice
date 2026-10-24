@@ -40,6 +40,16 @@ afterEach(() => {
 });
 
 describe('POST /api/upload-url', () => {
+  // WAT-101 — reading an API description takes an account (contract 16).
+  it('answers 401 without a session and fetches nothing', async () => {
+    const app = createApp({ nodeEnv: 'test', auth: account.auth });
+
+    const res = await request(app).post('/api/upload-url').send({ url: 'https://api.example.com/spec.yaml' });
+
+    expect(res.status).toBe(401);
+    expect(mockFetchSpecFromUrl).not.toHaveBeenCalled();
+  });
+
   it('returns 200 + ParsedSpec when URL serves a valid spec', async () => {
     mockFetchSpecFromUrl.mockResolvedValueOnce(VALID_YAML);
     const app = createApp({ nodeEnv: 'test', auth: account.auth });
