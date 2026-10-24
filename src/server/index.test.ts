@@ -141,9 +141,11 @@ describe('server entry point', () => {
   }, 30_000);
 
   it('creates its tables on a first start in an empty folder, and keeps connectors across a restart', async () => {
-    const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    // Run from the repository root like `pnpm dev` (the parse child resolves tsx from there).
+    const scratch = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    const env = { SLICE_HOSTED_TTL_HOURS: '0', SLICE_DATA_DIR: path.join(scratch, 'data') };
     try {
-      const first = await startServer(cwd, { SLICE_HOSTED_TTL_HOURS: '0' });
+      const first = await startServer(ROOT, env);
       let url: string;
       try {
         const res = await fetch(`${first.baseUrl}/api/host`, {
@@ -170,7 +172,7 @@ describe('server entry point', () => {
         await first.stop();
       }
 
-      const restarted = await startServer(cwd, { SLICE_HOSTED_TTL_HOURS: '0' });
+      const restarted = await startServer(ROOT, env);
       try {
         const res = await postToolsList(`${restarted.baseUrl}${new URL(url).pathname}`);
 
@@ -180,7 +182,7 @@ describe('server entry point', () => {
         await restarted.stop();
       }
     } finally {
-      rmSync(cwd, { recursive: true, force: true });
+      rmSync(scratch, { recursive: true, force: true });
     }
   }, 60_000);
 
