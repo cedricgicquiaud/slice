@@ -3,6 +3,10 @@ import { authClient } from '../lib/auth-client';
 
 const ENTRY_CLASS =
   'w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm font-medium transition-colors hover:bg-[var(--slice-highlight)]';
+const FIELD_CLASS =
+  'w-full rounded-lg border border-border bg-background px-4 py-3 font-mono text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground';
+const SUBMIT_CLASS =
+  'rounded-lg bg-foreground px-6 py-2.5 text-sm font-medium text-background transition-opacity disabled:opacity-40';
 
 const UNVERIFIED_ADDRESS =
   "Your Google or Microsoft account didn't confirm this email address. Get a code by email instead.";
@@ -75,11 +79,11 @@ export function SignInScreen() {
               placeholder="123456"
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-4 py-3 font-mono text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground"
+              className={FIELD_CLASS}
             />
             <button
               type="submit"
-              className="rounded-lg bg-foreground px-6 py-2.5 text-sm font-medium text-background transition-opacity disabled:opacity-40"
+              className={SUBMIT_CLASS}
             >
               Sign in
             </button>
@@ -89,8 +93,8 @@ export function SignInScreen() {
             className="flex w-full flex-col gap-3 text-left"
             onSubmit={async (e) => {
               e.preventDefault();
-              const { error } = await authClient.emailOtp.sendVerificationOtp({ email, type: 'sign-in' });
-              if (!error) setCodeSent(true);
+              const sent = await authClient.emailOtp.sendVerificationOtp({ email, type: 'sign-in' });
+              if (!sent.error) setCodeSent(true);
             }}
           >
             <label htmlFor="sign-in-email" className="text-sm font-medium">
@@ -103,11 +107,11 @@ export function SignInScreen() {
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-border bg-background px-4 py-3 font-mono text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground"
+              className={FIELD_CLASS}
             />
             <button
               type="submit"
-              className="rounded-lg bg-foreground px-6 py-2.5 text-sm font-medium text-background transition-opacity disabled:opacity-40"
+              className={SUBMIT_CLASS}
             >
               Email me a code
             </button>
