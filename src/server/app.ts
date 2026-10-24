@@ -43,7 +43,8 @@ export function createApp(options: CreateAppOptions = {}): Express {
   const allowPrivateHosts = options.allowPrivateHosts ?? nodeEnv !== 'production';
   const app = express();
 
-  app.use(cors());
+  // Agents may call a hosted MCP from anywhere; the API answers SLICE's own page only (D16).
+  app.use('/m', cors());
   // Global JSON parser at 10 MB for the default API. The /api/generate
   // route ships its own 15 MB parser; we skip the global one on that path
   // so the larger limit is the only one applied (R1.6.8).
