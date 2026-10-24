@@ -6,6 +6,27 @@ Chaque section correspond à une feature. Les cases se cochent pendant la recett
 
 _Feature P-WAT-40. Une section par livraison, ajoutée par chaque PR._
 
+### Livraison 1 — On se connecte à SLICE, et rien ne se fait sans compte
+
+**Préparer la recette**
+
+- Supprimer le dossier `data/` d'une ancienne base de développement s'il existe : la base est recréée avec les tables
+  des comptes au premier lancement.
+- Lancer `pnpm dev`, puis ouvrir http://localhost:5173 dans une fenêtre de navigation privée (aucune session ouverte).
+- Les liens « My MCPs » et « Delete account » du menu mènent à `/mcps` et `/account/delete`, qui affichent l'accueil
+  jusqu'aux livraisons 2 et 3.
+
+**Sans compte, l'écran de connexion (WAT-96)**
+
+- [ ] Sans session, ouvrir http://localhost:5173 : l'écran « Sign in to SLICE » s'affiche, et non l'accueil
+  « Any API, in any agent, in 3 clicks ».
+- [ ] Sans session, ouvrir http://localhost:5173/mcps : le même écran « Sign in to SLICE » s'affiche.
+- [ ] L'écran propose trois entrées : un bouton « Continue with Google », un bouton « Continue with Microsoft », et un
+  champ « Email » suivi du bouton « Email me a code ».
+- [ ] Refus : aucun champ de l'écran ne demande de mot de passe, et le mot « password » n'apparaît nulle part. Côté
+  base, aucune table n'a de colonne de mot de passe (contrôle automatique : `src/server/db/schema.test.ts`).
+- [ ] Refus : aucun texte de l'écran ne parle d'espace (ni « space », ni « workspace »).
+
 ## SLICE — Les MCP rangés en base de données
 
 ### Livraison 2 — Un connecteur hébergé est créé, servi et expiré depuis la base
