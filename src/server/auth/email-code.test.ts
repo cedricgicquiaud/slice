@@ -250,3 +250,13 @@ describe('a code lives ten minutes (contract 19)', () => {
     expect({ status: res.status, code: res.body.code, session }).toEqual({ status: 400, code: 'OTP_EXPIRED', session: null });
   });
 });
+
+describe('a used code (contract 20)', () => {
+  it('is refused the second time and opens no session', async () => {
+    await signInWithCode(request.agent(app), 'used@example.com');
+
+    const { res, session } = await enterCode(request.agent(app), 'used@example.com', inbox.get('used@example.com'));
+
+    expect({ status: res.status, code: res.body.code, session }).toEqual({ status: 400, code: 'INVALID_OTP', session: null });
+  });
+});
