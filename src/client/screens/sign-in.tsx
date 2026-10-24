@@ -22,6 +22,7 @@ const CODE_NOT_SENT = "Couldn't send the code, try again";
 const CODE_REFUSALS = new Map([
   ['INVALID_OTP', { message: 'This code is wrong or was already used.', newCodeNeeded: false }],
   ['TOO_MANY_ATTEMPTS', { message: 'Too many wrong codes. Ask for a new one.', newCodeNeeded: true }],
+  ['OTP_EXPIRED', { message: 'This code has expired. Ask for a new one.', newCodeNeeded: true }],
 ]);
 
 /** Leaves for the provider's sign-in; back on SLICE's home, or on this screen with `?error=` if refused. */
