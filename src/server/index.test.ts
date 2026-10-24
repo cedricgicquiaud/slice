@@ -247,4 +247,20 @@ describe('server entry point', () => {
       rmSync(cwd, { recursive: true, force: true });
     }
   }, 30_000);
+
+  it('refuses to start in production without BETTER_AUTH_SECRET, and says why', async () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    try {
+      const { code, output } = await runUntilExit(cwd, {
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgres://postgres@127.0.0.1:9/never-reached',
+        BETTER_AUTH_SECRET: '',
+      });
+
+      expect(code).toBe(1);
+      expect(output).toContain('BETTER_AUTH_SECRET is required in production');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
