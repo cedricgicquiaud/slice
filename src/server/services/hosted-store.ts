@@ -10,8 +10,6 @@ export interface HostedStore {
   put(config: HostedMcpConfig, now: Date): Promise<{ id: string; createdAt: string }>;
   /** Read a connector back (`createdAt` set), or `undefined` if unknown. */
   get(id: string): Promise<HostedMcpConfig | undefined>;
-  /** Remove a connector and its actions (no-op if unknown). */
-  delete(id: string): Promise<void>;
 }
 
 export function createHostedStore(database: Database): HostedStore {
@@ -65,9 +63,6 @@ export function createHostedStore(database: Database): HostedStore {
         })),
         createdAt: connector.createdAt.toISOString(),
       };
-    },
-    async delete(id) {
-      await db.delete(connectors).where(eq(connectors.id, id));
     },
   };
 }
