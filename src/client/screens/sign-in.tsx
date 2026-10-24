@@ -2,8 +2,12 @@ const ENTRY_CLASS =
   'w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm font-medium transition-colors hover:bg-[var(--slice-highlight)]';
 
 /** What a refused Google or Microsoft sign-in says, by the code the server sends back (`?error=`). */
+const UNVERIFIED_ADDRESS =
+  "Your Google or Microsoft account didn't confirm this email address. Get a code by email instead.";
 const SIGN_IN_ERRORS = new Map([
-  ['email_not_verified', "Your Google or Microsoft account didn't confirm this email address. Get a code by email instead."],
+  ['email_not_verified', UNVERIFIED_ADDRESS],
+  // Better Auth's code when the unverified address is already an account's: it never links one.
+  ['account_not_linked', UNVERIFIED_ADDRESS],
 ]);
 
 /** The only screen without an account (D1, D3): Google, Microsoft or a code by email. */
