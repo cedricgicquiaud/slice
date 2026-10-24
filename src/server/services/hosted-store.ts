@@ -89,3 +89,17 @@ function upstreamAuthOf(connector: typeof connectors.$inferSelect): UpstreamAuth
 function newId(): string {
   return randomBytes(16).toString('base64url');
 }
+
+const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+
+/** Purge the long-expired connectors now, then every hour, until stopped. */
+export function startHostedCleanup(
+  store: HostedStore,
+  options: { ttlHours: number; now: () => Date }
+): { stop(): void } {
+  const run = () => void store.purgeExpired(options.now(), options.ttlHours);
+  run();
+  const timer = setInterval(run, CLEANUP_INTERVAL_MS);
+  timer.unref();
+  return { stop: () => clearInterval(timer) };
+}
