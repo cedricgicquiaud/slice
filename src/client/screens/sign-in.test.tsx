@@ -129,4 +129,17 @@ describe('SignInScreen', () => {
       })
     );
   });
+
+  it("says the code couldn't be sent when the server could not send it (contract 14)", async () => {
+    server.answers.set('/email-otp/send-verification-otp', {
+      status: 502,
+      body: { code: 'code_not_sent', message: "Couldn't send the code, try again." },
+    });
+    render(<SignInScreen />);
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Email' }), 'ada@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Email me a code' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't send the code, try again");
+  });
 });
