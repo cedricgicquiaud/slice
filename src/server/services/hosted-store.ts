@@ -70,6 +70,7 @@ export function createHostedStore(database: Database): HostedStore {
       };
     },
     async purgeExpired(now, ttlHours) {
+      if (ttlHours <= 0) return;
       const cutoff = new Date(now.getTime() - ttlHours * 3_600_000 - EXPIRED_RETENTION_DAYS * 86_400_000);
       await db.delete(connectors).where(lt(connectors.createdAt, cutoff));
     },
