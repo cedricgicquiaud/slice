@@ -6,12 +6,14 @@ import type { HostedMcpConfig } from './hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
 import { createTestDatabase, type TestDatabase } from '../db/test-database';
+import { createTestAccount } from '../db/test-account';
 
 const NOW = new Date('2026-10-24T09:00:00.000Z');
 
 /** Three actions in a deliberate order, with path, query and body params. */
 const threeActions: HostedMcpConfig = {
   name: 'crm',
+  apiName: 'Acme CRM',
   baseUrl: 'https://api.example.com/v1',
   upstreamAuth: { type: 'apiKey', headerName: 'X-Api-Key' },
   endpoints: [
@@ -60,6 +62,15 @@ describe('hosted store in the database', () => {
   afterAll(async () => {
     await database?.close();
     await testDb?.dispose();
+  });
+
+  it("keeps a connector in the workspace it was created for, with the API's name (D15, D9)", async () => {
+    const store = createHostedStore(database);
+    const { workspaceId } = await createTestAccount({ database, email: 'owner@example.com' });
+
+    const { id } = await store.put(threeActions, workspaceId, NOW);
+
+    expect(await store.get(id)).toMatchObject({ workspaceId, apiName: 'Acme CRM' });
   });
 
   it('gives a created connector a 22-character id that reads back the same connector, actions in order', async () => {

@@ -1,12 +1,14 @@
 /**
- * Test support — a signed-in account: the auth that knows it and the cookie of
- * its live session. On a fresh in-memory database by default, or on the
- * database the test already opened.
+ * Test support — a signed-in account: the auth that knows it, the cookie of its
+ * live session and its personal workspace. On a fresh in-memory database by
+ * default, or on the database the test already opened.
  */
+import { eq } from 'drizzle-orm';
 import { createAuth, type SliceAuth } from '../auth/auth';
 import { openSession } from '../auth/open-session';
 import { openDatabase, type Database } from './client';
 import { migrateDatabase } from './migrate';
+import { users, workspaces } from './schema';
 import { createTestDatabase } from './test-database';
 
 /** The session cookies' signing key in tests; a server spawned by a test gets it as BETTER_AUTH_SECRET. */
@@ -17,6 +19,8 @@ export interface TestAccount {
   database: Database;
   /** Value of the `Cookie` header that carries the account's session. */
   cookie: string;
+  /** The account's personal workspace, created at sign-up (D15). */
+  workspaceId: string;
   dispose(): Promise<void>;
 }
 
@@ -25,8 +29,21 @@ export async function createTestAccount(
 ): Promise<TestAccount> {
   if (options.database) {
     const auth = createAuth({ database: options.database, secret: TEST_AUTH_SECRET });
-    const { name, value } = await openSession(auth, options.email ?? 'account@slice.test');
-    return { auth, database: options.database, cookie: `${name}=${value}`, dispose: async () => {} };
+    const email = options.email ?? 'account@slice.test';
+    const { name, value } = await openSession(auth, email);
+    const [workspace] = await options.database.db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .innerJoin(users, eq(users.id, workspaces.ownerId))
+      .where(eq(users.email, email));
+    if (!workspace) throw new Error(`${email} signed in without a workspace`);
+    return {
+      auth,
+      database: options.database,
+      cookie: `${name}=${value}`,
+      workspaceId: workspace.id,
+      dispose: async () => {},
+    };
   }
   const testDb = await createTestDatabase();
   const database = openDatabase(testDb.config);
