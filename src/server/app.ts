@@ -1,5 +1,6 @@
 import express, { type Express } from 'express';
 import cors from 'cors';
+import { toNodeHandler } from 'better-auth/node';
 import rateLimit from 'express-rate-limit';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,8 +48,10 @@ export function createApp(options: CreateAppOptions = {}): Express {
   // so the larger limit is the only one applied (R1.6.8).
   app.use((req, res, next) => {
     // /api/generate and /api/host ship their own 15 MB parser; skip the global
-    // one on those paths so the larger limit is the only one applied.
+    // one on those paths so the larger limit is the only one applied. Better
+    // Auth reads its own request bodies under /api/auth.
     if (req.path.startsWith('/api/generate') || req.path.startsWith('/api/host')) return next();
+    if (req.path.startsWith('/api/auth/')) return next();
     return express.json({ limit: '10mb' })(req, res, next);
   });
 
@@ -73,6 +76,9 @@ export function createApp(options: CreateAppOptions = {}): Express {
     }
     res.json({ ok: true, status: 'ok', env: nodeEnv, timestamp });
   });
+
+  // Sign-in routes answer without a session (Better Auth rate-limits them itself).
+  if (options.auth) app.all('/api/auth/{*any}', toNodeHandler(options.auth));
 
   app.use('/api/', apiLimiter);
   app.use('/api/', requireSession(options.auth));
