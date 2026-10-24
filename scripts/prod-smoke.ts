@@ -7,16 +7,22 @@
  * compiled `parse-child.js` (not the `.ts` under tsx). Every one of those was a
  * live prod break invisible to the green test suite. This is the gate.
  *
- *   pnpm prod:smoke           # builds, boots, checks, tears down
- *   SKIP_BUILD=1 pnpm prod:smoke   # reuse an existing dist/ (faster local loop)
+ *   DATABASE_URL=… pnpm prod:smoke              # builds, boots, checks, tears down
+ *   DATABASE_URL=… SKIP_BUILD=1 pnpm prod:smoke # reuse an existing dist/ (faster local loop)
+ *
+ * The production server refuses to start without a PostgreSQL database. The
+ * smoke creates a throwaway database on the `DATABASE_URL` server, points the
+ * compiled server at it, and drops it afterwards: the connector it creates
+ * never lands in the database `DATABASE_URL` names.
  *
  * Exits non-zero on the first failed check — wire it into CI pre-release.
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { mkdtempSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import pg from 'pg';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
@@ -49,8 +55,6 @@ paths:
       responses: { '204': { description: deleted } }
 `;
 const HOSTED_URL = /\/m\/[A-Za-z0-9_-]{22}$/;
-
-let hostedUrl = '';
 
 function run(cmd: string, args: string[]): void {
   const r = spawnSync(cmd, args, { cwd: ROOT, stdio: 'inherit' });
@@ -122,7 +126,7 @@ const checks: { name: string; fn: () => Promise<void> }[] = [
     },
   },
   {
-    name: 'POST /api/host creates a connector at /m/<22-char id>',
+    name: 'POST /api/host creates a connector at /m/<22-char id>, whose tools/list returns exactly the selected actions',
     fn: async () => {
       const res = await fetch(`${BASE}/api/host`, {
         method: 'POST',
@@ -147,14 +151,9 @@ const checks: { name: string; fn: () => Promise<void> }[] = [
       if (!body.url || !HOSTED_URL.test(body.url)) {
         throw new Error(`url does not end with /m/<22-char id>: ${body.url}`);
       }
-      hostedUrl = body.url;
-    },
-  },
-  {
-    name: 'tools/list on the hosted URL returns exactly the selected actions',
-    fn: async () => {
+
       const client = new Client({ name: 'prod-smoke', version: '0.0.0' });
-      await client.connect(new StreamableHTTPClientTransport(new URL(hostedUrl)));
+      await client.connect(new StreamableHTTPClientTransport(new URL(body.url)));
       try {
         const { tools } = await client.listTools();
         const names = tools.map((t) => t.name).sort().join(',');
@@ -182,7 +181,28 @@ const checks: { name: string; fn: () => Promise<void> }[] = [
   },
 ];
 
+/** Runs one statement on the `DATABASE_URL` server (database names cannot be bound as parameters). */
+async function admin(databaseUrl: string, statement: string): Promise<void> {
+  const client = new pg.Client({ connectionString: databaseUrl });
+  await client.connect();
+  try {
+    await client.query(statement);
+  } finally {
+    await client.end();
+  }
+}
+
 async function main(): Promise<void> {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    console.error(
+      '❌ prod smoke needs DATABASE_URL: the production server refuses to start without PostgreSQL.\n' +
+        '   A disposable one: docker run --rm -d -p 54329:5432 -e POSTGRES_PASSWORD=smoke postgres:16\n' +
+        '   then DATABASE_URL=postgres://postgres:smoke@localhost:54329/postgres pnpm prod:smoke'
+    );
+    process.exit(1);
+  }
+
   if (process.env.SKIP_BUILD !== '1') {
     console.log('› building prod bundle (pnpm build)…');
     run('pnpm', ['build']);
@@ -190,21 +210,19 @@ async function main(): Promise<void> {
     console.log('› SKIP_BUILD=1 — reusing existing dist/');
   }
 
+  const smokeDatabase = `slice_smoke_${randomBytes(6).toString('hex')}`;
+  const smokeUrl = new URL(databaseUrl);
+  smokeUrl.pathname = `/${smokeDatabase}`;
+  console.log(`› creating throwaway database ${smokeDatabase}…`);
+  await admin(databaseUrl, `CREATE DATABASE "${smokeDatabase}"`);
+
   console.log(`› booting compiled server on :${PORT}…`);
-  // Throwaway store: the connectors created by the smoke must not land in the
-  // repo's default `./data/hosted.json`, which `pnpm dev` also serves. Left in
-  // the OS temp dir for the system to reclaim.
-  const storeDir = mkdtempSync(join(tmpdir(), 'slice-prod-smoke-'));
   const child = spawn(process.execPath, [SERVER_ENTRY], {
     cwd: ROOT,
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
-      PORT: String(PORT),
-      SLICE_STORE_PATH: join(storeDir, 'hosted.json'),
-    },
+    env: { ...process.env, NODE_ENV: 'production', PORT: String(PORT), DATABASE_URL: smokeUrl.href },
     stdio: ['ignore', 'inherit', 'inherit'],
   });
+  const exited = new Promise<void>((r) => (child.exitCode !== null ? r() : child.once('exit', () => r())));
 
   let failed = false;
   try {
@@ -219,6 +237,11 @@ async function main(): Promise<void> {
     console.error(`\n❌ prod smoke failed: ${(err as Error).message}`);
   } finally {
     child.kill('SIGTERM');
+    await exited;
+    // FORCE closes a connection the server may have left open (PostgreSQL 13+).
+    await admin(databaseUrl, `DROP DATABASE IF EXISTS "${smokeDatabase}" WITH (FORCE)`).catch((err: unknown) => {
+      console.error(`  ! could not drop ${smokeDatabase}: ${(err as Error).message}`);
+    });
   }
 
   process.exit(failed ? 1 : 0);

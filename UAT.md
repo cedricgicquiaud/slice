@@ -100,5 +100,5 @@ Chaque section correspond à une feature. Les cases se cochent pendant la recett
   `NODE_ENV=production`.
 - [ ] `docs/API.md` décrit le code `SERVICE_UNAVAILABLE` (503) de la création et la réponse 503 d'une adresse.
 - [ ] Refus : chercher `SLICE_STORE_PATH` et `hosted.json` dans le dépôt (`git grep -n -e SLICE_STORE_PATH -e
-  hosted.json`) : rien, hors l'historique `.workflow/`, `scripts/prod-smoke.ts` (livraison 1) et le test qui vérifie
+  hosted.json`) : rien, hors l'historique `.workflow/` et le test qui vérifie
   que l'ancien fichier est ignoré (`src/server/index.test.ts`).
