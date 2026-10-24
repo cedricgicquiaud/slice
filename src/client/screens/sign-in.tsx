@@ -1,3 +1,5 @@
+import { authClient } from '../lib/auth-client';
+
 const ENTRY_CLASS =
   'w-full rounded-lg border border-border bg-background px-4 py-2.5 text-sm font-medium transition-colors hover:bg-[var(--slice-highlight)]';
 
@@ -9,6 +11,11 @@ const SIGN_IN_ERRORS = new Map([
   // Better Auth's code when the unverified address is already an account's: it never links one.
   ['account_not_linked', UNVERIFIED_ADDRESS],
 ]);
+
+/** Leaves for the provider's sign-in; back on SLICE's home, or on this screen with `?error=` if refused. */
+function signInWith(provider: 'google' | 'microsoft') {
+  void authClient.signIn.social({ provider, callbackURL: '/', errorCallbackURL: '/' });
+}
 
 /** The only screen without an account (D1, D3): Google, Microsoft or a code by email. */
 export function SignInScreen() {
@@ -31,10 +38,10 @@ export function SignInScreen() {
         )}
 
         <div className="flex w-full flex-col gap-3">
-          <button type="button" className={ENTRY_CLASS}>
+          <button type="button" className={ENTRY_CLASS} onClick={() => signInWith('google')}>
             Continue with Google
           </button>
-          <button type="button" className={ENTRY_CLASS}>
+          <button type="button" className={ENTRY_CLASS} onClick={() => signInWith('microsoft')}>
             Continue with Microsoft
           </button>
         </div>
