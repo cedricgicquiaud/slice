@@ -3,8 +3,8 @@
  * its live session. On a fresh in-memory database by default, or on the
  * database the test already opened.
  */
-import { makeSignature } from 'better-auth/crypto';
 import { createAuth, type SliceAuth } from '../auth/auth';
+import { openSession } from '../auth/open-session';
 import { openDatabase, type Database } from './client';
 import { migrateDatabase } from './migrate';
 import { createTestDatabase } from './test-database';
@@ -25,8 +25,8 @@ export async function createTestAccount(
 ): Promise<TestAccount> {
   if (options.database) {
     const auth = createAuth({ database: options.database, secret: TEST_AUTH_SECRET });
-    const cookie = await openSession(auth, options.email ?? 'account@slice.test');
-    return { auth, database: options.database, cookie, dispose: async () => {} };
+    const { name, value } = await openSession(auth, options.email ?? 'account@slice.test');
+    return { auth, database: options.database, cookie: `${name}=${value}`, dispose: async () => {} };
   }
   const testDb = await createTestDatabase();
   const database = openDatabase(testDb.config);
@@ -39,14 +39,4 @@ export async function createTestAccount(
       await testDb.dispose();
     },
   };
-}
-
-/** Sign `email` in without any proof: its account (created if new) and a fresh session's cookie. */
-async function openSession(auth: SliceAuth, email: string): Promise<string> {
-  const ctx = await auth.$context;
-  const user =
-    (await ctx.internalAdapter.findUserByEmail(email))?.user ??
-    (await ctx.internalAdapter.createUser({ email, name: '', emailVerified: true }, { method: 'admin' }));
-  const { token } = await ctx.internalAdapter.createSession(user.id);
-  return `${ctx.authCookies.sessionToken.name}=${token}.${await makeSignature(token, ctx.secret)}`;
 }

@@ -10,6 +10,7 @@ import { createHostRouter } from './routes/host';
 import { createHostedMcpRouter } from './routes/hosted-mcp';
 import type { HostedStore } from './services/hosted-store';
 import type { SliceAuth } from './auth/auth';
+import { devSignIn } from './auth/dev-sign-in';
 import { requireSession } from './middleware/require-session';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -79,6 +80,8 @@ export function createApp(options: CreateAppOptions = {}): Express {
 
   // Sign-in routes answer without a session (Better Auth rate-limits them itself).
   if (options.auth) app.all('/api/auth/{*any}', toNodeHandler(options.auth));
+  // Recette primer: a session without proof, so never mounted in production.
+  if (options.auth && nodeEnv !== 'production') app.post('/api/dev/sign-in', devSignIn(options.auth));
 
   app.use('/api/', apiLimiter);
   app.use('/api/', requireSession(options.auth));
