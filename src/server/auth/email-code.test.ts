@@ -340,4 +340,28 @@ describe('ten codes an hour from an IP (contract 22)', () => {
       sent: 10,
     });
   });
+
+  it('still sends its code to another IP', async () => {
+    const { app, sentTo } = appRecordingSends();
+    for (let i = 1; i <= 10; i++) await askForCodeFrom('203.0.113.7', request.agent(app), `office${i}@example.com`);
+
+    const res = await askForCodeFrom('198.51.100.4', request.agent(app), 'home@example.com');
+
+    expect({ status: res.status, sent: sentTo.length }).toEqual({ status: 200, sent: 11 });
+  });
+
+  it('leaves the IP its ten codes when one could not be sent (contract 14)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const sentTo: string[] = [];
+    let failures = 1;
+    const app = appSendingWith(async (email) => {
+      if (failures-- > 0) throw new Error('Resend is down');
+      sentTo.push(email);
+    });
+    for (let i = 1; i <= 10; i++) await askForCodeFrom('203.0.113.7', request.agent(app), `colleague${i}@example.com`);
+
+    const res = await askForCodeFrom('203.0.113.7', request.agent(app), 'colleague11@example.com');
+
+    expect({ status: res.status, sent: sentTo.length }).toEqual({ status: 200, sent: 10 });
+  });
 });
