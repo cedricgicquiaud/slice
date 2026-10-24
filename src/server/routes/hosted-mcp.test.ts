@@ -117,7 +117,7 @@ function threeActions(): HostedMcpConfig {
 
 describe('hosted connector served from the database', () => {
   it('serves its actions in order, with their parameters and read/write labels', async () => {
-    const { id } = await store.put(threeActions(), new Date());
+    const { id } = await store.put(threeActions(), account.workspaceId, new Date());
 
     const agent = await connectAgent(`${baseUrl}/m/${id}`, 'TOKEN');
     const { tools } = await agent.listTools();
@@ -144,6 +144,7 @@ describe('hosted connector served from the database', () => {
     received = [];
     const { id } = await store.put(
       { ...threeActions(), upstreamAuth: { type: 'apiKey', headerName: 'X-Api-Key' } },
+      account.workspaceId,
       new Date()
     );
 
@@ -397,7 +398,8 @@ describe('hosted routes when the database is unreachable', () => {
     downApp = createApp({ nodeEnv: 'test', hostedStore: createHostedStore(down), auth: account.auth }).listen(0);
     await new Promise<void>((r) => downApp.once('listening', r));
     downBase = `http://127.0.0.1:${(downApp.address() as AddressInfo).port}`;
-    existingId = (await createHostedStore(down).put(threeActions(), new Date())).id;
+    const { workspaceId } = await createTestAccount({ database: down });
+    existingId = (await createHostedStore(down).put(threeActions(), workspaceId, new Date())).id;
     await down.close();
   });
 

@@ -77,8 +77,10 @@ withPostgres('a database outage (runs only with DATABASE_URL)', () => {
       app = createApp({ nodeEnv: 'test', hostedStore: store, auth: signedIn.auth }).listen(0);
       await new Promise<void>((r) => app!.once('listening', r));
       const base = `http://127.0.0.1:${(app.address() as AddressInfo).port}`;
+      const { workspaceId } = await createTestAccount({ database });
       const { id } = await store.put(
         { name: 'demo', baseUrl: 'http://127.0.0.1:9', upstreamAuth: { type: 'none' }, endpoints: [] },
+        workspaceId,
         new Date()
       );
       const statuses = async () => [

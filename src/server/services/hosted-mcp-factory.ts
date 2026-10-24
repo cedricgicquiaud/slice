@@ -39,6 +39,8 @@ export interface HostedMcpConfig {
   endpoints: HostedEndpoint[];
   /** ISO creation date: set by the store, which stamps the connector on `put` and returns it on `get`. */
   createdAt?: string;
+  /** The workspace the connector belongs to (D15): given to the store's `put`, returned by `get`. */
+  workspaceId?: string;
 }
 
 /**

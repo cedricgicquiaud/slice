@@ -80,7 +80,7 @@ const makeHandleHost = (
       }
     }
 
-    const { id, createdAt } = await store.put(config, now()).catch((err: unknown) => {
+    const { id, createdAt } = await store.put(config, res.locals.workspaceId, now()).catch((err: unknown) => {
       // eslint-disable-next-line no-console
       console.error('[host] storing the connector failed:', err instanceof Error ? err.message : err);
       // Anything but an outage is a bug: let it surface as a server error.

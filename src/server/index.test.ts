@@ -217,8 +217,10 @@ describe('server entry point', () => {
     try {
       const database = openDatabase({ driver: 'pglite', dataDir: path.join(scratch, 'pglite') });
       await migrateDatabase(database);
+      const { workspaceId } = await createTestAccount({ database });
       const { id } = await createHostedStore(database).put(
         { name: 'old', baseUrl: 'https://api.example.com', upstreamAuth: { type: 'none' }, endpoints: [] },
+        workspaceId,
         new Date('2020-01-01T00:00:00.000Z')
       );
       await database.close();

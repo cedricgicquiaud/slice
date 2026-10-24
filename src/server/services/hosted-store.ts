@@ -13,9 +13,9 @@ import { connectorActions, connectors } from '../db/schema';
 export const EXPIRED_RETENTION_DAYS = 30;
 
 export interface HostedStore {
-  /** Store a connector and its actions at once, created at `now`; return its unguessable id. */
-  put(config: HostedMcpConfig, now: Date): Promise<{ id: string; createdAt: string }>;
-  /** Read a connector back (`createdAt` set), or `undefined` if unknown. */
+  /** Store a connector and its actions at once, in `workspaceId`, created at `now`; return its unguessable id. */
+  put(config: HostedMcpConfig, workspaceId: string, now: Date): Promise<{ id: string; createdAt: string }>;
+  /** Read a connector back (`createdAt` and `workspaceId` set), or `undefined` if unknown. */
   get(id: string): Promise<HostedMcpConfig | undefined>;
   /** Delete, with their actions, the connectors expired for more than the retention period at `now`. */
   purgeExpired(now: Date, ttlHours: number): Promise<void>;
@@ -26,7 +26,7 @@ export interface HostedStore {
 export function createHostedStore(database: Database): HostedStore {
   const { db } = database;
   return {
-    async put(config, now) {
+    async put(config, workspaceId, now) {
       const id = newId();
       const auth = config.upstreamAuth;
       await db.transaction(async (tx) => {
@@ -39,6 +39,8 @@ export function createHostedStore(database: Database): HostedStore {
           upstreamTokenUrl: auth.type === 'oauth2' ? auth.tokenUrl : null,
           upstreamScopes: auth.type === 'oauth2' ? auth.scopes : null,
           createdAt: now,
+          workspaceId,
+          apiName: config.apiName ?? null,
         });
         if (config.endpoints.length === 0) return;
         await tx.insert(connectorActions).values(
@@ -63,6 +65,7 @@ export function createHostedStore(database: Database): HostedStore {
         .orderBy(asc(connectorActions.position));
       return {
         name: connector.name,
+        ...(connector.apiName !== null && { apiName: connector.apiName }),
         baseUrl: connector.baseUrl,
         upstreamAuth: upstreamAuthOf(connector),
         endpoints: actions.map(({ name, description, method, path, params }) => ({
@@ -73,6 +76,7 @@ export function createHostedStore(database: Database): HostedStore {
           params,
         })),
         createdAt: connector.createdAt.toISOString(),
+        ...(connector.workspaceId !== null && { workspaceId: connector.workspaceId }),
       };
     },
     async purgeExpired(now, ttlHours) {
