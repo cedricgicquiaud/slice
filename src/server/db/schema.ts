@@ -117,7 +117,9 @@ export const connectors = pgTable(
     upstreamTokenUrl: text('upstream_token_url'),
     upstreamScopes: text('upstream_scopes').array(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
-    workspaceId: text('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
     /** The API's name as read in its description, shown in the account's list. */
     apiName: text('api_name'),
   },

@@ -35,7 +35,7 @@ CREATE TABLE "connectors" (
 	"upstream_token_url" text,
 	"upstream_scopes" text[],
 	"created_at" timestamp with time zone NOT NULL,
-	"workspace_id" text,
+	"workspace_id" text NOT NULL,
 	"api_name" text,
 	CONSTRAINT "connectors_header_name_iff_api_key" CHECK (("connectors"."upstream_auth_type" = 'apiKey') = ("connectors"."upstream_header_name" is not null)),
 	CONSTRAINT "connectors_token_url_iff_oauth2" CHECK (("connectors"."upstream_auth_type" = 'oauth2') = ("connectors"."upstream_token_url" is not null))

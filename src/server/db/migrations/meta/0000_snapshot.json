@@ -1,5 +1,5 @@
 {
-  "id": "90d227c2-febb-4ed3-9fc5-3d3dbaeaaf35",
+  "id": "4eb65dc4-949a-430e-b44d-db8906600bf5",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -256,7 +256,7 @@
           "name": "workspace_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "api_name": {
           "name": "api_name",
