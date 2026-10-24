@@ -7,7 +7,7 @@ import type { RequestHandler } from 'express';
 import type { SliceAuth } from './auth';
 import { openSession } from './open-session';
 
-export const RECETTE_EMAIL = 'recette@slice.local';
+const RECETTE_EMAIL = 'recette@slice.local';
 
 export function devSignIn(auth: SliceAuth): RequestHandler {
   return async (_req, res, next) => {
