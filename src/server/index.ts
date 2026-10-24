@@ -1,7 +1,8 @@
 import { createApp } from './app';
 import { databaseConfigFromEnv, openDatabase } from './db/client';
 import { migrateDatabase } from './db/migrate';
-import { createHostedStore } from './services/hosted-store';
+import { defaultTtlHours } from './routes/hosted-mcp';
+import { createHostedStore, startHostedCleanup } from './services/hosted-store';
 
 const PORT = Number(process.env.PORT ?? 3001);
 const NODE_ENV = process.env.NODE_ENV ?? 'development';
@@ -10,7 +11,10 @@ try {
   const database = openDatabase(databaseConfigFromEnv(process.env));
   await migrateDatabase(database);
 
-  const app = createApp({ nodeEnv: NODE_ENV, hostedStore: createHostedStore(database) });
+  const hostedStore = createHostedStore(database);
+  startHostedCleanup(hostedStore, { ttlHours: defaultTtlHours(), now: () => new Date() });
+
+  const app = createApp({ nodeEnv: NODE_ENV, hostedStore });
 
   app.listen(PORT, () => {
     console.log(`SLICE server running on http://localhost:${PORT} (${NODE_ENV})`);
