@@ -137,4 +137,27 @@ describe('an address the provider did not verify (D6)', () => {
 
     expect({ session, error: landing.searchParams.get('error') }).toEqual({ session: null, error: 'email_not_verified' });
   });
+
+  it('refuses a Microsoft account whose address Microsoft did not verify the same way', async () => {
+    const { landing, session } = await signInWith('microsoft', MICROSOFT_TOKEN_ENDPOINT, {
+      oid: 'microsoft-mallory',
+      tid: 'a1b2c3d4-0000-4000-8000-00000000c0de',
+      email: 'mallory@example.com',
+      name: 'Mallory',
+    });
+
+    expect({ session, error: landing.searchParams.get('error') }).toEqual({ session: null, error: 'email_not_verified' });
+  });
+
+  it('never opens the session of the account that has this address', async () => {
+    const { landing, session } = await signInWith('microsoft', MICROSOFT_TOKEN_ENDPOINT, {
+      oid: 'microsoft-impostor',
+      tid: 'a1b2c3d4-0000-4000-8000-00000000c0de',
+      email: 'account@slice.test',
+      name: 'Impostor',
+    });
+
+    // Better Auth's own code for an unproven address meeting an existing account.
+    expect({ session, error: landing.searchParams.get('error') }).toEqual({ session: null, error: 'account_not_linked' });
+  });
 });
