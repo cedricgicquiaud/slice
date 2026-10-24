@@ -5,6 +5,7 @@
 import { betterAuth } from 'better-auth';
 import { APIError } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
+import { emailOTP } from 'better-auth/plugins';
 import type { Database } from '../db/client';
 import { accounts, sessions, users, verifications } from '../db/schema';
 
@@ -18,7 +19,12 @@ export interface AuthOptions {
   google?: OAuthApplication;
   /** Microsoft sign-in, personal and work or school accounts (tenant `common`); left out without an application. */
   microsoft?: OAuthApplication;
+  /** Hands a sign-in code to its address; without it, no sign-in by code. */
+  sendCode?: SendCode;
 }
+
+/** Delivers a sign-in code to an email address; rejects when it could not. */
+export type SendCode = (email: string, code: string) => Promise<void>;
 
 /** An application declared with a provider (`docs/oauth-apps.md`). */
 export interface OAuthApplication {
@@ -26,7 +32,7 @@ export interface OAuthApplication {
   clientSecret: string;
 }
 
-export function createAuth({ database, secret, baseURL, google, microsoft }: AuthOptions) {
+export function createAuth({ database, secret, baseURL, google, microsoft, sendCode }: AuthOptions) {
   return betterAuth({
     secret,
     baseURL,
@@ -59,6 +65,7 @@ export function createAuth({ database, secret, baseURL, google, microsoft }: Aut
       // SLICE shows no profile picture: no extra call to Microsoft Graph.
       ...(microsoft && { microsoft: { ...microsoft, tenantId: 'common', disableProfilePhoto: true } }),
     },
+    plugins: sendCode ? [emailOTP({ sendVerificationOTP: ({ email, otp }) => sendCode(email, otp) })] : [],
   });
 }
 
