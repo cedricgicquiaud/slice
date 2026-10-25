@@ -81,6 +81,15 @@ describe('Delete account', () => {
     expect(screen.getByRole('button', { name: 'Delete my account' })).toBeEnabled();
   });
 
+  it('never mentions a space, the personal one being invisible (contract 30, D15)', async () => {
+    const user = userEvent.setup();
+    const { container } = render(<DeleteAccountScreen />);
+
+    await user.type(screen.getByLabelText('Type delete to confirm'), 'delete');
+
+    expect(container.textContent).not.toMatch(/space/i);
+  });
+
   it('deletes the account at once when clicked, and lands on the sign-in screen at / (D11, D1)', async () => {
     window.history.pushState({}, '', '/account/delete');
     serverSession(LIVE_SESSION);
