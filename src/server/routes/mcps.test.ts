@@ -94,4 +94,17 @@ describe('DELETE /api/mcps/:id', () => {
       body: '{"error":"Unknown MCP id."}',
     });
   });
+
+  it("refuses to delete another account's MCP as if it did not exist, and keeps it (contract 17)", async () => {
+    const other = await createTestAccount({ database, email: 'other@example.com' });
+    const { id } = await store.put(NOTION, other.workspaceId, CREATED);
+
+    const res = await fetch(`${baseUrl}/api/mcps/${id}`, { method: 'DELETE', headers: { cookie: account.cookie } });
+
+    expect({ status: res.status, body: await res.text(), kept: (await store.get(id)) !== undefined }).toEqual({
+      status: 404,
+      body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}',
+      kept: true,
+    });
+  });
 });
