@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { CircleUserRound } from 'lucide-react';
 import { authClient } from '../lib/auth-client';
 
 const ITEM_CLASS =
@@ -6,6 +7,7 @@ const ITEM_CLASS =
 
 /**
  * Signed in, the account's address at the top right; clicked, its menu (D12).
+ * Below 640 px an account icon stands for the address, which heads the menu.
  * `/mcps` and `/account/delete` show the home screen until their own deliveries.
  */
 export function AccountMenu() {
@@ -41,10 +43,12 @@ export function AccountMenu() {
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label={data.user.email}
         onClick={() => setOpen((wasOpen) => !wasOpen)}
         className="font-mono inline-flex h-7 max-w-[240px] items-center rounded-md px-2 text-[11px] text-muted-foreground transition-colors hover:bg-[var(--slice-highlight)] hover:text-foreground"
       >
-        <span className="truncate">{data.user.email}</span>
+        <CircleUserRound aria-hidden="true" className="h-4 w-4 sm:hidden" />
+        <span className="hidden truncate sm:inline">{data.user.email}</span>
       </button>
 
       {open && (
@@ -52,6 +56,9 @@ export function AccountMenu() {
           role="menu"
           className="absolute right-0 top-full z-20 mt-1 min-w-[180px] rounded-lg border border-border bg-background p-1 shadow-lg"
         >
+          <p className="mb-1 max-w-[240px] truncate border-b border-border px-3 py-2 font-mono text-[11px] text-foreground sm:hidden">
+            {data.user.email}
+          </p>
           <a role="menuitem" href="/mcps" className={ITEM_CLASS}>
             My MCPs
           </a>

@@ -21,7 +21,8 @@ export function Topbar({
   onNavigate,
 }: TopbarProps) {
   return (
-    <header className="relative z-10 flex h-16 items-center gap-4 border-b border-border bg-background px-5">
+    // Below 640 px the steps leave the bar for a row of their own: centred beside the buttons, they would cover them.
+    <header className="relative z-10 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-background px-5 py-3 sm:h-16 sm:flex-nowrap sm:py-0">
       <span className="wordmark">SLICE</span>
 
       {apiName && (
@@ -31,7 +32,9 @@ export function Topbar({
         </span>
       )}
 
-      <Stepper current={current} onNavigate={onNavigate} className="absolute left-1/2 -translate-x-1/2" />
+      <div className="order-last flex w-full justify-center sm:absolute sm:left-1/2 sm:w-auto sm:-translate-x-1/2">
+        <Stepper current={current} onNavigate={onNavigate} />
+      </div>
 
       <div className="ml-auto flex items-center gap-3">
 <button
