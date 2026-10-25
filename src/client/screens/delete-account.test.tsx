@@ -14,15 +14,24 @@ const LIVE_SESSION = {
 
 /**
  * SLICE's API as this page sees it: `POST /api/auth/delete-user` deletes the
- * account and ends its session (counted in `deletions`); any other call is
- * "who is signed in?" (`session`).
+ * account and ends its session (counted in `deletions`), or answers
+ * `deletionRefusal` when set; any other call is "who is signed in?" (`session`).
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
 const server = vi.hoisted(() => {
-  const state: { session: unknown; deletions: number } = { session: null, deletions: 0 };
-  const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+  const state: {
+    session: unknown;
+    deletions: number;
+    deletionRefusal: { status: number; code: string; message: string } | null;
+  } = { session: null, deletions: 0, deletionRefusal: null };
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = input instanceof Request ? input.url : String(input);
+    if (url.endsWith('/api/auth/delete-user') && state.deletionRefusal) {
+      const { status, code, message } = state.deletionRefusal;
+      return json({ code, message }, status);
+    }
     if (url.endsWith('/api/auth/delete-user')) {
       state.deletions += 1;
       state.session = null;
@@ -42,6 +51,7 @@ function serverSession(session: unknown) {
 afterEach(() => {
   server.session = null;
   server.deletions = 0;
+  server.deletionRefusal = null;
   window.history.pushState({}, '', '/');
 });
 
@@ -108,5 +118,28 @@ describe('Delete account', () => {
       deletions: server.deletions,
       path: window.location.pathname,
     }).toEqual({ signIn: true, deletions: 1, path: '/' });
+  });
+
+  // Without a password, Better Auth deletes only from a session opened less than a day ago.
+  it('asks to sign in again when the session is too old to delete the account, and stays on the page', async () => {
+    window.history.pushState({}, '', '/account/delete');
+    server.deletionRefusal = {
+      status: 400,
+      code: 'SESSION_EXPIRED',
+      message: 'Session expired. Re-authenticate to perform this action.',
+    };
+    const user = userEvent.setup();
+    render(<DeleteAccountScreen />);
+
+    await user.type(screen.getByLabelText('Type delete to confirm'), 'delete');
+    await user.click(screen.getByRole('button', { name: 'Delete my account' }));
+
+    expect({
+      message: (await screen.findByRole('alert')).textContent,
+      path: window.location.pathname,
+    }).toEqual({
+      message: 'For your safety, sign out and sign in again, then delete your account.',
+      path: '/account/delete',
+    });
   });
 });
