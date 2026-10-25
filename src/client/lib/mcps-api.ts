@@ -23,7 +23,8 @@ export async function listMcps(): Promise<Mcp[]> {
 
 /** Delete one of the account's MCPs, at once (D10). */
 export async function deleteMcp(id: string): Promise<void> {
-  await fetch(`/api/mcps/${id}`, { method: 'DELETE' });
+  const res = await fetch(`/api/mcps/${id}`, { method: 'DELETE' });
+  if (!res.ok) await throwRefusal(res);
 }
 
 /**
