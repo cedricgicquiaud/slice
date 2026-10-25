@@ -59,6 +59,35 @@ describe('AccountMenu', () => {
     }).toEqual({ myMcps: '/mcps', signOut: true, deleteAccount: '/account/delete' });
   });
 
+  it('closes on Escape and gives the focus back to the address', async () => {
+    signedInAs('ada@example.com');
+    render(<AccountMenu />);
+    const address = await screen.findByRole('button', { name: 'ada@example.com' });
+    await userEvent.click(address);
+
+    await userEvent.keyboard('{Escape}');
+
+    expect({ menu: screen.queryByRole('menu'), focused: document.activeElement === address }).toEqual({
+      menu: null,
+      focused: true,
+    });
+  });
+
+  it('closes on a click beside it', async () => {
+    signedInAs('ada@example.com');
+    render(
+      <div>
+        <p>Beside the menu</p>
+        <AccountMenu />
+      </div>
+    );
+    await userEvent.click(await screen.findByRole('button', { name: 'ada@example.com' }));
+
+    await userEvent.click(screen.getByText('Beside the menu'));
+
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
   it('shows the sign-in screen again once Sign out is clicked', async () => {
     signedInAs('ada@example.com');
     render(
