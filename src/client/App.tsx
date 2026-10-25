@@ -7,6 +7,7 @@ import { UploadScreen } from './screens/upload';
 import { SelectionScreen } from './screens/selection';
 import { ConfigScreen } from './screens/config';
 import { SuccessScreen } from './screens/success';
+import { McpsScreen } from './screens/mcps';
 import { useTheme } from './hooks/use-theme';
 import { ApiError, apiGenerate, apiHost } from './lib/api';
 
@@ -114,7 +115,10 @@ function AppInner() {
       />
 
       <main className="flex flex-1 flex-col overflow-hidden px-6">
-        {screen === 1 && <UploadScreen onParsed={handleParsed} />}
+        {/* The address picks the page (contract 9): reloaded at /mcps, the list shows again. */}
+        {window.location.pathname === '/mcps' && <McpsScreen />}
+
+        {window.location.pathname !== '/mcps' && screen === 1 && <UploadScreen onParsed={handleParsed} />}
 
         {screen === 2 && parsedSpec && (
           <SelectionScreen
