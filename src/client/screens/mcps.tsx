@@ -1,11 +1,22 @@
 /**
  * "My MCPs", at `/mcps` (D9): the signed-in account's MCPs, newest first, each
- * with its API's name, action count, creation date and address.
+ * with its API's name, action count, creation date and address. Deleting one
+ * asks for confirmation, then takes effect at once (D10). No way to change one.
  */
 import { useEffect, useId, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
+import { Button } from '../components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '../components/ui/dialog';
 import { ApiError } from '../lib/api';
-import { listMcps, type Mcp } from '../lib/mcps-api';
+import { deleteMcp, listMcps, type Mcp } from '../lib/mcps-api';
 
 const CREATED = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 
@@ -33,7 +44,14 @@ export function McpsScreen() {
       {mcps && mcps.length > 0 && (
         <ul className="mt-8 flex flex-col gap-3">
           {mcps.map((mcp) => (
-            <McpRow key={mcp.id} mcp={mcp} />
+            <McpRow
+              key={mcp.id}
+              mcp={mcp}
+              onDelete={async () => {
+                await deleteMcp(mcp.id);
+                setMcps((current) => current?.filter((other) => other.id !== mcp.id) ?? null);
+              }}
+            />
           ))}
         </ul>
       )}
@@ -41,7 +59,7 @@ export function McpsScreen() {
   );
 }
 
-function McpRow({ mcp }: { mcp: Mcp }) {
+function McpRow({ mcp, onDelete }: { mcp: Mcp; onDelete: () => Promise<void> }) {
   const nameId = useId();
   const [copied, setCopied] = useState(false);
   async function handleCopy() {
@@ -71,6 +89,26 @@ function McpRow({ mcp }: { mcp: Mcp }) {
           {copied ? <Check size={14} /> : <Copy size={14} />}
         </button>
       </div>
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button variant="ghost" size="sm" className="self-end text-muted-foreground hover:text-destructive">
+            Delete
+          </Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete {mcp.apiName}?</DialogTitle>
+            <DialogDescription>
+              Its address stops working at once, for every agent that uses it. This can&apos;t be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="destructive" onClick={() => void onDelete()}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </li>
   );
 }
