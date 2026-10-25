@@ -18,7 +18,8 @@ export function McpsScreen() {
   return (
     <div className="mx-auto w-full max-w-3xl overflow-y-auto px-6 py-12">
       <h1 className="font-serif text-4xl italic">My MCPs</h1>
-      {mcps && (
+      {mcps?.length === 0 && <p className="mt-8 text-sm text-muted-foreground">You have no MCP yet.</p>}
+      {mcps && mcps.length > 0 && (
         <ul className="mt-8 flex flex-col gap-3">
           {mcps.map((mcp) => (
             <McpRow key={mcp.id} mcp={mcp} />
