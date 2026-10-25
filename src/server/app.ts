@@ -99,7 +99,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   // 10 MB app-level one is bypassed by the path-specific router order.
   app.use('/api/generate', createGenerateRouter());
 
-  // GET /api/mcps — the account's own MCPs (D9).
+  // GET /api/mcps, DELETE /api/mcps/:id — the account's own MCPs (D9, D10).
   if (options.accountMcps) app.use('/api/mcps', createMcpsRouter(options.accountMcps));
 
   // Pivot-4 — SLICE Cloud. POST /api/host stores a config and returns a URL;
