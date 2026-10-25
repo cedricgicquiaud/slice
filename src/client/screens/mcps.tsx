@@ -28,9 +28,7 @@ export function McpsScreen() {
   useEffect(() => {
     listMcps()
       .then(setMcps)
-      .catch((err: unknown) => {
-        setError(err instanceof ApiError ? err.message : 'Could not reach the server. Try again in a moment.');
-      });
+      .catch((err: unknown) => setError(messageOf(err)));
   }, []);
 
   return (
@@ -49,8 +47,12 @@ export function McpsScreen() {
               key={mcp.id}
               mcp={mcp}
               onDelete={async () => {
-                await deleteMcp(mcp.id);
-                setMcps((current) => current?.filter((other) => other.id !== mcp.id) ?? null);
+                try {
+                  await deleteMcp(mcp.id);
+                  setMcps((current) => current?.filter((other) => other.id !== mcp.id) ?? null);
+                } catch (err) {
+                  setError(messageOf(err));
+                }
               }}
             />
           ))}
@@ -107,12 +109,18 @@ function McpRow({ mcp, onDelete }: { mcp: Mcp; onDelete: () => Promise<void> }) 
             <DialogClose asChild>
               <Button variant="outline">Cancel</Button>
             </DialogClose>
-            <Button variant="destructive" onClick={() => void onDelete()}>
-              Delete
-            </Button>
+            <DialogClose asChild>
+              <Button variant="destructive" onClick={() => void onDelete()}>
+                Delete
+              </Button>
+            </DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </li>
   );
+}
+
+function messageOf(err: unknown): string {
+  return err instanceof ApiError ? err.message : 'Could not reach the server. Try again in a moment.';
 }
