@@ -320,6 +320,24 @@ describe('server entry point', () => {
     }
   }, 30_000);
 
+  // Without it, behind a proxy, every write from SLICE's own page would answer 403 (decided at PR #63's merge).
+  it('refuses to start in production without BETTER_AUTH_URL, and says why', async () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    try {
+      const { code, output } = await runUntilExit(cwd, {
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgres://postgres@127.0.0.1:9/never-reached',
+        BETTER_AUTH_SECRET: 'production-secret',
+        BETTER_AUTH_URL: '',
+      });
+
+      expect(code).toBe(1);
+      expect(output).toContain('BETTER_AUTH_URL is required in production');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   // WAT-101 — in development the page is Vite's, whose proxy hands the API another address.
   it('takes orders from the Vite page (http://localhost:5173) in development, without BETTER_AUTH_URL', async () => {
     const scratch = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
