@@ -1,5 +1,6 @@
 import { useId, useState } from 'react';
 import { Button } from '../components/ui/button';
+import { authClient } from '../lib/auth-client';
 
 /** The word that confirms the deletion, typed exactly: `Delete` or `delet` keep the button inactive (contract 27). */
 const CONFIRMATION = 'delete';
@@ -11,6 +12,14 @@ const FIELD_CLASS =
 export function DeleteAccountScreen() {
   const fieldId = useId();
   const [typed, setTyped] = useState('');
+
+  // Deleted, the session ends with the account: the sign-in screen shows, at
+  // home, so that signing in again does not land back on this page.
+  async function handleDelete() {
+    await authClient.deleteUser();
+    window.history.replaceState({}, '', '/');
+  }
+
   return (
     <div className="mx-auto w-full max-w-xl overflow-y-auto px-6 py-12">
       <h1 className="font-serif text-4xl italic">Delete your account</h1>
@@ -30,7 +39,12 @@ export function DeleteAccountScreen() {
           spellCheck={false}
           className={FIELD_CLASS}
         />
-        <Button variant="destructive" className="self-start" disabled={typed !== CONFIRMATION}>
+        <Button
+          variant="destructive"
+          className="self-start"
+          disabled={typed !== CONFIRMATION}
+          onClick={() => void handleDelete()}
+        >
           Delete my account
         </Button>
       </div>
