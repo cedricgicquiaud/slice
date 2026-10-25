@@ -186,6 +186,74 @@ Préparer : se connecter (le plus simple : code par e-mail, sans clé Resend).
   supprimé, est toujours servi après le démarrage. Le nettoyage horaire partait de ce même démarrage : il n'est plus
   lancé du tout.
 
+### Livraison 2 — Je retrouve mes MCP sur « My MCPs » et j'en supprime un
+
+**Préparer la recette**
+
+- Lancer `pnpm dev`, ouvrir http://localhost:5173 et se connecter avec une adresse A (le plus simple : code par
+  e-mail, sans clé Resend ; le code s'affiche dans le terminal de `pnpm dev`).
+- Créer deux MCP hébergés (« Deploy to SLICE Cloud ») : l'un depuis l'adresse de description
+  `https://petstore3.swagger.io/api/v3/openapi.json` en cochant 3 actions, l'autre depuis le fichier
+  `fixtures/shopify-50.yaml` du dépôt en cochant 1 action. Noter l'adresse de chacun, affichée à l'écran 4.
+- Ouvrir « My MCPs » depuis le menu de compte (l'adresse e-mail en haut à droite), ou directement
+  http://localhost:5173/mcps.
+
+**J'ouvre « My MCPs » et je retrouve mes MCP (WAT-103)**
+
+- [ ] La page « My MCPs » liste les deux MCP, le plus récent en haut. Chacun montre le nom de l'API tel que lu dans sa
+  description (par exemple « Swagger Petstore - OpenAPI 3.0 »), son nombre d'actions (« 3 actions », puis « 1 action »
+  au singulier), sa date de création (par exemple « Created Oct 25, 2026 ») et son adresse en entier.
+- [ ] Cliquer l'icône de copie à droite d'une adresse, puis coller (Cmd+V) dans un champ quelconque : c'est
+  exactement l'adresse notée à l'écran 4.
+- [ ] Recharger la page (Cmd+R) sur http://localhost:5173/mcps : la page « My MCPs » revient avec la même liste, et
+  non l'accueil « Any API, in any agent, in 3 clicks ».
+- [ ] Cliquer « Reset » en haut de la page : l'accueil s'affiche, à l'adresse http://localhost:5173/. Le bouton
+  « Précédent » du navigateur ramène à « My MCPs ».
+- [ ] Un MCP enregistré sans nom d'API s'affiche sous le domaine de son API (par exemple `api.acme.io`). SLICE donne
+  aujourd'hui un nom à tout MCP créé (« Untitled API » à défaut de titre) : ce cas ne se joue pas à l'écran, il est
+  prouvé par le test automatique « names an MCP without an API name after its API's domain (D9) »
+  (`src/server/services/account-mcps.test.ts`).
+- [ ] Se connecter avec une adresse B qui n'a jamais créé de MCP (en navigation privée) et ouvrir « My MCPs » : la
+  page affiche « You have no MCP yet. »
+- [ ] Se connecter par Google avec une adresse Gmail, créer un MCP, se déconnecter, puis se connecter par code reçu
+  à cette même adresse : « My MCPs » montre le même MCP (même compte, mêmes MCP). Préparer `.env` comme pour WAT-97
+  de la livraison 1.
+- [ ] Refus : la page ne propose aucune modification d'un MCP. Chaque ligne n'offre que deux boutons, la copie de
+  l'adresse et « Delete » ; aucun champ ne se saisit, aucun bouton « Edit » ou « Rename ».
+- [ ] Refus : connecté avec l'adresse B, « My MCPs » ne montre jamais les MCP de l'adresse A, et inversement.
+
+**Je supprime un MCP (WAT-104)**
+
+- [ ] Sur la ligne d'un MCP, cliquer « Delete » : une fenêtre s'ouvre, titrée « Delete <nom de l'API>? », qui
+  prévient que l'adresse cesse de répondre tout de suite. Cliquer « Delete » dans la fenêtre : la fenêtre se ferme
+  et la ligne disparaît de la liste aussitôt. Recharger la page : le MCP n'y revient pas.
+- [ ] Supprimer le dernier MCP de la liste : la page affiche « You have no MCP yet. »
+- [ ] Refus : cliquer « Delete » sur une ligne, puis « Cancel » dans la fenêtre (ou la touche Échap, ou la croix) :
+  la fenêtre se ferme, la ligne reste là, et après rechargement le MCP est toujours listé.
+- [ ] Refus : après suppression, l'adresse du MCP répond « Unknown MCP id ». Dans un terminal, avec l'adresse notée à
+  l'écran 4 :
+  `curl -i -X POST <adresse> -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'`
+  affiche `HTTP/1.1 404` et `{"error":"Unknown MCP id."}`. Un agent (Claude Desktop) branché sur cette adresse ne
+  voit plus aucune action.
+
+**Je ne peux pas toucher aux MCP d'un autre compte (WAT-105)**
+
+Préparer : connecté avec l'adresse B, copier la valeur du cookie `better-auth.session_token` (outils du navigateur,
+onglet Application ou Stockage, Cookies, `http://localhost:5173`). Prendre l'identifiant d'un MCP de l'adresse A : la
+fin de son adresse, après `/m/`.
+
+- [ ] Refus : supprimer par l'API le MCP de l'adresse A avec la session de B répond 404, comme pour un MCP qui
+  n'existe pas.
+  `curl -i -X DELETE http://localhost:3001/api/mcps/<identifiant> -H 'Cookie: better-auth.session_token=<valeur de B>'`
+  affiche `HTTP/1.1 404` et `{"code":"NOT_FOUND","message":"Unknown MCP id."}`. Connecté avec l'adresse A, le MCP
+  est toujours dans « My MCPs » et son adresse répond toujours.
+- [ ] Refus : sans session, la liste et la suppression répondent 401.
+  `curl -i http://localhost:3001/api/mcps` et
+  `curl -i -X DELETE http://localhost:3001/api/mcps/<identifiant>` affichent chacun `HTTP/1.1 401` et
+  `{"code":"UNAUTHORIZED","message":"Sign in to continue."}` ; le MCP est toujours là.
+- [ ] `docs/API.md` décrit `GET /api/mcps` et `DELETE /api/mcps/:id` : la réponse, les champs, et les refus 401, 403,
+  404 et 503.
+
 ## SLICE — Les MCP rangés en base de données
 
 ### Livraison 2 — Un connecteur hébergé est créé, servi et expiré depuis la base
