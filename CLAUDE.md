@@ -35,6 +35,8 @@ Générateur web de serveurs MCP (Model Context Protocol) sur-mesure depuis une 
 
 **Repositionnement produit (2026-07-22, PR #42/#43/#44)** : « l'hébergement est le produit » — voir la section datée de `.workflow/POSITIONING.md`. Pitch « Any API, in any agent, in 3 clicks » ; curation revendue **moindre privilège côté serveur** ; compteur de contexte rétrogradé en bonus (« Agent scope » en principal) ; self-host rétrogradé en option discrète (kit conservé) ; **expiration des URLs hébergées gratuites** (`SLICE_HOSTED_TTL_HOURS`, défaut 72 h, 0 = désactivé — self-host) : 410 + purge sur `/m/:id`, `expiresAt` dans `/api/host`, CTA mailto « Get a permanent plan » à l'écran 4. Pas de billing tant que la demande n'est pas validée par de vrais contacts. Au passage : restauration du `GenerationReport` supprimé par accident par la refonte ui-polish. 548 tests verts.
 
+**Comptes (PR #63, mergé 2026-10-25)** : connexion obligatoire pour tout SLICE (Google, Microsoft ou code e-mail, Better Auth, aucun mot de passe) ; chaque MCP appartient à un compte. **L'expiration ci-dessus est débranchée** : aucun MCP ne périme tant qu'il n'y a pas de facturation (code gardé, `SLICE_HOSTED_TTL_HOURS` ignorée). En production, `BETTER_AUTH_SECRET` et `BETTER_AUTH_URL` sont obligatoires.
+
 **Prochaine étape** : mise en ligne sur VPS Coolify (env : `DATABASE_URL` — PostgreSQL, obligatoire en production —, `SLICE_HOSTED_TTL_HOURS`, `NODE_ENV=production`).
 
 **Outils** : `scripts/try-hosted.ts` (tester un MCP hébergé en CLI) ; `scripts/corpus-check.ts [N]` (stress N specs réelles — aussi en CI via `corpus.yml` à la demande).

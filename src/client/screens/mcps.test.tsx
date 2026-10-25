@@ -1,0 +1,256 @@
+// WAT-103/104 — "My MCPs": the account finds its MCPs, copies an address, deletes one.
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import App from '../App';
+import { McpsScreen } from './mcps';
+import { AuthGate } from '../components/auth-gate';
+import { ToastProvider } from '../components/toast';
+import { refreshSession } from '../lib/auth-client';
+
+const NOTION = {
+  id: 'notion-id',
+  apiName: 'Notion API',
+  actionCount: 2,
+  createdAt: '2026-10-21T10:15:00.000Z',
+  url: 'http://localhost:5173/m/notion-id',
+};
+
+const LIVE_SESSION = {
+  session: { id: 's1', userId: 'u1', token: 't', expiresAt: '2026-11-01T00:00:00.000Z' },
+  user: { id: 'u1', email: 'ada@example.com', name: '', emailVerified: true },
+};
+
+/**
+ * SLICE's API as this page sees it: `GET /api/mcps` answers the account's MCPs,
+ * or `refusal` when set (a 401 means the session is gone); `DELETE
+ * /api/mcps/:id` deletes one, or answers `deletionRefusal` when set; any other
+ * call is "who is signed in?" (`session`).
+ * Set before any import: the auth client keeps the `fetch` it finds when loaded.
+ */
+const server = vi.hoisted(() => {
+  const state: {
+    session: unknown;
+    mcps: unknown[];
+    refusal: { status: number; code: string; message: string } | null;
+    deletionRefusal: { status: number; code: string; message: string } | null;
+  } = { session: null, mcps: [], refusal: null, deletionRefusal: null };
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (init?.method === 'DELETE' && state.deletionRefusal) {
+      const { status, code, message } = state.deletionRefusal;
+      return json({ code, message }, status);
+    }
+    if (init?.method === 'DELETE' && url.startsWith('/api/mcps/')) {
+      state.mcps = state.mcps.filter((mcp) => `/api/mcps/${(mcp as { id: string }).id}` !== url);
+      return new Response(null, { status: 204 });
+    }
+    if (url !== '/api/mcps') return json(state.session);
+    if (state.refusal?.status === 401) state.session = null;
+    if (state.refusal) return json({ code: state.refusal.code, message: state.refusal.message }, state.refusal.status);
+    return json({ mcps: state.mcps });
+  }) as typeof fetch;
+  return state;
+});
+
+/** The server now answers `session`; like a sign-in or out, the client is told to ask again. */
+function serverSession(session: unknown) {
+  server.session = session;
+  refreshSession();
+}
+
+beforeEach(() => {
+  server.mcps = [];
+  server.refusal = null;
+  server.deletionRefusal = null;
+});
+
+afterEach(() => {
+  window.history.pushState({}, '', '/');
+});
+
+function renderPage() {
+  render(
+    <ToastProvider>
+      <McpsScreen />
+    </ToastProvider>
+  );
+}
+
+describe('My MCPs', () => {
+  it("shows each MCP's API name, action count, creation date and address (D9)", async () => {
+    server.mcps = [NOTION];
+
+    renderPage();
+
+    const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
+    expect({
+      actions: row.queryByText('2 actions') !== null,
+      created: row.queryByText('Created Oct 21, 2026') !== null,
+      address: row.queryByText('http://localhost:5173/m/notion-id') !== null,
+    }).toEqual({ actions: true, created: true, address: true });
+  });
+
+  // At 375 px the address is longer than the row: it wraps instead of ending in an
+  // ellipsis, so the MCP's id stays readable. jsdom lays nothing out: the class is
+  // what can be checked here, the width itself is the visual pass's.
+  it('wraps a long address instead of cutting it off', async () => {
+    server.mcps = [NOTION];
+
+    renderPage();
+
+    const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
+    const address = row.getByText('http://localhost:5173/m/notion-id');
+    expect({
+      truncated: address.classList.contains('truncate'),
+      wraps: address.classList.contains('break-all'),
+    }).toEqual({ truncated: false, wraps: true });
+  });
+
+  it('counts a single action in the singular', async () => {
+    server.mcps = [{ ...NOTION, actionCount: 1 }];
+
+    renderPage();
+
+    const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
+    expect(row.queryByText('1 action')).toBeInTheDocument();
+  });
+
+  it("copies an MCP's address to the clipboard", async () => {
+    server.mcps = [NOTION];
+    const user = userEvent.setup();
+    renderPage();
+
+    const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
+    await user.click(row.getByRole('button', { name: 'Copy address' }));
+
+    expect(await navigator.clipboard.readText()).toBe('http://localhost:5173/m/notion-id');
+  });
+
+  it('offers no way to change an MCP (D9)', async () => {
+    server.mcps = [NOTION];
+
+    renderPage();
+
+    const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
+    expect({
+      changeButtons: row.queryAllByRole('button', { name: /edit|rename|modify|change|settings/i }).length,
+      fields: row.queryAllByRole('textbox').length,
+    }).toEqual({ changeButtons: 0, fields: 0 });
+  });
+
+  it('deletes an MCP once the deletion is confirmed: it leaves the list and the account (D10)', async () => {
+    server.mcps = [NOTION];
+    const user = userEvent.setup();
+    renderPage();
+    const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
+
+    await user.click(row.getByRole('button', { name: 'Delete' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(screen.queryByRole('listitem', { name: 'Notion API' })).not.toBeInTheDocument());
+    expect(server.mcps).toEqual([]);
+  });
+
+  it('deletes nothing when the deletion is cancelled (contract 25)', async () => {
+    server.mcps = [NOTION];
+    const user = userEvent.setup();
+    renderPage();
+    const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
+
+    await user.click(row.getByRole('button', { name: 'Delete' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+
+    expect({
+      dialog: screen.queryByRole('dialog') !== null,
+      listed: screen.queryByRole('listitem', { name: 'Notion API' }) !== null,
+      kept: server.mcps,
+    }).toEqual({ dialog: false, listed: true, kept: [NOTION] });
+  });
+
+  it("keeps the MCP and shows the server's message when the deletion is refused", async () => {
+    server.mcps = [NOTION];
+    server.deletionRefusal = { status: 503, code: 'SERVICE_UNAVAILABLE', message: 'SLICE is unavailable for the moment.' };
+    const user = userEvent.setup();
+    renderPage();
+    const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
+
+    await user.click(row.getByRole('button', { name: 'Delete' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }));
+
+    expect({
+      message: (await screen.findByRole('alert')).textContent,
+      listed: screen.queryByRole('listitem', { name: 'Notion API' }) !== null,
+    }).toEqual({ message: 'SLICE is unavailable for the moment.', listed: true });
+  });
+
+  it('says so when the account has no MCP yet', async () => {
+    server.mcps = [];
+
+    renderPage();
+
+    expect(await screen.findByText('You have no MCP yet.')).toBeInTheDocument();
+  });
+
+  it("shows the server's message when the list is refused", async () => {
+    server.refusal = { status: 503, code: 'SERVICE_UNAVAILABLE', message: 'SLICE is unavailable for the moment.' };
+
+    renderPage();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('SLICE is unavailable for the moment.');
+  });
+
+  it('opens at /mcps, as when the page is reloaded there, with the list (contract 9)', async () => {
+    window.history.pushState({}, '', '/mcps');
+    server.mcps = [NOTION];
+
+    render(<App />);
+
+    expect(await screen.findByRole('listitem', { name: 'Notion API' })).toBeInTheDocument();
+  });
+
+  it('goes back to the home screen at / when Reset is clicked', async () => {
+    window.history.pushState({}, '', '/mcps');
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole('heading', { name: 'My MCPs' });
+
+    await user.click(screen.getByRole('button', { name: 'Reset' }));
+
+    expect({
+      home: screen.queryByRole('heading', { name: /any api, in any agent/i }) !== null,
+      path: window.location.pathname,
+    }).toEqual({ home: true, path: '/' });
+  });
+
+  it("shows My MCPs again when the browser's Back returns to /mcps", async () => {
+    window.history.pushState({}, '', '/mcps');
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Reset' }));
+
+    act(() => {
+      window.history.pushState({}, '', '/mcps');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+
+    expect(await screen.findByRole('heading', { name: 'My MCPs' })).toBeInTheDocument();
+  });
+
+  // Contract 13: the session ran out while the page was on screen.
+  it('shows the sign-in screen when the list is refused for want of a session', async () => {
+    serverSession(LIVE_SESSION);
+    server.refusal = { status: 401, code: 'UNAUTHORIZED', message: 'Sign in to continue.' };
+
+    render(
+      <AuthGate>
+        <McpsScreen />
+      </AuthGate>
+    );
+    await screen.findByRole('heading', { name: 'My MCPs' });
+
+    expect(await screen.findByRole('heading', { name: 'Sign in to SLICE' })).toBeInTheDocument();
+  });
+});

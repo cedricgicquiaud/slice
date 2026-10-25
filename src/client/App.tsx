@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ParsedSpec, SliceConfig } from '@shared/types';
 import { computeEconomy } from '@shared/token-estimator';
 import { Topbar } from './components/topbar';
@@ -7,6 +7,7 @@ import { UploadScreen } from './screens/upload';
 import { SelectionScreen } from './screens/selection';
 import { ConfigScreen } from './screens/config';
 import { SuccessScreen } from './screens/success';
+import { McpsScreen } from './screens/mcps';
 import { useTheme } from './hooks/use-theme';
 import { ApiError, apiGenerate, apiHost } from './lib/api';
 
@@ -25,6 +26,13 @@ interface SuccessState {
 function AppInner() {
   const { theme, toggle } = useTheme();
   const [screen, setScreen] = useState<ScreenIndex>(1);
+  // The address picks the page (contract 9): reloaded at /mcps, the list shows again.
+  const [path, setPath] = useState(window.location.pathname);
+  useEffect(() => {
+    const onPopState = () => setPath(window.location.pathname);
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
   const [apiName, setApiName] = useState<string | null>(null);
   const [parsedSpec, setParsedSpec] = useState<ParsedSpec | null>(null);
   const [rawSpec, setRawSpec] = useState<string>('');
@@ -34,6 +42,10 @@ function AppInner() {
   const { push } = useToast();
 
   const handleReset = () => {
+    if (path !== '/') {
+      window.history.pushState({}, '', '/');
+      setPath('/');
+    }
     setScreen(1);
     setApiName(null);
     setParsedSpec(null);
@@ -105,7 +117,7 @@ function AppInner() {
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <Topbar
-        current={screen}
+        current={path === '/mcps' ? null : screen}
         apiName={apiName}
         theme={theme}
         onReset={handleReset}
@@ -114,36 +126,40 @@ function AppInner() {
       />
 
       <main className="flex flex-1 flex-col overflow-hidden px-6">
-        {screen === 1 && <UploadScreen onParsed={handleParsed} />}
+        {path === '/mcps' ? (
+          <McpsScreen />
+        ) : (
+          <>
+            {screen === 1 && <UploadScreen onParsed={handleParsed} />}
 
-        {screen === 2 && parsedSpec && (
-          <SelectionScreen
-            spec={parsedSpec}
-            onContinue={handleSelectionDone}
-          />
+            {screen === 2 && parsedSpec && (
+              <SelectionScreen
+                spec={parsedSpec}
+                onContinue={handleSelectionDone}
+              />
+            )}
+
+            {screen === 3 && parsedSpec && (
+              <ConfigScreen
+                spec={parsedSpec}
+                selectedIds={selectedIds}
+                onGenerate={handleGenerate}
+              />
+            )}
+
+            {screen === 4 && success && (
+              <SuccessScreen
+                config={success.config}
+                endpointCount={success.endpointCount}
+                economySnapshot={success.economySnapshot}
+                zipBlob={success.zipBlob}
+                hostedUrl={success.hostedUrl}
+                onRestart={handleReset}
+                onBackToSelection={() => setScreen(2)}
+              />
+            )}
+          </>
         )}
-
-        {screen === 3 && parsedSpec && (
-          <ConfigScreen
-            spec={parsedSpec}
-            selectedIds={selectedIds}
-            onGenerate={handleGenerate}
-          />
-        )}
-
-        {screen === 4 && success && (
-          <SuccessScreen
-            config={success.config}
-            endpointCount={success.endpointCount}
-            economySnapshot={success.economySnapshot}
-            zipBlob={success.zipBlob}
-            hostedUrl={success.hostedUrl}
-            onRestart={handleReset}
-            onBackToSelection={() => setScreen(2)}
-          />
-        )}
-
-
       </main>
     </div>
   );

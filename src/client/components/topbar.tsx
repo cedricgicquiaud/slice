@@ -4,7 +4,8 @@ import { Stepper } from './stepper';
 import type { Theme } from '../hooks/use-theme';
 
 export interface TopbarProps {
-  current: 1 | 2 | 3 | 4;
+  /** The step on screen; null on a page outside the steps (My MCPs), which shows none. */
+  current: 1 | 2 | 3 | 4 | null;
   apiName: string | null;
   theme?: Theme;
   onReset: () => void;
@@ -32,9 +33,11 @@ export function Topbar({
         </span>
       )}
 
-      <div className="order-last flex w-full justify-center sm:absolute sm:left-1/2 sm:w-auto sm:-translate-x-1/2">
-        <Stepper current={current} onNavigate={onNavigate} />
-      </div>
+      {current !== null && (
+        <div className="order-last flex w-full justify-center sm:absolute sm:left-1/2 sm:w-auto sm:-translate-x-1/2">
+          <Stepper current={current} onNavigate={onNavigate} />
+        </div>
+      )}
 
       <div className="ml-auto flex items-center gap-3">
 <button
