@@ -37,7 +37,7 @@ function McpRow({ mcp }: { mcp: Mcp }) {
           {mcp.apiName}
         </h2>
         <span className="text-sm text-muted-foreground">
-          {mcp.actionCount} actions
+          {mcp.actionCount} {mcp.actionCount === 1 ? 'action' : 'actions'}
         </span>
         <span className="text-sm text-muted-foreground">Created {CREATED.format(new Date(mcp.createdAt))}</span>
       </div>
