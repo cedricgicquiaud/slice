@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import App from '../App';
+import { DeleteAccountScreen } from './delete-account';
 
 /**
  * SLICE's API as this page sees it: any call is "who is signed in?" (`session`).
@@ -29,5 +30,11 @@ describe('Delete account', () => {
       page: (await screen.findByRole('heading', { name: 'Delete your account' })) !== null,
       steps: screen.queryByRole('navigation', { name: /steps/i }) !== null,
     }).toEqual({ page: true, steps: false });
+  });
+
+  it('says what disappears: the account and its MCPs (D11)', () => {
+    render(<DeleteAccountScreen />);
+
+    expect(screen.getByText(/your account and all its MCPs are deleted at once/i)).toBeInTheDocument();
   });
 });
