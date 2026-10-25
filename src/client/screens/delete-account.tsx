@@ -5,6 +5,9 @@ import { authClient } from '../lib/auth-client';
 /** The word that confirms the deletion, typed exactly: `Delete` or `delet` keep the button inactive (contract 27). */
 const CONFIRMATION = 'delete';
 
+/** Better Auth's refusal of a session opened more than a day ago (`SESSION_EXPIRED`): a fresh one deletes. */
+const SESSION_TOO_OLD = 'For your safety, sign out and sign in again, then delete your account.';
+
 const FIELD_CLASS =
   'w-full rounded-lg border border-border bg-background px-4 py-3 font-mono text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground';
 
@@ -12,11 +15,16 @@ const FIELD_CLASS =
 export function DeleteAccountScreen() {
   const fieldId = useId();
   const [typed, setTyped] = useState('');
+  const [refusal, setRefusal] = useState<string>();
 
   // Deleted, the session ends with the account: the sign-in screen shows, at
   // home, so that signing in again does not land back on this page.
   async function handleDelete() {
-    await authClient.deleteUser();
+    const { error } = await authClient.deleteUser();
+    if (error) {
+      setRefusal(SESSION_TOO_OLD);
+      return;
+    }
     window.history.replaceState({}, '', '/');
   }
 
@@ -27,6 +35,11 @@ export function DeleteAccountScreen() {
         Your account and all its MCPs are deleted at once. Their addresses stop working for every agent that uses
         them. This can&apos;t be undone.
       </p>
+      {refusal && (
+        <p role="alert" className="mt-6 text-sm text-destructive">
+          {refusal}
+        </p>
+      )}
       <div className="mt-8 flex flex-col gap-3">
         <label htmlFor={fieldId} className="text-sm text-foreground">
           Type delete to confirm
