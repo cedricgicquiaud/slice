@@ -127,6 +127,20 @@ describe('My MCPs', () => {
     expect(await screen.findByRole('listitem', { name: 'Notion API' })).toBeInTheDocument();
   });
 
+  it('goes back to the home screen at / when Reset is clicked', async () => {
+    window.history.pushState({}, '', '/mcps');
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole('heading', { name: 'My MCPs' });
+
+    await user.click(screen.getByRole('button', { name: 'Reset' }));
+
+    expect({
+      home: screen.queryByRole('heading', { name: /any api, in any agent/i }) !== null,
+      path: window.location.pathname,
+    }).toEqual({ home: true, path: '/' });
+  });
+
   // Contract 13: the session ran out while the page was on screen.
   it('shows the sign-in screen when the list is refused for want of a session', async () => {
     serverSession(LIVE_SESSION);
