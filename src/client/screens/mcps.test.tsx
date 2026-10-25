@@ -93,6 +93,22 @@ describe('My MCPs', () => {
     }).toEqual({ actions: true, created: true, address: true });
   });
 
+  // At 375 px the address is longer than the row: it wraps instead of ending in an
+  // ellipsis, so the MCP's id stays readable. jsdom lays nothing out: the class is
+  // what can be checked here, the width itself is the visual pass's.
+  it('wraps a long address instead of cutting it off', async () => {
+    server.mcps = [NOTION];
+
+    renderPage();
+
+    const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
+    const address = row.getByText('http://localhost:5173/m/notion-id');
+    expect({
+      truncated: address.classList.contains('truncate'),
+      wraps: address.classList.contains('break-all'),
+    }).toEqual({ truncated: false, wraps: true });
+  });
+
   it('counts a single action in the singular', async () => {
     server.mcps = [{ ...NOTION, actionCount: 1 }];
 
