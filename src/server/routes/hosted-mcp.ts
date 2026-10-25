@@ -20,9 +20,9 @@ export interface HostedMcpRouterOptions {
   allowPrivateHosts?: boolean;
 }
 
-// An MCP never expires while there is no billing (WAT-102, D2): the expiry
-// below stays in the code but nothing calls it. Plugging it back means testing
-// `isExpired` again in the route below, before serving the connector.
+// An MCP never expires (WAT-102, D2): the expiry below stays in the code but
+// nothing calls it. Plugging it back means testing `isExpired` again in the
+// route below, before serving the connector.
 
 /** Env-resolved default TTL (hours). `0` disables expiry (self-host deployments). */
 export function defaultTtlHours(): number {
