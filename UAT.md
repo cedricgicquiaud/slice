@@ -281,10 +281,11 @@ fin de son adresse, après `/m/`.
   de connexion « Sign in to SLICE » s'affiche aussitôt, à l'adresse http://localhost:5173/.
 - [ ] Refus : la page ne parle jamais d'espace. Aucun des mots « space » ou « workspace » n'y apparaît (Cmd+F
   « space »), avant comme après avoir tapé `delete`.
-- [ ] Refus : une session ouverte il y a plus d'un jour ne supprime pas le compte ; la page affiche « For your safety,
-  sign out and sign in again, then delete your account. » et le compte reste. Ce cas demande d'attendre un jour : il
-  est prouvé par le test automatique « asks to sign in again when the session is too old to delete the account, and
-  stays on the page » (`src/client/screens/delete-account.test.tsx`).
+- [ ] Une session ouverte il y a plus d'un jour supprime aussi le compte (WAT-111). Ce cas demande d'attendre un
+  jour : il est prouvé par le test automatique « deletes the account »
+  (`src/server/auth/old-session-deletion.test.ts`), sur une session ouverte deux jours plus tôt.
+- [ ] Double-cliquer « Delete my account » : le bouton se grise dès le premier clic, une seule suppression part
+  (WAT-111 ; prouvé aussi par « sends one deletion only when the button is clicked twice »).
 
 **Après suppression du compte, il ne reste rien (WAT-107)**
 
@@ -304,7 +305,7 @@ fin de son adresse, après `/m/`.
   `curl -i -X POST http://localhost:3001/api/auth/delete-user -H 'content-type: application/json' -d '{}'` affiche
   `HTTP/1.1 401` ; rien n'est supprimé.
 - [ ] `docs/API.md` décrit `POST /api/auth/delete-user` (section « Authentication ») : ce qu'elle efface, et les refus
-  401, 400 `SESSION_EXPIRED` et 403.
+  401 et 403.
 
 ## SLICE — Les MCP rangés en base de données
 
