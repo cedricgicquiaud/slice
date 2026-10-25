@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { listMcps } from './mcps-api';
+import { deleteMcp, listMcps } from './mcps-api';
 
 const NOTION = {
   id: 'Q2xhdWRlIGlzIG5vdCBoZXJl',
@@ -39,5 +39,22 @@ describe('listMcps', () => {
       code: 'SERVICE_UNAVAILABLE',
       message: 'SLICE is unavailable for the moment.',
     });
+  });
+});
+
+describe('deleteMcp', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('asks the server to delete the MCP with DELETE /api/mcps/:id', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await deleteMcp('notion-id');
+
+    expect(fetchMock.mock.calls).toEqual([['/api/mcps/notion-id', { method: 'DELETE' }]]);
   });
 });
