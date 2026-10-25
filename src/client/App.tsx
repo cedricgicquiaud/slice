@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ParsedSpec, SliceConfig } from '@shared/types';
 import { computeEconomy } from '@shared/token-estimator';
 import { Topbar } from './components/topbar';
@@ -28,6 +28,11 @@ function AppInner() {
   const [screen, setScreen] = useState<ScreenIndex>(1);
   // The address picks the page (contract 9): reloaded at /mcps, the list shows again.
   const [path, setPath] = useState(window.location.pathname);
+  useEffect(() => {
+    const onPopState = () => setPath(window.location.pathname);
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
   const [apiName, setApiName] = useState<string | null>(null);
   const [parsedSpec, setParsedSpec] = useState<ParsedSpec | null>(null);
   const [rawSpec, setRawSpec] = useState<string>('');
