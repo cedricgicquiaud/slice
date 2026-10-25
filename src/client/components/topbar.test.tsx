@@ -42,6 +42,11 @@ describe('Topbar', () => {
     expect(screen.getByRole('navigation', { name: /steps/i })).toBeInTheDocument();
   });
 
+  it('shows no steps on a page outside them (My MCPs)', () => {
+    render(<Topbar current={null} apiName={null} onReset={() => {}} onToggleTheme={() => {}} />);
+    expect(screen.queryByRole('navigation', { name: /steps/i })).not.toBeInTheDocument();
+  });
+
   it('calls onReset when the Reset button is clicked', async () => {
     const user = userEvent.setup();
     const onReset = vi.fn();
