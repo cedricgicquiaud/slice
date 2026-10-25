@@ -57,4 +57,14 @@ describe('deleteMcp', () => {
 
     expect(fetchMock.mock.calls).toEqual([['/api/mcps/notion-id', { method: 'DELETE' }]]);
   });
+
+  it("throws the server's refusal when the deletion is refused", async () => {
+    serverAnswers(404, { code: 'NOT_FOUND', message: 'Unknown MCP id.' });
+
+    await expect(deleteMcp('someone-elses-id')).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 404,
+      code: 'NOT_FOUND',
+    });
+  });
 });
