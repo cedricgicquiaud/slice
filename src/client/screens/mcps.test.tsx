@@ -1,6 +1,6 @@
 // WAT-103/104 — "My MCPs": the account finds its MCPs, copies an address, deletes one.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from '../App';
 import { McpsScreen } from './mcps';
@@ -23,8 +23,8 @@ const LIVE_SESSION = {
 
 /**
  * SLICE's API as this page sees it: `GET /api/mcps` answers the account's MCPs,
- * or `refusal` when set (a 401 means the session is gone); any other call is
- * "who is signed in?" (`session`).
+ * or `refusal` when set (a 401 means the session is gone); `DELETE
+ * /api/mcps/:id` deletes one; any other call is "who is signed in?" (`session`).
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
 const server = vi.hoisted(() => {
@@ -35,8 +35,12 @@ const server = vi.hoisted(() => {
   } = { session: null, mcps: [], refusal: null };
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : String(input);
+    if (init?.method === 'DELETE' && url.startsWith('/api/mcps/')) {
+      state.mcps = state.mcps.filter((mcp) => `/api/mcps/${(mcp as { id: string }).id}` !== url);
+      return new Response(null, { status: 204 });
+    }
     if (url !== '/api/mcps') return json(state.session);
     if (state.refusal?.status === 401) state.session = null;
     if (state.refusal) return json({ code: state.refusal.code, message: state.refusal.message }, state.refusal.status);
@@ -112,6 +116,19 @@ describe('My MCPs', () => {
       changeButtons: row.queryAllByRole('button', { name: /edit|rename|modify|change|settings/i }).length,
       fields: row.queryAllByRole('textbox').length,
     }).toEqual({ changeButtons: 0, fields: 0 });
+  });
+
+  it('deletes an MCP once the deletion is confirmed: it leaves the list and the account (D10)', async () => {
+    server.mcps = [NOTION];
+    const user = userEvent.setup();
+    renderPage();
+    const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
+
+    await user.click(row.getByRole('button', { name: 'Delete' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(screen.queryByRole('listitem', { name: 'Notion API' })).not.toBeInTheDocument());
+    expect(server.mcps).toEqual([]);
   });
 
   it('says so when the account has no MCP yet', async () => {
