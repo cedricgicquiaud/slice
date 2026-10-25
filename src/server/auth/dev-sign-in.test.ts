@@ -39,4 +39,15 @@ describe('POST /api/dev/sign-in', () => {
     expect(signIn.headers['set-cookie']).toBeUndefined();
     expect(res.body).toBeNull();
   });
+
+  it('opens no session on a server started without NODE_ENV', async () => {
+    vi.stubEnv('NODE_ENV', undefined);
+    const browser = request.agent(createApp({ auth: account.auth }));
+
+    const signIn = await browser.post('/api/dev/sign-in');
+    const res = await browser.get('/api/auth/get-session');
+
+    expect(signIn.headers['set-cookie']).toBeUndefined();
+    expect(res.body).toBeNull();
+  });
 });
