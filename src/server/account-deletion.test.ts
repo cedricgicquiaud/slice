@@ -5,7 +5,7 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import request from 'supertest';
 import { createApp } from './app';
-import { createAuth } from './auth/auth';
+import { createAuth, type SliceAuth } from './auth/auth';
 import { openSession } from './auth/open-session';
 import { createAccountMcps } from './services/account-mcps';
 import { createHostedStore } from './services/hosted-store';
@@ -29,6 +29,7 @@ paths:
 
 let testDb: TestDatabase;
 let database: Database;
+let auth: SliceAuth;
 let app: Server;
 let baseUrl: string;
 /** The addresses of the account's two MCPs, one created from each device. */
@@ -75,7 +76,7 @@ beforeAll(async () => {
   testDb = await createTestDatabase();
   database = openDatabase(testDb.config);
   await migrateDatabase(database);
-  const auth = createAuth({
+  auth = createAuth({
     database,
     secret: TEST_AUTH_SECRET,
     sendCode: async (email, code) => {
@@ -144,5 +145,20 @@ describe('after the account is deleted', () => {
     const res = await browser.get('/api/mcps');
 
     expect({ status: res.status, body: res.body }).toEqual({ status: 200, body: { mcps: [] } });
+  });
+});
+
+describe('POST /api/auth/delete-user refusals', () => {
+  it('answers 401 without a session, and deletes nothing', async () => {
+    const staying = await openSession(auth, 'staying@example.com');
+    const address = await deployMcp(`${staying.name}=${staying.value}`, 'kept');
+
+    const res = await fetch(`${baseUrl}/api/auth/delete-user`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+
+    expect({ status: res.status, mcp: (await listActions(address)).status }).toEqual({ status: 401, mcp: 200 });
   });
 });
