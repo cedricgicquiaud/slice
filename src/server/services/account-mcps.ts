@@ -8,8 +8,8 @@ import { connectorActions, connectors } from '../db/schema';
 /** One line of the list. */
 export interface AccountMcp {
   id: string;
-  /** The API's name as read in its description. */
-  apiName: string | null;
+  /** The API's name as read in its description, else its domain. */
+  apiName: string;
   actionCount: number;
   /** ISO creation date. */
   createdAt: string;
@@ -28,6 +28,7 @@ export function createAccountMcps(database: Database): AccountMcps {
         .select({
           id: connectors.id,
           apiName: connectors.apiName,
+          baseUrl: connectors.baseUrl,
           createdAt: connectors.createdAt,
           actionCount: count(connectorActions.position),
         })
@@ -36,7 +37,12 @@ export function createAccountMcps(database: Database): AccountMcps {
         .where(eq(connectors.workspaceId, workspaceId))
         .groupBy(connectors.id)
         .orderBy(desc(connectors.createdAt));
-      return rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
+      return rows.map(({ id, apiName, baseUrl, actionCount, createdAt }) => ({
+        id,
+        apiName: apiName ?? new URL(baseUrl).hostname,
+        actionCount,
+        createdAt: createdAt.toISOString(),
+      }));
     },
   };
 }
