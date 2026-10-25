@@ -46,7 +46,8 @@ Le fait que le MCP transmette à l'API l'accès amont fourni par l'agent, à cha
 _Éviter_ : proxy, passthrough
 
 **Expiration** :
-La fin de vie d'une adresse gratuite, 72 h après sa création par défaut.
+La fin de vie d'une adresse hébergée. Aujourd'hui, un MCP n'expire pas : son adresse répond quel que soit son âge,
+tant qu'il n'est pas supprimé. L'interface ne montre aucune date d'expiration.
 _Éviter_ : TTL (dans l'interface)
 
 **Compte** :

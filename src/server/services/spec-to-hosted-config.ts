@@ -27,6 +27,7 @@ export function specToHostedConfig(
 
   return {
     name: config.mcpName,
+    apiName: spec.apiName,
     baseUrl: config.baseUrl,
     upstreamAuth: config.upstreamAuth,
     endpoints,

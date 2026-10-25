@@ -7,15 +7,25 @@ kit it generates. Everything here reflects what the code supports today.
 
 ### Environment variables
 
-The server reads its configuration from the process environment only. It does not load a `.env` file.
+The server reads its configuration from the process environment. In development, `pnpm dev` (through
+`pnpm dev:server`) also reads a `.env` file at the repository root when there is one: copy `.env.example`, which
+lists the variables without values, and fill in what you need. A variable already set in the environment wins over
+`.env`, and an empty one keeps its default. `.env` is never committed. `pnpm start` and the tests never read it:
+in production, set the variables in the platform's settings.
 
 | Variable | Default | Effect |
 |---|---|---|
 | `PORT` | `3001` | HTTP port the server listens on. |
 | `NODE_ENV` | `development` | `production` serves the built front end from `dist/client` (with a single-page-app fallback) and turns on the SSRF guard for hosted MCPs (`config.baseUrl` in `POST /api/host`, and every hosted tool call). Any other value leaves that guard off so a local upstream can be reached. The value is also reported by `GET /api/health`. `pnpm start` sets it to `production`. |
 | `DATABASE_URL` | (none) | PostgreSQL connection string (`postgres://user:password@host:5432/database`) where hosted MCPs are stored. **Required when `NODE_ENV=production`**: without it the server refuses to start and says why. Elsewhere, leaving it unset uses the embedded database below. |
+| `BETTER_AUTH_SECRET` | (none) | Signs the session cookies of SLICE accounts. **Required when `NODE_ENV=production`**: without it the server refuses to start and says why. Use a long random value (`openssl rand -hex 32`), kept in the platform's secret settings. Elsewhere, Better Auth falls back to a public development secret. |
+| `BETTER_AUTH_URL` | `http://localhost:5173` outside production; (none) in production | SLICE's public address (`https://slice.example.com`, or the Vite page in development). Better Auth builds its sign-in links from it, and the API takes writes only from a page at this address or at the address the request reached (`403 FORBIDDEN` otherwise, see [API.md](API.md#authentication)). **Required when `NODE_ENV=production`**: without it the server refuses to start and says why, since behind a proxy that ends HTTPS the server sees `http://` requests and would refuse the `https://` page. An `https://` address makes the session cookie `Secure`. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | (none) | The Google application SLICE signs in with ([oauth-apps.md](oauth-apps.md)). With both set, "Continue with Google" works; without them, the server offers no Google sign-in. |
+| `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | (none) | The Microsoft application SLICE signs in with, personal and work or school accounts ([oauth-apps.md](oauth-apps.md)). Same rule as Google. |
+| `RESEND_API_KEY` | (none) | Sends the sign-in codes by email through [Resend](https://resend.com). Without it, the code of each request is printed in the server's terminal (`Sign-in code for <address>: <code>`) and no email leaves: fine on a developer's machine, not for real users. |
+| `RESEND_FROM` | `SLICE <onboarding@resend.dev>` | Sender of the sign-in emails, on a domain verified with Resend (`SLICE <codes@example.com>`). Resend's default test sender only delivers to the Resend account's own address. |
 | `SLICE_DATA_DIR` | `./data` | Without `DATABASE_URL` only: folder of the embedded PostgreSQL (PGlite, nothing to install), kept in its `pglite/` subfolder. Resolved from the working directory; created if missing. |
-| `SLICE_HOSTED_TTL_HOURS` | `72` | Lifetime of a hosted MCP URL, in hours. `0` disables expiry (useful for a private self-hosted instance). A negative or non-numeric value falls back to `72`. An expired MCP is kept 30 more days, then deleted (see [Persistent data](#persistent-data)). |
+| `SLICE_HOSTED_TTL_HOURS` | (ignored) | Ignored: a hosted MCP never expires, whatever this value (see [Persistent data](#persistent-data)). |
 | `PARSE_MAX_CONCURRENT` | `3` | Maximum number of spec parses running at the same time (minimum 1). Each parse is a child process with a 512 MB heap cap, so peak parse memory is about this value × 512 MB. |
 | `PARSE_MAX_QUEUE` | `12` | Maximum number of parses waiting for a slot (minimum 0). Requests beyond it get `429 PARSE_BUSY`. |
 
@@ -35,11 +45,11 @@ Requirements: Node.js 22 or later, pnpm 9.
 ```bash
 pnpm install          # full install: the build tools and the MCP SDK used by the hosted runtime are devDependencies
 pnpm build            # front end to dist/client, server to dist/server/server (templates and migrations copied alongside)
-DATABASE_URL=postgres://… pnpm start   # NODE_ENV=production node dist/server/server/index.js
+DATABASE_URL=postgres://… BETTER_AUTH_SECRET=… BETTER_AUTH_URL=https://… pnpm start   # NODE_ENV=production node dist/server/server/index.js
 ```
 
 - Provide a PostgreSQL database through `DATABASE_URL`; the server refuses to start in production without one. Keep its
-  password in the platform's secret settings, never in the repository.
+  password in the platform's secret settings, never in the repository. Same for `BETTER_AUTH_SECRET`.
 - At startup the server creates or updates its tables before it accepts any request. The migrations run under a
   PostgreSQL lock, so several instances starting together migrate only once. If they fail, the server refuses to start
   and prints the database's reason.
@@ -48,7 +58,8 @@ DATABASE_URL=postgres://… pnpm start   # NODE_ENV=production node dist/server/
   the real production paths, and stops it. `SKIP_BUILD=1 pnpm prod:smoke` reuses an existing `dist/`. It starts the
   server in production mode, so it needs `DATABASE_URL` too. It creates a throwaway database on that server, runs the
   compiled server against it and drops it afterwards: the database user needs the right to create databases, and the
-  smoke connector never lands in the database the URL names. A disposable local PostgreSQL works:
+  smoke connector never lands in the database the URL names. It signs a throwaway account in on that database, since
+  the API answers nothing without a session. A disposable local PostgreSQL works:
   `docker run --rm -d -p 54329:5432 -e POSTGRES_PASSWORD=smoke postgres:16`, then
   `DATABASE_URL=postgres://postgres:smoke@localhost:54329/postgres pnpm prod:smoke`.
 - The repository ships no Dockerfile for SLICE itself.
@@ -63,13 +74,14 @@ Hosted MCPs live in the database: one row per MCP in `connectors`, one row per s
 - **Development and tests:** without `DATABASE_URL`, `pnpm dev` uses PGlite on disk under `SLICE_DATA_DIR`, and
   `pnpm test` uses a fresh in-memory PGlite per test file. Nothing to install.
 
-Expiry and cleanup:
+No expiry: a hosted MCP is served whatever its age, and no cleanup deletes it, neither at startup nor later.
 
-- An expired hosted URL answers `410` at every visit; its MCP stays in the database for **30 days** after expiring.
-- A cleanup deletes the MCPs expired for more than 30 days, with their endpoints, even if their URL is never visited
-  again. It runs at startup, then **every hour**. With `SLICE_HOSTED_TTL_HOURS=0`, nothing expires and nothing is deleted.
+Accounts and their sessions live in the same database (`users`, `sessions`, `accounts`, `verifications`, managed by
+Better Auth; no password column). An account rests on a verified email address: a Google or Microsoft address the provider did not verify creates no account and opens none. One verified address is one account, whichever way its owner signs in. Every `/api/*` route except `GET /api/health`, Better Auth's own `/api/auth/*` and,
+when `NODE_ENV` is `development` or `test`, `POST /api/dev/sign-in` answers `401 UNAUTHORIZED` without a live session.
 
-When the database is unreachable, the server stays up: creating a hosted MCP fails with `503 SERVICE_UNAVAILABLE`,
+When the database is unreachable, the server stays up: every API call that checks the session fails with
+`503 SERVICE_UNAVAILABLE`, creating a hosted MCP fails with `503 SERVICE_UNAVAILABLE`,
 an existing hosted URL answers `503` (never "unknown"), and `GET /api/health` answers `503`. Everything works again as
 soon as the database is back, without a restart.
 
@@ -82,6 +94,11 @@ The app does not configure Express `trust proxy`. Behind a TLS-terminating rever
   even when the public site is served over HTTPS.
 
 Account for both when exposing an instance publicly.
+
+The ten sign-in codes an hour per IP are counted on the `X-Forwarded-For` header. The proxy in front of SLICE must
+**overwrite** that header with the client's address, never append to it: SLICE reads a single address only. A request
+whose header holds several addresses, or none, counts in one quota shared by every such request, so without a proxy
+that sets it every visitor shares the same ten codes an hour.
 
 ### Development scripts
 

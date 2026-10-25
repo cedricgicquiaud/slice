@@ -1,8 +1,19 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { readFileSync } from 'node:fs';
 import yauzl from 'yauzl';
 import { createApp } from '../app';
+import { createTestAccount, type TestAccount } from '../db/test-account';
+
+let account: TestAccount;
+
+beforeAll(async () => {
+  account = await createTestAccount();
+});
+
+afterAll(async () => {
+  await account?.dispose();
+});
 import type { GenerateRequest, ParsedSpec, SliceConfig } from '@shared/types';
 
 /**
@@ -97,10 +108,21 @@ function unzipNames(buf: Buffer): Promise<string[]> {
 }
 
 describe('POST /api/generate', () => {
-  const app = createApp({ nodeEnv: 'test' });
+  const signedIn = () =>
+    request.agent(createApp({ nodeEnv: 'test', auth: account.auth })).set('Cookie', account.cookie);
+
+  // WAT-101 — downloading the kit takes an account (contract 16).
+  it('answers 401 without a session, even to a valid request', async () => {
+    const res = await request(createApp({ nodeEnv: 'test', auth: account.auth }))
+      .post('/api/generate')
+      .send(buildBody());
+
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('UNAUTHORIZED');
+  });
 
   it('returns 200 + Content-Disposition with the configured mcpName', async () => {
-    const res = await request(app)
+    const res = await signedIn()
       .post('/api/generate')
       .send(buildBody())
       .buffer(true)
@@ -119,7 +141,7 @@ describe('POST /api/generate', () => {
   });
 
   it('returns 400 INVALID_SPEC when the body fails Zod validation', async () => {
-    const res = await request(app)
+    const res = await signedIn()
       .post('/api/generate')
       .send({ parsedSpec: 'not an object', selectedIds: [], config: {} });
     expect(res.status).toBe(400);
@@ -127,7 +149,7 @@ describe('POST /api/generate', () => {
   });
 
   it('returns 400 NO_ENDPOINT_SELECTED when no selected id survives re-parsing', async () => {
-    const res = await request(app)
+    const res = await signedIn()
       .post('/api/generate')
       .send(buildBody({ selectedIds: ['GET /nonexistent'] }));
     expect(res.status).toBe(400);
@@ -135,7 +157,7 @@ describe('POST /api/generate', () => {
   });
 
   it('ignores unknown ids but keeps the valid ones (whitelist)', async () => {
-    const res = await request(app)
+    const res = await signedIn()
       .post('/api/generate')
       .send(buildBody({ selectedIds: ['GET /things', 'GET /ghost', 'POST /missing'] }))
       .buffer(true)
@@ -148,7 +170,7 @@ describe('POST /api/generate', () => {
   });
 
   it('returns 400 INVALID_SPEC when re-parsing the rawSpec fails', async () => {
-    const res = await request(app)
+    const res = await signedIn()
       .post('/api/generate')
       .send(buildBody({ rawSpec: 'totally not openapi at all' }));
     expect(res.status).toBe(400);
@@ -158,7 +180,7 @@ describe('POST /api/generate', () => {
   it('returns 413 PAYLOAD_TOO_LARGE on bodies above the 15 MB cap', async () => {
     // 16 MB blob — body parser rejects before route handler runs.
     const huge = 'x'.repeat(16 * 1024 * 1024);
-    const res = await request(app)
+    const res = await signedIn()
       .post('/api/generate')
       .set('Content-Type', 'application/json')
       .send(`{"junk":"${huge}"}`);

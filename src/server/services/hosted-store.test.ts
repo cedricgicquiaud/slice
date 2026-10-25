@@ -6,12 +6,14 @@ import type { HostedMcpConfig } from './hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
 import { createTestDatabase, type TestDatabase } from '../db/test-database';
+import { createTestAccount } from '../db/test-account';
 
 const NOW = new Date('2026-10-24T09:00:00.000Z');
 
 /** Three actions in a deliberate order, with path, query and body params. */
 const threeActions: HostedMcpConfig = {
   name: 'crm',
+  apiName: 'Acme CRM',
   baseUrl: 'https://api.example.com/v1',
   upstreamAuth: { type: 'apiKey', headerName: 'X-Api-Key' },
   endpoints: [
@@ -50,11 +52,14 @@ const threeActions: HostedMcpConfig = {
 describe('hosted store in the database', () => {
   let testDb: TestDatabase;
   let database: Database;
+  /** The workspace the connectors of these tests belong to. */
+  let workspaceId: string;
 
   beforeAll(async () => {
     testDb = await createTestDatabase();
     database = openDatabase(testDb.config);
     await migrateDatabase(database);
+    ({ workspaceId } = await createTestAccount({ database }));
   });
 
   afterAll(async () => {
@@ -62,20 +67,29 @@ describe('hosted store in the database', () => {
     await testDb?.dispose();
   });
 
+  it("keeps a connector in the workspace it was created for, with the API's name (D15, D9)", async () => {
+    const store = createHostedStore(database);
+    const { workspaceId } = await createTestAccount({ database, email: 'owner@example.com' });
+
+    const { id } = await store.put(threeActions, workspaceId, NOW);
+
+    expect(await store.get(id)).toMatchObject({ workspaceId, apiName: 'Acme CRM' });
+  });
+
   it('gives a created connector a 22-character id that reads back the same connector, actions in order', async () => {
     const store = createHostedStore(database);
 
-    const { id } = await store.put(threeActions, NOW);
+    const { id } = await store.put(threeActions, workspaceId, NOW);
 
     expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect(await store.get(id)).toEqual({ ...threeActions, createdAt: '2026-10-24T09:00:00.000Z' });
+    expect(await store.get(id)).toEqual({ ...threeActions, createdAt: '2026-10-24T09:00:00.000Z', workspaceId });
   });
 
   it('stores a lowercase method in uppercase', async () => {
     const store = createHostedStore(database);
     const lowercase = { ...threeActions.endpoints[0]!, method: 'get' as HttpMethod };
 
-    const { id } = await store.put({ ...threeActions, endpoints: [lowercase] }, NOW);
+    const { id } = await store.put({ ...threeActions, endpoints: [lowercase] }, workspaceId, NOW);
 
     expect((await store.get(id))?.endpoints[0]?.method).toBe('GET');
   });
@@ -89,7 +103,10 @@ describe('hosted store in the database', () => {
   it('gives two simultaneous creations two distinct ids, both read back', async () => {
     const store = createHostedStore(database);
 
-    const [a, b] = await Promise.all([store.put(threeActions, NOW), store.put(threeActions, NOW)]);
+    const [a, b] = await Promise.all([
+      store.put(threeActions, workspaceId, NOW),
+      store.put(threeActions, workspaceId, NOW),
+    ]);
 
     expect(a.id).not.toBe(b.id);
     expect((await store.get(a.id))?.name).toBe('crm');
@@ -101,7 +118,7 @@ describe('hosted store in the database', () => {
     const unwritable = { ...threeActions.endpoints[0]!, method: 'TRACE' as HttpMethod };
 
     await expect(
-      store.put({ ...threeActions, name: 'half-written', endpoints: [unwritable] }, NOW)
+      store.put({ ...threeActions, name: 'half-written', endpoints: [unwritable] }, workspaceId, NOW)
     ).rejects.toThrow();
 
     expect(await database.rows(sql`select id from connectors where name = 'half-written'`)).toEqual([]);
@@ -111,11 +128,14 @@ describe('hosted store in the database', () => {
 describe('hosted store cleanup', () => {
   let testDb: TestDatabase;
   let database: Database;
+  /** The workspace the connectors of these tests belong to. */
+  let workspaceId: string;
 
   beforeAll(async () => {
     testDb = await createTestDatabase();
     database = openDatabase(testDb.config);
     await migrateDatabase(database);
+    ({ workspaceId } = await createTestAccount({ database }));
   });
 
   afterAll(async () => {
@@ -128,7 +148,7 @@ describe('hosted store cleanup', () => {
 
   it('deletes a connector and its actions 30 days after it expired, without any visit', async () => {
     const store = createHostedStore(database);
-    const { id } = await store.put(threeActions, NOW);
+    const { id } = await store.put(threeActions, workspaceId, NOW);
 
     await store.purgeExpired(daysAfterExpiry(31), 72);
 
@@ -138,7 +158,7 @@ describe('hosted store cleanup', () => {
 
   it('keeps an expired connector for 29 days after it expired', async () => {
     const store = createHostedStore(database);
-    const { id } = await store.put(threeActions, NOW);
+    const { id } = await store.put(threeActions, workspaceId, NOW);
 
     await store.purgeExpired(daysAfterExpiry(29), 72);
 
@@ -147,7 +167,7 @@ describe('hosted store cleanup', () => {
 
   it('never deletes a connector when expiry is disabled (TTL 0)', async () => {
     const store = createHostedStore(database);
-    const { id } = await store.put(threeActions, NOW);
+    const { id } = await store.put(threeActions, workspaceId, NOW);
 
     await store.purgeExpired(daysAfterExpiry(365), 0);
 
@@ -157,12 +177,12 @@ describe('hosted store cleanup', () => {
   it('cleans up at startup, then every hour', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const store = createHostedStore(database);
-    const before = await store.put(threeActions, NOW);
+    const before = await store.put(threeActions, workspaceId, NOW);
     const cleanup = startHostedCleanup(store, { ttlHours: 72, now: () => daysAfterExpiry(31) });
     try {
       await vi.waitFor(async () => expect(await store.get(before.id)).toBeUndefined());
 
-      const after = await store.put(threeActions, NOW);
+      const after = await store.put(threeActions, workspaceId, NOW);
       await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
 
       await vi.waitFor(async () => expect(await store.get(after.id)).toBeUndefined());
@@ -197,7 +217,8 @@ describe('hosted store across a restart', () => {
     try {
       const first = openDatabase(testDb.config);
       await migrateDatabase(first);
-      const { id } = await createHostedStore(first).put(threeActions, NOW);
+      const { workspaceId } = await createTestAccount({ database: first });
+      const { id } = await createHostedStore(first).put(threeActions, workspaceId, NOW);
       await first.close();
 
       const reopened = openDatabase(testDb.config);
@@ -205,6 +226,7 @@ describe('hosted store across a restart', () => {
         expect(await createHostedStore(reopened).get(id)).toEqual({
           ...threeActions,
           createdAt: '2026-10-24T09:00:00.000Z',
+          workspaceId,
         });
       } finally {
         await reopened.close();
@@ -212,5 +234,6 @@ describe('hosted store across a restart', () => {
     } finally {
       await testDb.dispose();
     }
-  });
+    // Two databases opened on disk and an account signed in: slow on a loaded machine.
+  }, 20_000);
 });

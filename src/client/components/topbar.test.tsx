@@ -3,6 +3,19 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Topbar } from './topbar';
 
+/**
+ * The server signs `ada@example.com` in (`GET /api/auth/get-session`).
+ * Set before any import: the auth client keeps the `fetch` it finds when loaded.
+ */
+vi.hoisted(() => {
+  const session = {
+    session: { id: 's1', userId: 'u1', token: 't', expiresAt: '2026-11-01T00:00:00.000Z' },
+    user: { id: 'u1', email: 'ada@example.com', name: '', emailVerified: true },
+  };
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify(session), { headers: { 'content-type': 'application/json' } })) as typeof fetch;
+});
+
 describe('Topbar', () => {
   it('renders the SLICE wordmark', () => {
     render(<Topbar current={1} apiName={null} onReset={() => {}} onToggleTheme={() => {}} />);
@@ -17,6 +30,11 @@ describe('Topbar', () => {
   it('hides the API name on step 1 when null', () => {
     render(<Topbar current={1} apiName={null} onReset={() => {}} onToggleTheme={() => {}} />);
     expect(screen.queryByText(/shopify/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the address of the signed-in account', async () => {
+    render(<Topbar current={1} apiName={null} onReset={() => {}} onToggleTheme={() => {}} />);
+    expect(await screen.findByRole('button', { name: 'ada@example.com' })).toBeInTheDocument();
   });
 
   it('renders the Stepper with the current step', () => {

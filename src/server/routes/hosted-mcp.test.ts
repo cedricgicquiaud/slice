@@ -1,7 +1,7 @@
 // E2E for the hosted runtime routes (Pivot-4): POST /api/host stores a config
 // and returns a URL; /m/:id serves the MCP, multi-session (several agents in
 // parallel), relaying each caller's own token to the upstream.
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
@@ -11,6 +11,7 @@ import type { HostedMcpConfig } from '../services/hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
 import { createTestDatabase, type TestDatabase } from '../db/test-database';
+import { createTestAccount, type TestAccount } from '../db/test-account';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
@@ -31,6 +32,7 @@ let received: Array<{ url: string; auth: string | undefined; apiKey: string | un
 let testDb: TestDatabase;
 let database: Database;
 let store: HostedStore;
+let account: TestAccount;
 let app: Server;
 let baseUrl: string;
 
@@ -57,8 +59,9 @@ beforeAll(async () => {
   database = openDatabase(testDb.config);
   await migrateDatabase(database);
   store = createHostedStore(database);
+  account = await createTestAccount({ database });
 
-  app = createApp({ nodeEnv: 'test', hostedStore: store, now }).listen(0);
+  app = createApp({ nodeEnv: 'test', hostedStore: store, now, auth: account.auth }).listen(0);
   await new Promise<void>((r) => app.once('listening', r));
   baseUrl = `http://127.0.0.1:${(app.address() as AddressInfo).port}`;
 });
@@ -114,7 +117,7 @@ function threeActions(): HostedMcpConfig {
 
 describe('hosted connector served from the database', () => {
   it('serves its actions in order, with their parameters and read/write labels', async () => {
-    const { id } = await store.put(threeActions(), new Date());
+    const { id } = await store.put(threeActions(), account.workspaceId, new Date());
 
     const agent = await connectAgent(`${baseUrl}/m/${id}`, 'TOKEN');
     const { tools } = await agent.listTools();
@@ -137,10 +140,17 @@ describe('hosted connector served from the database', () => {
     expect((await store.get(id))?.endpoints.map((e) => e.name)).toEqual(['list_things']);
   });
 
+  it("puts a connector created from screen 4 in the signed-in account's workspace, under the API's name (D15, D9)", async () => {
+    const id = (await host()).split('/m/')[1]!;
+
+    expect(await store.get(id)).toMatchObject({ workspaceId: account.workspaceId, apiName: 'Demo' });
+  });
+
   it("relays the agent's API key in the header the API expects", async () => {
     received = [];
     const { id } = await store.put(
       { ...threeActions(), upstreamAuth: { type: 'apiKey', headerName: 'X-Api-Key' } },
+      account.workspaceId,
       new Date()
     );
 
@@ -154,7 +164,7 @@ describe('hosted connector served from the database', () => {
   it('keeps no upstream key or token in the database', async () => {
     const res = await fetch(`${baseUrl}/api/host`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', cookie: account.cookie },
       body: JSON.stringify({
         parsedSpec: {},
         rawSpec: SPEC,
@@ -216,92 +226,42 @@ describe('hosted runtime routes', () => {
     expect(auths).toEqual(['Bearer TOKEN_A', 'Bearer TOKEN_B']);
   }, 20_000);
 
-  it('answers expired at the first visit after the 72 h and at the following ones', async () => {
-    const url = await host();
-    clock = hoursAfterCreation(73);
-
-    const visit = () =>
-      fetch(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
-      });
-    const first = await visit();
-    const second = await visit();
-
-    expect([first.status, second.status]).toEqual([410, 410]);
-  });
-
-  it('never expires a hosted URL when TTL is 0 (self-host deployments)', async () => {
-    const ttl0 = createApp({ nodeEnv: 'test', hostedStore: store, hostedTtlHours: 0, now }).listen(0);
-    await new Promise<void>((r) => ttl0.once('listening', r));
-    const ttl0Base = `http://127.0.0.1:${(ttl0.address() as AddressInfo).port}`;
+  // WAT-102 (D2) — an MCP no longer expires, whatever SLICE_HOSTED_TTL_HOURS says.
+  it('still serves its actions 73 h and 31 days after creation, with SLICE_HOSTED_TTL_HOURS=72', async () => {
+    vi.stubEnv('SLICE_HOSTED_TTL_HOURS', '72');
+    const ttl72 = createApp({ nodeEnv: 'test', hostedStore: store, now, auth: account.auth }).listen(0);
+    await new Promise<void>((r) => ttl72.once('listening', r));
+    const ttl72Base = `http://127.0.0.1:${(ttl72.address() as AddressInfo).port}`;
     try {
       received = [];
-      const url = await host();
-      const id = url.split('/m/')[1]!;
-      clock = hoursAfterCreation(100);
+      const id = (await host()).split('/m/')[1]!;
 
-      // Same database — the TTL-0 app serves the same id and must not expire it.
-      await callListThings(`${ttl0Base}/m/${id}`, 'TOKEN_C');
-      expect(received.some((r) => r.auth === 'Bearer TOKEN_C')).toBe(true);
-      expect(await store.get(id)).toBeDefined();
+      clock = hoursAfterCreation(73);
+      await callListThings(`${ttl72Base}/m/${id}`, 'TOKEN_73H');
+      clock = hoursAfterCreation(31 * 24);
+      await callListThings(`${ttl72Base}/m/${id}`, 'TOKEN_31D');
+
+      expect(received.map((r) => r.auth)).toEqual(['Bearer TOKEN_73H', 'Bearer TOKEN_31D']);
     } finally {
-      await new Promise<void>((r) => ttl0.close(() => r()));
+      await new Promise<void>((r) => ttl72.close(() => r()));
+      vi.unstubAllEnvs();
     }
   }, 20_000);
 
-  it('POST /api/host returns expiresAt aligned with the TTL (null when TTL is 0)', async () => {
-    const res = await fetch(`${baseUrl}/api/host`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        parsedSpec: {},
-        rawSpec: SPEC,
-        selectedIds: ['GET /things'],
-        config: {
-          mcpName: 'demo',
-          baseUrl: upstreamUrl,
-          upstreamAuth: { type: 'bearer' },
-          hosting: 'cloud',
-          mode: 'remote',
-          includeParamDescriptions: false,
-          retryOnServerError: false,
-        },
-      }),
-    });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { id: string; expiresAt: string | null };
-    // Default TTL is 72h — created 2026-10-24 09:00 UTC, expires three days later.
-    expect(body.expiresAt).toBe('2026-10-27T09:00:00.000Z');
+  it('POST /api/host answers with the id and the URL of the MCP, and no expiry date', async () => {
+    const res = await hostRequest(baseUrl);
 
-    // TTL 0 (self-host) → no expiry advertised.
-    const ttl0 = createApp({ nodeEnv: 'test', hostedStore: store, hostedTtlHours: 0, now }).listen(0);
-    await new Promise<void>((r) => ttl0.once('listening', r));
-    try {
-      const res0 = await fetch(`http://127.0.0.1:${(ttl0.address() as AddressInfo).port}/api/host`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          parsedSpec: {},
-          rawSpec: SPEC,
-          selectedIds: ['GET /things'],
-          config: {
-            mcpName: 'demo',
-            baseUrl: upstreamUrl,
-            upstreamAuth: { type: 'bearer' },
-            hosting: 'cloud',
-            mode: 'remote',
-            includeParamDescriptions: false,
-            retryOnServerError: false,
-          },
-        }),
-      });
-      const body0 = (await res0.json()) as { expiresAt: string | null };
-      expect(body0.expiresAt).toBeNull();
-    } finally {
-      await new Promise<void>((r) => ttl0.close(() => r()));
-    }
+    expect(res.status).toBe(200);
+    expect(Object.keys((await res.json()) as object).sort()).toEqual(['id', 'url']);
+  });
+
+  it('lets an agent call a hosted MCP from any site (CORS open on /m)', async () => {
+    const res = await fetch(`${baseUrl}/m/some-id`, {
+      method: 'OPTIONS',
+      headers: { origin: 'https://agent.example', 'access-control-request-method': 'POST' },
+    });
+
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
   });
 
   it('returns 404 for an unknown id', async () => {
@@ -315,13 +275,13 @@ describe('hosted runtime routes', () => {
 
   it('rejects a private/loopback baseUrl with 400 BLOCKED_HOST when the SSRF guard is on', async () => {
     // A production-like instance: allowPrivateHosts off → guard active.
-    const guarded = createApp({ nodeEnv: 'test', allowPrivateHosts: false, hostedStore: store }).listen(0);
+    const guarded = createApp({ nodeEnv: 'test', allowPrivateHosts: false, hostedStore: store, auth: account.auth }).listen(0);
     await new Promise<void>((r) => guarded.once('listening', r));
     const guardedUrl = `http://127.0.0.1:${(guarded.address() as AddressInfo).port}`;
     try {
       const res = await fetch(`${guardedUrl}/api/host`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', cookie: account.cookie },
         body: JSON.stringify({
           parsedSpec: {},
           rawSpec: SPEC,
@@ -346,10 +306,22 @@ describe('hosted runtime routes', () => {
   });
 });
 
-function hostRequest(base: string): Promise<Response> {
+// WAT-101 — nothing is created without an account (contract 15).
+describe('creating an MCP without a session', () => {
+  it('is refused with 401 and stores nothing', async () => {
+    const before = await database.rows(sql`select id from connectors`);
+
+    const res = await hostRequest(baseUrl, { cookie: '' });
+
+    expect(res.status).toBe(401);
+    expect(await database.rows(sql`select id from connectors`)).toEqual(before);
+  });
+});
+
+function hostRequest(base: string, headers: Record<string, string> = {}): Promise<Response> {
   return fetch(`${base}/api/host`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', cookie: account.cookie, ...headers },
     body: JSON.stringify({
       parsedSpec: {},
       rawSpec: SPEC,
@@ -378,10 +350,12 @@ describe('hosted routes when the database is unreachable', () => {
     downDb = await createTestDatabase();
     down = openDatabase(downDb.config);
     await migrateDatabase(down);
-    downApp = createApp({ nodeEnv: 'test', hostedStore: createHostedStore(down) }).listen(0);
+    // Signed in on the file's healthy database: these tests are about the connectors' storage.
+    downApp = createApp({ nodeEnv: 'test', hostedStore: createHostedStore(down), auth: account.auth }).listen(0);
     await new Promise<void>((r) => downApp.once('listening', r));
     downBase = `http://127.0.0.1:${(downApp.address() as AddressInfo).port}`;
-    existingId = (await createHostedStore(down).put(threeActions(), new Date())).id;
+    const { workspaceId } = await createTestAccount({ database: down });
+    existingId = (await createHostedStore(down).put(threeActions(), workspaceId, new Date())).id;
     await down.close();
   });
 
@@ -432,7 +406,7 @@ describe('hosted routes when storing or reading fails for another reason', () =>
       purgeExpired: () => Promise.resolve(),
       ping: () => Promise.resolve(),
     };
-    buggyApp = createApp({ nodeEnv: 'test', hostedStore: buggy }).listen(0);
+    buggyApp = createApp({ nodeEnv: 'test', hostedStore: buggy, auth: account.auth }).listen(0);
     await new Promise<void>((r) => buggyApp.once('listening', r));
     buggyBase = `http://127.0.0.1:${(buggyApp.address() as AddressInfo).port}`;
   });

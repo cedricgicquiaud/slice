@@ -32,11 +32,15 @@ export interface HostedEndpoint {
 /** The stored "fiche": everything the engine needs to serve one MCP. */
 export interface HostedMcpConfig {
   name: string;
+  /** The API's name as read in its description (D9), shown in the account's list of MCPs. */
+  apiName?: string;
   baseUrl: string;
   upstreamAuth: UpstreamAuth;
   endpoints: HostedEndpoint[];
   /** ISO creation date: set by the store, which stamps the connector on `put` and returns it on `get`. */
   createdAt?: string;
+  /** The workspace the connector belongs to (D15): given to the store's `put`, returned by `get`. */
+  workspaceId?: string;
 }
 
 /**

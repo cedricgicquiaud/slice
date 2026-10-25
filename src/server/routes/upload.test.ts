@@ -1,6 +1,17 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../app';
+import { createTestAccount, type TestAccount } from '../db/test-account';
+
+let account: TestAccount;
+
+beforeAll(async () => {
+  account = await createTestAccount();
+});
+
+afterAll(async () => {
+  await account?.dispose();
+});
 
 const VALID_YAML = `openapi: "3.0.3"
 info:
@@ -18,11 +29,21 @@ paths:
 `;
 
 function uploadFile(buffer: Buffer, filename: string, field: 'file' | 'spec' = 'file') {
-  const app = createApp({ nodeEnv: 'test' });
-  return request(app).post('/api/upload').attach(field, buffer, filename);
+  const app = createApp({ nodeEnv: 'test', auth: account.auth });
+  return request(app).post('/api/upload').set('Cookie', account.cookie).attach(field, buffer, filename);
 }
 
 describe('POST /api/upload', () => {
+  // WAT-101 — reading an API description takes an account (contract 16).
+  it('answers 401 without a session, even to a valid description', async () => {
+    const app = createApp({ nodeEnv: 'test', auth: account.auth });
+
+    const res = await request(app).post('/api/upload').attach('file', Buffer.from(VALID_YAML), 'demo.yaml');
+
+    expect(res.status).toBe(401);
+    expect(res.body.code).toBe('UNAUTHORIZED');
+  });
+
   it('returns 200 + ParsedSpec on a valid OpenAPI 3.x YAML', async () => {
     const res = await uploadFile(Buffer.from(VALID_YAML), 'demo.yaml');
     expect(res.status).toBe(200);
@@ -114,8 +135,8 @@ paths: {}
   });
 
   it('returns 400 when no file is provided', async () => {
-    const app = createApp({ nodeEnv: 'test' });
-    const res = await request(app).post('/api/upload');
+    const app = createApp({ nodeEnv: 'test', auth: account.auth });
+    const res = await request(app).post('/api/upload').set('Cookie', account.cookie);
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('NO_FILE');
   });

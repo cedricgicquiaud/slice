@@ -223,6 +223,7 @@ _seulement ce qui est propre à ce dépôt._
 
 - Lancer l'app : `pnpm dev` (front http://localhost:5173, API http://localhost:3001)
 - Testeur : `passe visuelle automatisée`
+- Amorce de recette : `.pilot/amorce-recette.js` — ouvre une session pour `recette@slice.local` par `POST /api/dev/sign-in` (route montée seulement si `NODE_ENV` vaut `development` ou `test`) ; l'outil recharge ensuite la page (à la main : console du navigateur, puis recharger)
 - Échéance : 2027-01-15 — date de la certification de développeur
 
 **Le contrat de ce projet** : aucun développement sans fiche Linear ; rien n'est créé dans

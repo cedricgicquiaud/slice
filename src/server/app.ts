@@ -1,5 +1,6 @@
 import express, { type Express } from 'express';
 import cors from 'cors';
+import { toNodeHandler } from 'better-auth/node';
 import rateLimit from 'express-rate-limit';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +9,9 @@ import { createGenerateRouter } from './routes/generate';
 import { createHostRouter } from './routes/host';
 import { createHostedMcpRouter } from './routes/hosted-mcp';
 import type { HostedStore } from './services/hosted-store';
+import type { SliceAuth } from './auth/auth';
+import { devSignIn } from './auth/dev-sign-in';
+import { requireSameOrigin, requireSession } from './middleware/require-session';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,30 +25,31 @@ export interface CreateAppOptions {
    * upstream can be reached. Never enable this on a deployed instance.
    */
   allowPrivateHosts?: boolean;
-  /**
-   * Free-tier TTL (hours) for hosted MCP URLs; 0 disables expiry entirely
-   * (self-host deployments). Defaults to SLICE_HOSTED_TTL_HOURS or 72.
-   */
-  hostedTtlHours?: number;
   /** Where hosted connectors live. Without it, the hosted routes are not mounted. */
   hostedStore?: HostedStore;
-  /** Clock for hosted connectors (creation date, expiry). Defaults to the system clock. */
+  /** Clock that dates a created connector. Defaults to the system clock. */
   now?: () => Date;
+  /** Accounts and sessions. Without it, every `/api/*` call but health is refused. */
+  auth?: SliceAuth;
 }
 
 export function createApp(options: CreateAppOptions = {}): Express {
-  const nodeEnv = options.nodeEnv ?? process.env.NODE_ENV ?? 'development';
+  const declaredEnv = options.nodeEnv ?? process.env.NODE_ENV;
+  const nodeEnv = declaredEnv ?? 'development';
   const allowPrivateHosts = options.allowPrivateHosts ?? nodeEnv !== 'production';
   const app = express();
 
-  app.use(cors());
+  // Agents may call a hosted MCP from anywhere; the API answers SLICE's own page only (D16).
+  app.use('/m', cors());
   // Global JSON parser at 10 MB for the default API. The /api/generate
   // route ships its own 15 MB parser; we skip the global one on that path
   // so the larger limit is the only one applied (R1.6.8).
   app.use((req, res, next) => {
     // /api/generate and /api/host ship their own 15 MB parser; skip the global
-    // one on those paths so the larger limit is the only one applied.
+    // one on those paths so the larger limit is the only one applied. Better
+    // Auth reads its own request bodies under /api/auth.
     if (req.path.startsWith('/api/generate') || req.path.startsWith('/api/host')) return next();
+    if (req.path.startsWith('/api/auth/')) return next();
     return express.json({ limit: '10mb' })(req, res, next);
   });
 
@@ -70,7 +75,16 @@ export function createApp(options: CreateAppOptions = {}): Express {
     res.json({ ok: true, status: 'ok', env: nodeEnv, timestamp });
   });
 
+  // Sign-in routes answer without a session (Better Auth rate-limits them itself).
+  if (options.auth) app.all('/api/auth/{*any}', toNodeHandler(options.auth));
+  // Recette primer: a session without proof, so mounted only where NODE_ENV says development or test.
+  if (options.auth && (declaredEnv === 'development' || declaredEnv === 'test')) {
+    app.post('/api/dev/sign-in', devSignIn(options.auth));
+  }
+
   app.use('/api/', apiLimiter);
+  app.use('/api/', requireSameOrigin(options.auth));
+  app.use('/api/', requireSession(options.auth));
 
   // POST /api/upload — phase 02 (multer applies its own 10 MB limit before json parser)
   app.use('/api/upload', createUploadRouter());
@@ -89,7 +103,6 @@ export function createApp(options: CreateAppOptions = {}): Express {
       store: options.hostedStore,
       now: options.now ?? (() => new Date()),
       allowPrivateHosts,
-      ttlHours: options.hostedTtlHours,
     };
     app.use('/api/host', createHostRouter(hosted));
     app.use('/m', createHostedMcpRouter(hosted));

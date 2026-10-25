@@ -12,6 +12,8 @@ beforeAll(async () => {
   testDb = await createTestDatabase();
   database = openDatabase(testDb.config);
   await migrateDatabase(database);
+  await rows(sql`insert into users (id, name, email) values ('owner', '', 'owner@example.com')`);
+  await rows(sql`insert into workspaces (id, owner_id, created_at) values ('owner-workspace', 'owner', now())`);
 });
 
 afterAll(async () => {
@@ -24,11 +26,11 @@ function rows<T>(query: SQL): Promise<T[]> {
 }
 
 describe('database schema (D3)', () => {
-  it('creates connectors and connector_actions with the columns of the schema', async () => {
+  it('creates connectors, connector_actions and workspaces with the columns of the schema', async () => {
     const columns = await rows<{ table_name: string; column_name: string; udt_name: string; is_nullable: string }>(
       sql`select table_name, column_name, udt_name, is_nullable
           from information_schema.columns
-          where table_schema = 'public' and table_name in ('connectors', 'connector_actions')
+          where table_schema = 'public' and table_name in ('connectors', 'connector_actions', 'workspaces')
           order by table_name, ordinal_position`
     );
 
@@ -48,15 +50,29 @@ describe('database schema (D3)', () => {
       'connectors.upstream_token_url text YES',
       'connectors.upstream_scopes _text YES',
       'connectors.created_at timestamptz NO',
+      'connectors.workspace_id text NO',
+      'connectors.api_name text YES',
+      'workspaces.id text NO',
+      'workspaces.owner_id text NO',
+      'workspaces.created_at timestamptz NO',
     ]);
   });
 
   function insertConnector(id: string, authType: string, headerName: string | null, tokenUrl: string | null) {
     return rows(
-      sql`insert into connectors (id, name, base_url, upstream_auth_type, upstream_header_name, upstream_token_url, created_at)
-          values (${id}, 'demo', 'https://api.example.com', ${authType}, ${headerName}, ${tokenUrl}, now())`
+      sql`insert into connectors (id, name, base_url, upstream_auth_type, upstream_header_name, upstream_token_url, created_at, workspace_id)
+          values (${id}, 'demo', 'https://api.example.com', ${authType}, ${headerName}, ${tokenUrl}, now(), 'owner-workspace')`
     );
   }
+
+  it('refuses a connector that belongs to no workspace (D17)', async () => {
+    await expect(
+      rows(
+        sql`insert into connectors (id, name, base_url, upstream_auth_type, created_at)
+            values ('ownerless', 'demo', 'https://api.example.com', 'none', now())`
+      )
+    ).rejects.toThrow();
+  });
 
   it('fills the upstream header name if and only if the access is an API key', async () => {
     await expect(insertConnector('apikey-without-header', 'apiKey', null, null)).rejects.toThrow();
@@ -101,5 +117,41 @@ describe('database schema (D3)', () => {
     );
 
     expect(indexes.some((i) => /\(created_at\)$/.test(i.indexdef))).toBe(true);
+  });
+});
+
+describe('deleting an account (WAT-101)', () => {
+  it('deletes its workspace, its connectors and their actions with it (D11)', async () => {
+    await rows(sql`insert into users (id, name, email) values ('leaving', '', 'leaving@example.com')`);
+    await rows(sql`insert into workspaces (id, owner_id, created_at) values ('leaving-workspace', 'leaving', now())`);
+    await rows(
+      sql`insert into connectors (id, name, base_url, upstream_auth_type, created_at, workspace_id)
+          values ('leaving-mcp', 'demo', 'https://api.example.com', 'none', now(), 'leaving-workspace')`
+    );
+    await rows(
+      sql`insert into connector_actions (connector_id, position, name, description, method, path, params)
+          values ('leaving-mcp', 0, 'ping', 'Ping', 'GET', '/ping', '[]'::jsonb)`
+    );
+
+    await rows(sql`delete from users where id = 'leaving'`);
+
+    const left = await rows<{ kind: string }>(
+      sql`select 'workspace' as kind from workspaces where id = 'leaving-workspace'
+          union all select 'connector' from connectors where id = 'leaving-mcp'
+          union all select 'action' from connector_actions where connector_id = 'leaving-mcp'`
+    );
+    expect(left).toEqual([]);
+  });
+});
+
+describe('accounts schema (WAT-96)', () => {
+  it('keeps accounts, their sign-in methods and their sessions without any password column (D3)', async () => {
+    const columns = await rows<{ table_name: string; column_name: string }>(
+      sql`select table_name, column_name from information_schema.columns
+          where table_schema = 'public' and table_name in ('users', 'accounts', 'sessions', 'verifications')`
+    );
+
+    expect(new Set(columns.map((c) => c.table_name))).toEqual(new Set(['users', 'accounts', 'sessions', 'verifications']));
+    expect(columns.filter((c) => /password/i.test(c.column_name))).toEqual([]);
   });
 });

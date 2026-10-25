@@ -1,9 +1,20 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import request from 'supertest';
 import { createApp } from '../app';
 import { parseSpec } from '../services/parser';
+import { createTestAccount, type TestAccount } from '../db/test-account';
+
+let account: TestAccount;
+
+beforeAll(async () => {
+  account = await createTestAccount();
+});
+
+afterAll(async () => {
+  await account?.dispose();
+});
 import type { GenerateRequest, SliceConfig } from '@shared/types';
 
 const BASE_CONFIG: SliceConfig = {
@@ -29,7 +40,9 @@ async function buildBody(rawSpec: string): Promise<GenerateRequest> {
  */
 async function timed(app: ReturnType<typeof createApp>, body: GenerateRequest): Promise<number> {
   const start = performance.now();
-  await request(app)
+  await request
+    .agent(app)
+    .set('Cookie', account.cookie)
     .post('/api/generate')
     .send(body)
     .buffer(true)
@@ -43,7 +56,10 @@ async function timed(app: ReturnType<typeof createApp>, body: GenerateRequest): 
 }
 
 describe('POST /api/generate — perf (R1.4.4)', () => {
-  const app = createApp({ nodeEnv: 'test' });
+  let app: ReturnType<typeof createApp>;
+  beforeAll(() => {
+    app = createApp({ nodeEnv: 'test', auth: account.auth });
+  });
 
   it('generates the shopify-50 bundle under the 5s p95 budget', async () => {
     const raw = readFileSync('fixtures/shopify-50.yaml', 'utf-8');
@@ -69,7 +85,10 @@ describe('POST /api/generate — perf (R1.4.4)', () => {
 });
 
 describe('POST /api/generate — no persistence (R1.4.6)', () => {
-  const app = createApp({ nodeEnv: 'test' });
+  let app: ReturnType<typeof createApp>;
+  beforeAll(() => {
+    app = createApp({ nodeEnv: 'test', auth: account.auth });
+  });
 
   it('leaves no extra files in os.tmpdir() after a request', async () => {
     const raw = readFileSync('fixtures/shopify-50.yaml', 'utf-8');

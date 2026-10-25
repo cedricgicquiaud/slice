@@ -13,7 +13,8 @@
  * The production server refuses to start without a PostgreSQL database. The
  * smoke creates a throwaway database on the `DATABASE_URL` server, points the
  * compiled server at it, and drops it afterwards: the connector it creates
- * never lands in the database `DATABASE_URL` names.
+ * never lands in the database `DATABASE_URL` names. It signs an account in
+ * on that database, as the API answers nothing without a session.
  *
  * Exits non-zero on the first failed check — wire it into CI pre-release.
  */
@@ -25,6 +26,9 @@ import { resolve } from 'node:path';
 import pg from 'pg';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { createAuth } from '../src/server/auth/auth';
+import { openSession } from '../src/server/auth/open-session';
+import { openDatabase } from '../src/server/db/client';
 
 const PORT = Number(process.env.PORT ?? 3099);
 const BASE = `http://localhost:${PORT}`;
@@ -55,6 +59,23 @@ paths:
       responses: { '204': { description: deleted } }
 `;
 const HOSTED_URL = /\/m\/[A-Za-z0-9_-]{22}$/;
+
+/** Signs the compiled server's session cookies; the smoke signs its own account in with it. */
+const AUTH_SECRET = randomBytes(32).toString('hex');
+/** `Cookie` header of the smoke's signed-in account, set once the server has migrated its database. */
+let cookie = '';
+
+/** Sign an account in on the server's database, as Better Auth itself would. */
+async function signIn(databaseUrl: string): Promise<string> {
+  const database = openDatabase({ driver: 'postgres', url: databaseUrl });
+  try {
+    const auth = createAuth({ database, secret: AUTH_SECRET, baseURL: BASE });
+    const { name, value } = await openSession(auth, 'smoke@slice.local');
+    return `${name}=${value}`;
+  } finally {
+    await database.close();
+  }
+}
 
 function run(cmd: string, args: string[]): void {
   const r = spawnSync(cmd, args, { cwd: ROOT, stdio: 'inherit' });
@@ -109,6 +130,13 @@ const checks: { name: string; fn: () => Promise<void> }[] = [
     },
   },
   {
+    name: 'POST /api/upload without a session answers 401',
+    fn: async () => {
+      const res = await fetch(`${BASE}/api/upload`, { method: 'POST' });
+      if (res.status !== 401) throw new Error(`status ${res.status}, expected 401`);
+    },
+  },
+  {
     name: 'POST /api/upload parses a spec via the compiled child_process',
     fn: async () => {
       const specPath = resolve(ROOT, 'fixtures/petstore-swagger2.json');
@@ -117,7 +145,7 @@ const checks: { name: string; fn: () => Promise<void> }[] = [
       });
       const form = new FormData();
       form.append('file', file);
-      const res = await fetch(`${BASE}/api/upload`, { method: 'POST', body: form });
+      const res = await fetch(`${BASE}/api/upload`, { method: 'POST', body: form, headers: { cookie } });
       if (!res.ok) throw new Error(`status ${res.status}: ${await res.text()}`);
       const body = (await res.json()) as { apiName?: string; groups?: unknown[] };
       if (!body.apiName || !Array.isArray(body.groups) || body.groups.length === 0) {
@@ -130,7 +158,7 @@ const checks: { name: string; fn: () => Promise<void> }[] = [
     fn: async () => {
       const res = await fetch(`${BASE}/api/host`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', cookie },
         body: JSON.stringify({
           parsedSpec: {},
           rawSpec: HOSTED_SPEC,
@@ -219,7 +247,15 @@ async function main(): Promise<void> {
   console.log(`› booting compiled server on :${PORT}…`);
   const child = spawn(process.execPath, [SERVER_ENTRY], {
     cwd: ROOT,
-    env: { ...process.env, NODE_ENV: 'production', PORT: String(PORT), DATABASE_URL: smokeUrl.href },
+    env: {
+      ...process.env,
+      NODE_ENV: 'production',
+      PORT: String(PORT),
+      DATABASE_URL: smokeUrl.href,
+      BETTER_AUTH_SECRET: AUTH_SECRET,
+      // Plain http here: Better Auth then names its cookie without the `__Secure-` prefix.
+      BETTER_AUTH_URL: BASE,
+    },
     stdio: ['ignore', 'inherit', 'inherit'],
   });
   const exited = new Promise<void>((r) => (child.exitCode !== null ? r() : child.once('exit', () => r())));
@@ -227,6 +263,7 @@ async function main(): Promise<void> {
   let failed = false;
   try {
     await waitForHealth(child);
+    cookie = await signIn(smokeUrl.href);
     for (const check of checks) {
       await check.fn();
       console.log(`  ✓ ${check.name}`);

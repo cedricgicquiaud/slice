@@ -42,13 +42,33 @@ export async function migrateDatabase(database: Database): Promise<void> {
       connection.release();
     }
   } catch (err) {
-    throw new Error(`Database migrations failed: ${rootMessage(err)}`, { cause: err });
+    throw new Error(`Database migrations failed: ${rootMessage(err)}${olderSchemaAdvice(database, err)}`, { cause: err });
   }
+}
+
+/** PostgreSQL's codes for an object created twice: a type or a table. */
+const ALREADY_EXISTS = new Set(['42710', '42P07']);
+
+/**
+ * A local PGlite migrated before the single migration was regenerated already
+ * holds its objects: say which folder to delete rather than leave a bare error.
+ */
+function olderSchemaAdvice(database: Database, err: unknown): string {
+  if (database.driver !== 'pglite' || !database.dataDir) return '';
+  const code = (rootCause(err) as { code?: unknown } | undefined)?.code;
+  if (typeof code !== 'string' || !ALREADY_EXISTS.has(code)) return '';
+  return `. The local database in ${database.dataDir} dates from an older schema: delete that folder and start again (its data is lost).`;
 }
 
 /** The database's own words: Drizzle wraps them in a "Failed query" error. */
 function rootMessage(err: unknown): string {
+  const root = rootCause(err);
+  return root instanceof Error ? root.message : String(root);
+}
+
+/** The database's own error, under Drizzle's wrapping. */
+function rootCause(err: unknown): unknown {
   let current = err;
   while (current instanceof Error && current.cause instanceof Error) current = current.cause;
-  return current instanceof Error ? current.message : String(current);
+  return current;
 }

@@ -24,7 +24,7 @@ interface DatabaseHandle {
 
 export type Database =
   | (DatabaseHandle & { driver: 'postgres'; db: NodePgDatabase<Schema>; pool: pg.Pool })
-  | (DatabaseHandle & { driver: 'pglite'; db: PgliteDatabase<Schema>; client: PGlite });
+  | (DatabaseHandle & { driver: 'pglite'; db: PgliteDatabase<Schema>; client: PGlite; dataDir?: string });
 
 /**
  * `DATABASE_URL` when set; otherwise PGlite on disk under `SLICE_DATA_DIR`
@@ -65,6 +65,7 @@ export function openDatabase(config: DatabaseConfig): Database {
     driver: 'pglite',
     db,
     client,
+    dataDir: config.dataDir,
     async rows<T>(query: SQL) {
       return (await db.execute(query)).rows as T[];
     },

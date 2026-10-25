@@ -26,12 +26,54 @@ with a single-page-app fallback: any other `GET` returns `index.html`.
 
 ### Authentication
 
-The `/api/*` routes have no authentication: SLICE is a public tool with no user accounts.
+Every `/api/*` route needs the session cookie of a SLICE account, except `GET /api/health`, the sign-in routes of
+Better Auth under `/api/auth/*`, and, only when `NODE_ENV` is `development` or `test`, `POST /api/dev/sign-in` (opens a
+session for the recette account `recette@slice.local`; used by the visual test pass). Without a live session the answer is
+`401 { "code": "UNAUTHORIZED", "message": "Sign in to continue." }`; while the database is unreachable,
+`503 SERVICE_UNAVAILABLE`.
+
+SLICE takes an account's orders from its own page only. A write (any method but `GET`, `HEAD`, `OPTIONS`) to `/api/*`
+whose `Origin` header is neither the address the request reached nor SLICE's public address (`BETTER_AUTH_URL`; in
+development, `http://localhost:5173` by default — see [configuration.md](configuration.md)) is refused, session or
+not: `403 { "code": "FORBIDDEN", "message": "SLICE takes orders from its own page only." }`. A request without
+`Origin` (a script, an agent, `curl`) is not concerned: browsers always send it on a write from another site.
+
+Google and Microsoft sign-in (Better Auth's social sign-in): `POST /api/auth/sign-in/social` with
+`{ "provider": "google" | "microsoft", "callbackURL": "/", "errorCallbackURL": "/" }` answers `{ "url" }`, the
+provider's sign-in page. The provider sends the person back to `/api/auth/callback/<provider>`, which sets the session
+cookie and redirects to `callbackURL`. When the provider did not verify the email address, no session opens, no
+account is created, and the redirect goes to `errorCallbackURL` with `?error=email_not_verified` (new address) or
+`?error=account_not_linked` (address of an existing account). A provider without its application
+([oauth-apps.md](oauth-apps.md)) is not offered.
+
+Sign-in with a code by email (Better Auth's email OTP): `POST /api/auth/email-otp/send-verification-otp` with
+`{ "email": "<address>", "type": "sign-in" }` sends a 6-digit code to the address and answers `{ "success": true }`
+(by Resend with `RESEND_API_KEY`, otherwise printed in the server's terminal — see
+[configuration.md](configuration.md)). When the email could not be sent, the answer is
+`502 { "code": "code_not_sent", "message": "Couldn't send the code, try again." }`. Then
+`POST /api/auth/sign-in/email-otp` with `{ "email", "otp" }` sets the session cookie; the first code of an unknown
+address creates its account (and its personal workspace, never shown).
+
+A code lives 10 minutes, signs in once, and takes 5 tries:
+
+| Status | `code` | When |
+|---|---|---|
+| 400 | `INVALID_OTP` | Wrong code, or a code already used |
+| 403 | `TOO_MANY_ATTEMPTS` | Sixth try of a code, even the right one; only a new code signs in |
+| 400 | `OTP_EXPIRED` | Code older than 10 minutes |
+| 429 | `too_many_codes_for_address` | Sixth code within the hour for the address; no email sent |
+| 429 | `too_many_codes_from_ip` | Eleventh code within the hour from the IP (`x-forwarded-for`), any address; no email sent |
+
+Only codes that left count in the two hourly quotas: a `code_not_sent` spends nothing. The quotas live in the server's
+memory, so a restart gives them back. In production, Better Auth also limits each of the two routes to 3 calls a minute
+per IP (`429` without `code`).
+
 The hosted runtime `/m/:id` is protected by the unguessable id in its URL (see [Hosted runtime](#any-mid)).
 
 ### CORS
 
-CORS is enabled for all origins (`cors()` with default options).
+CORS is enabled for all origins on the hosted runtime `/m/:id` only, so an agent can call a hosted MCP from any site.
+`/api/*` sends no CORS header: only SLICE's own page, on the same origin, reads its answers.
 
 ### Request body limits
 
@@ -358,8 +400,9 @@ Creates a hosted MCP: stores a configuration and returns the URL agents connect 
 The server re-parses `rawSpec` and filters `selectedIds` in the same way.
 
 **Stored configuration:** the MCP name, `baseUrl`, `upstreamAuth` (type, plus header name, token URL and scopes when relevant),
-and for each selected endpoint its tool name, one-line description, method, path and parameters, plus a creation date.
-The raw spec, `mcpServerToken` and any upstream credential are not stored.
+and for each selected endpoint its tool name, one-line description, method, path and parameters, plus a creation date,
+the API's name as read in the spec (`info.title`, else `Untitled API`) and the personal workspace of the signed-in account, which owns the
+MCP. The raw spec, `mcpServerToken` and any upstream credential are not stored.
 
 **SSRF check:** when the server runs with `NODE_ENV=production`, `config.baseUrl` must resolve only to public addresses;
 otherwise the request fails with `BLOCKED_HOST`. In development this check is off so a local upstream can be used.
@@ -369,8 +412,7 @@ otherwise the request fails with `BLOCKED_HOST`. In development this check is of
 ```json
 {
   "id": "Q2xhdWRlIGlzIG5vdCBoZXJl",
-  "url": "https://slice.example.com/m/Q2xhdWRlIGlzIG5vdCBoZXJl",
-  "expiresAt": "2026-10-08T17:30:00.000Z"
+  "url": "https://slice.example.com/m/Q2xhdWRlIGlzIG5vdCBoZXJl"
 }
 ```
 
@@ -378,7 +420,8 @@ otherwise the request fails with `BLOCKED_HOST`. In development this check is of
 |---|---|
 | `id` | 16 random bytes, base64url-encoded (22 characters, about 128 bits of entropy) |
 | `url` | `<request protocol>://<Host header>/m/<id>` |
-| `expiresAt` | Creation time plus the TTL (`SLICE_HOSTED_TTL_HOURS`, default 72 h), or `null` when expiry is disabled (TTL `0`) |
+
+A hosted MCP has no expiry date: its URL keeps working until the MCP is deleted.
 
 **Errors**
 
@@ -387,6 +430,8 @@ otherwise the request fails with `BLOCKED_HOST`. In development this check is of
 | 400 | `INVALID_SPEC` | The body fails schema validation, or `rawSpec` fails to re-parse |
 | 400 | `NO_ENDPOINT_SELECTED` | None of `selectedIds` exists in the re-parsed spec |
 | 400 | `BLOCKED_HOST` | `config.baseUrl` points to a non-public host (production only) |
+| 401 | `UNAUTHORIZED` | No live session; nothing is stored |
+| 403 | `FORBIDDEN` | Sent from another site than SLICE's page; nothing is stored |
 | 413 | `PAYLOAD_TOO_LARGE` | Body larger than 15 MB |
 | 422 | `PARSE_TOO_COMPLEX` | The re-parse crashed or ran out of memory |
 | 429 | `PARSE_BUSY` | Too many parses in flight; retry shortly |
@@ -430,16 +475,14 @@ goes out without a credential, and the upstream API's own error comes back to th
 - A non-2xx upstream response becomes a tool error carrying the upstream status and response body.
 - A JSON response is returned as pretty-printed JSON text; anything else is returned as text.
 
-**Expiry:** a configuration older than the TTL (`SLICE_HOSTED_TTL_HOURS`, default 72 hours, `0` for no expiry)
-gets `410` at every request. It is kept 30 days after expiring, then a cleanup that runs at startup and every hour
-deletes it; its id then gets `404`.
+**No expiry:** a configuration is served whatever its age, and no cleanup deletes it. `SLICE_HOSTED_TTL_HOURS` is
+ignored.
 
 **Responses outside the MCP protocol**
 
 | HTTP | Body | Cause |
 |---|---|---|
 | 404 | `{ "error": "Unknown MCP id." }` | No configuration under this id |
-| 410 | `{ "error": "This MCP URL has expired. Generate it again on SLICE, or ask for a permanent plan." }` | The configuration has expired (kept 30 days, then deleted) |
 | 500 | `{ "error": "Internal error." }` | The MCP transport failed before sending a response |
 | 503 | `{ "error": "This MCP is unavailable for the moment. Try again in a few minutes." }` | The database is unreachable; the id may well exist, so it is never reported unknown |
 
@@ -459,7 +502,6 @@ Protocol-level errors (wrong `Accept` header, unsupported method, invalid JSON-R
 | SSRF guard | Outbound URLs must be `http(s)` and resolve only to public addresses. Blocked: `0.0.0.0/8`, `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16` (including cloud metadata `169.254.169.254`), `100.64.0.0/10`, IPv6 `::`, `::1`, `fe80::/10`, `fc00::/7`, and IPv4-mapped IPv6 forms of the above. Applied to `/api/upload-url` (always, on every redirect and candidate), to `config.baseUrl` in `/api/host`, and again before every hosted tool call (both production only). |
 | Token relayed, never stored | The hosted runtime reads the caller's `Authorization` header per request (Node.js `AsyncLocalStorage`), forwards it upstream, and keeps nothing. Stored configurations contain no credential. |
 | Unguessable hosted URLs | Ids are 128-bit random values. |
-| Hosted URL expiry | Configurations expire after `SLICE_HOSTED_TTL_HOURS` (default 72), and are deleted 30 days later. |
 | No disk writes for uploads and bundles | Uploads use in-memory storage; ZIPs are built in memory and streamed. Hosted configurations live in the database (PostgreSQL, or the embedded PGlite files under `SLICE_DATA_DIR` outside production). |
 | Header-injection safe download name | The `Content-Disposition` file name is reduced to `[a-z0-9-]` before use. |
 

@@ -3,8 +3,9 @@
  *
  * Re-validates and re-parses the spec (same hardening as /api/generate —
  * never trust the client parse), distills the selection into a HostedMcpConfig,
- * stores it under an unguessable id, and returns `{ id, url }`. The hosted
- * runtime (`/m/:id`) then serves it on demand. No secret is stored.
+ * stores it under an unguessable id in the signed-in account's workspace, and
+ * returns `{ id, url }`. The hosted runtime (`/m/:id`) then serves it on demand.
+ * No secret is stored.
  */
 import { Router, type RequestHandler, json } from 'express';
 import { generateRequestSchema } from '@shared/config-schema';
@@ -14,7 +15,6 @@ import { specToHostedConfig } from '../services/spec-to-hosted-config';
 import type { HostedStore } from '../services/hosted-store';
 import { assertPublicUrl, SsrfError } from '../services/ssrf-guard';
 import { isDatabaseUnreachable } from '../db/errors';
-import { defaultTtlHours } from './hosted-mcp';
 
 const BODY_LIMIT = '15mb';
 
@@ -25,8 +25,6 @@ export interface HostRouterOptions {
   now: () => Date;
   /** When false (production default), SSRF-guard the user-supplied baseUrl. */
   allowPrivateHosts?: boolean;
-  /** Free-tier TTL in hours; 0 disables expiry. Defaults to SLICE_HOSTED_TTL_HOURS or 72. */
-  ttlHours?: number;
 }
 
 export function createHostRouter(options: HostRouterOptions): Router {
@@ -39,18 +37,14 @@ export function createHostRouter(options: HostRouterOptions): Router {
     }
     next(err);
   }) as import('express').ErrorRequestHandler);
-  router.post(
-    '/',
-    makeHandleHost(options.store, options.now, options.allowPrivateHosts ?? false, options.ttlHours ?? defaultTtlHours())
-  );
+  router.post('/', makeHandleHost(options.store, options.now, options.allowPrivateHosts ?? false));
   return router;
 }
 
 const makeHandleHost = (
   store: HostedStore,
   now: () => Date,
-  allowPrivateHosts: boolean,
-  ttlHours: number
+  allowPrivateHosts: boolean
 ): RequestHandler => async (req, res, next) => {
   const parsed = generateRequestSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -80,7 +74,7 @@ const makeHandleHost = (
       }
     }
 
-    const { id, createdAt } = await store.put(config, now()).catch((err: unknown) => {
+    const { id } = await store.put(config, res.locals.workspaceId, now()).catch((err: unknown) => {
       // eslint-disable-next-line no-console
       console.error('[host] storing the connector failed:', err instanceof Error ? err.message : err);
       // Anything but an outage is a bug: let it surface as a server error.
@@ -92,9 +86,7 @@ const makeHandleHost = (
       );
     });
     const url = `${req.protocol}://${req.get('host')}/m/${id}`;
-    const expiresAt =
-      ttlHours > 0 ? new Date(Date.parse(createdAt) + ttlHours * 3_600_000).toISOString() : null;
-    res.status(200).json({ id, url, expiresAt });
+    res.status(200).json({ id, url });
   } catch (err) {
     if (err instanceof ApiError) {
       res.status(err.status).json(payload(err.code, err.message));

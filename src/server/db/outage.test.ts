@@ -10,6 +10,7 @@ import { createHostedStore } from '../services/hosted-store';
 import { openDatabase } from './client';
 import { migrateDatabase } from './migrate';
 import { createTestDatabase } from './test-database';
+import { createTestAccount } from './test-account';
 
 const SPEC = `openapi: 3.0.3
 info: { title: Demo, version: "1.0" }
@@ -70,16 +71,19 @@ withPostgres('a database outage (runs only with DATABASE_URL)', () => {
     let app: Server | undefined;
     try {
       await migrateDatabase(database);
+      // The account lives behind the relay too: its workspace is the one the connectors point to.
+      const signedIn = await createTestAccount({ database });
       const store = createHostedStore(database);
-      app = createApp({ nodeEnv: 'test', hostedStore: store }).listen(0);
+      app = createApp({ nodeEnv: 'test', hostedStore: store, auth: signedIn.auth }).listen(0);
       await new Promise<void>((r) => app!.once('listening', r));
       const base = `http://127.0.0.1:${(app.address() as AddressInfo).port}`;
       const { id } = await store.put(
         { name: 'demo', baseUrl: 'http://127.0.0.1:9', upstreamAuth: { type: 'none' }, endpoints: [] },
+        signedIn.workspaceId,
         new Date()
       );
       const statuses = async () => [
-        (await create(base)).status,
+        (await create(base, signedIn.cookie)).status,
         (await visit(`${base}/m/${id}`)).status,
         (await fetch(`${base}/api/health`)).status,
       ];
@@ -98,10 +102,10 @@ withPostgres('a database outage (runs only with DATABASE_URL)', () => {
   }, 30_000);
 });
 
-function create(base: string): Promise<Response> {
+function create(base: string, cookie: string): Promise<Response> {
   return fetch(`${base}/api/host`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', cookie },
     body: JSON.stringify({
       parsedSpec: {},
       rawSpec: SPEC,
