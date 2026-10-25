@@ -126,38 +126,40 @@ function AppInner() {
       />
 
       <main className="flex flex-1 flex-col overflow-hidden px-6">
-        {path === '/mcps' && <McpsScreen />}
+        {path === '/mcps' ? (
+          <McpsScreen />
+        ) : (
+          <>
+            {screen === 1 && <UploadScreen onParsed={handleParsed} />}
 
-        {path !== '/mcps' && screen === 1 && <UploadScreen onParsed={handleParsed} />}
+            {screen === 2 && parsedSpec && (
+              <SelectionScreen
+                spec={parsedSpec}
+                onContinue={handleSelectionDone}
+              />
+            )}
 
-        {screen === 2 && parsedSpec && (
-          <SelectionScreen
-            spec={parsedSpec}
-            onContinue={handleSelectionDone}
-          />
+            {screen === 3 && parsedSpec && (
+              <ConfigScreen
+                spec={parsedSpec}
+                selectedIds={selectedIds}
+                onGenerate={handleGenerate}
+              />
+            )}
+
+            {screen === 4 && success && (
+              <SuccessScreen
+                config={success.config}
+                endpointCount={success.endpointCount}
+                economySnapshot={success.economySnapshot}
+                zipBlob={success.zipBlob}
+                hostedUrl={success.hostedUrl}
+                onRestart={handleReset}
+                onBackToSelection={() => setScreen(2)}
+              />
+            )}
+          </>
         )}
-
-        {screen === 3 && parsedSpec && (
-          <ConfigScreen
-            spec={parsedSpec}
-            selectedIds={selectedIds}
-            onGenerate={handleGenerate}
-          />
-        )}
-
-        {screen === 4 && success && (
-          <SuccessScreen
-            config={success.config}
-            endpointCount={success.endpointCount}
-            economySnapshot={success.economySnapshot}
-            zipBlob={success.zipBlob}
-            hostedUrl={success.hostedUrl}
-            onRestart={handleReset}
-            onBackToSelection={() => setScreen(2)}
-          />
-        )}
-
-
       </main>
     </div>
   );
