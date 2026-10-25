@@ -8,7 +8,7 @@ const ITEM_CLASS =
 /**
  * Signed in, the account's address at the top right; clicked, its menu (D12).
  * Below 640 px an account icon stands for the address, which heads the menu.
- * `/account/delete` shows the home screen until its own delivery.
+ * "Delete account" leads to `/account/delete`, where `delete` must be typed (D11).
  */
 export function AccountMenu() {
   const { data } = authClient.useSession();

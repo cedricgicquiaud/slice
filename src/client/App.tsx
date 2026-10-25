@@ -8,6 +8,7 @@ import { SelectionScreen } from './screens/selection';
 import { ConfigScreen } from './screens/config';
 import { SuccessScreen } from './screens/success';
 import { McpsScreen } from './screens/mcps';
+import { DeleteAccountScreen } from './screens/delete-account';
 import { useTheme } from './hooks/use-theme';
 import { ApiError, apiGenerate, apiHost } from './lib/api';
 
@@ -114,10 +115,14 @@ function AppInner() {
     }
   };
 
+  // The pages outside the three steps: no steps at the top.
+  const offStepsPage =
+    path === '/mcps' ? <McpsScreen /> : path === '/account/delete' ? <DeleteAccountScreen /> : null;
+
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <Topbar
-        current={path === '/mcps' ? null : screen}
+        current={offStepsPage ? null : screen}
         apiName={apiName}
         theme={theme}
         onReset={handleReset}
@@ -126,9 +131,7 @@ function AppInner() {
       />
 
       <main className="flex flex-1 flex-col overflow-hidden px-6">
-        {path === '/mcps' ? (
-          <McpsScreen />
-        ) : (
+        {offStepsPage ?? (
           <>
             {screen === 1 && <UploadScreen onParsed={handleParsed} />}
 
