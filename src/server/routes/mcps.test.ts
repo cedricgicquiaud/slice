@@ -108,3 +108,24 @@ describe('DELETE /api/mcps/:id', () => {
     });
   });
 });
+
+describe('/api/mcps refusals inherited from the guards', () => {
+  it.each(['GET', 'DELETE'])('answers 401 to %s without a session (contract 15)', async (method) => {
+    const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+
+    const res = await fetch(`${baseUrl}/api/mcps${method === 'DELETE' ? `/${id}` : ''}`, { method });
+
+    expect({ status: res.status, kept: (await store.get(id)) !== undefined }).toEqual({ status: 401, kept: true });
+  });
+
+  it('answers 403 to a deletion sent from another site, session or not (D16)', async () => {
+    const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+
+    const res = await fetch(`${baseUrl}/api/mcps/${id}`, {
+      method: 'DELETE',
+      headers: { cookie: account.cookie, origin: 'https://evil.example' },
+    });
+
+    expect({ status: res.status, kept: (await store.get(id)) !== undefined }).toEqual({ status: 403, kept: true });
+  });
+});
