@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { authClient } from '../lib/auth-client';
 
 const ITEM_CLASS =
@@ -11,10 +11,33 @@ const ITEM_CLASS =
 export function AccountMenu() {
   const { data } = authClient.useSession();
   const [open, setOpen] = useState(false);
+  const container = useRef<HTMLDivElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
+
+  // Open, the menu closes on Escape (focus back on the address) or on a click beside it.
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setOpen(false);
+      toggle.current?.focus();
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (!container.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [open]);
+
   if (!data) return null;
   return (
-    <div className="relative">
+    <div ref={container} className="relative">
       <button
+        ref={toggle}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
