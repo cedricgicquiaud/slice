@@ -23,7 +23,7 @@ export interface AccountMcps {
 export function createAccountMcps(database: Database): AccountMcps {
   const { db } = database;
   return {
-    async list(_workspaceId) {
+    async list(workspaceId) {
       const rows = await db
         .select({
           id: connectors.id,
@@ -33,6 +33,7 @@ export function createAccountMcps(database: Database): AccountMcps {
         })
         .from(connectors)
         .leftJoin(connectorActions, eq(connectorActions.connectorId, connectors.id))
+        .where(eq(connectors.workspaceId, workspaceId))
         .groupBy(connectors.id)
         .orderBy(desc(connectors.createdAt));
       return rows.map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
