@@ -1,7 +1,7 @@
 // E2E for the hosted runtime routes (Pivot-4): POST /api/host stores a config
 // and returns a URL; /m/:id serves the MCP, multi-session (several agents in
 // parallel), relaying each caller's own token to the upstream.
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
@@ -226,38 +226,25 @@ describe('hosted runtime routes', () => {
     expect(auths).toEqual(['Bearer TOKEN_A', 'Bearer TOKEN_B']);
   }, 20_000);
 
-  it('answers expired at the first visit after the 72 h and at the following ones', async () => {
-    const url = await host();
-    clock = hoursAfterCreation(73);
-
-    const visit = () =>
-      fetch(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
-      });
-    const first = await visit();
-    const second = await visit();
-
-    expect([first.status, second.status]).toEqual([410, 410]);
-  });
-
-  it('never expires a hosted URL when TTL is 0 (self-host deployments)', async () => {
-    const ttl0 = createApp({ nodeEnv: 'test', hostedStore: store, hostedTtlHours: 0, now, auth: account.auth }).listen(0);
-    await new Promise<void>((r) => ttl0.once('listening', r));
-    const ttl0Base = `http://127.0.0.1:${(ttl0.address() as AddressInfo).port}`;
+  // WAT-102 (D2) — an MCP no longer expires, whatever SLICE_HOSTED_TTL_HOURS says.
+  it('still serves its actions 73 h and 31 days after creation, with SLICE_HOSTED_TTL_HOURS=72', async () => {
+    vi.stubEnv('SLICE_HOSTED_TTL_HOURS', '72');
+    const ttl72 = createApp({ nodeEnv: 'test', hostedStore: store, now, auth: account.auth }).listen(0);
+    await new Promise<void>((r) => ttl72.once('listening', r));
+    const ttl72Base = `http://127.0.0.1:${(ttl72.address() as AddressInfo).port}`;
     try {
       received = [];
-      const url = await host();
-      const id = url.split('/m/')[1]!;
-      clock = hoursAfterCreation(100);
+      const id = (await host()).split('/m/')[1]!;
 
-      // Same database — the TTL-0 app serves the same id and must not expire it.
-      await callListThings(`${ttl0Base}/m/${id}`, 'TOKEN_C');
-      expect(received.some((r) => r.auth === 'Bearer TOKEN_C')).toBe(true);
-      expect(await store.get(id)).toBeDefined();
+      clock = hoursAfterCreation(73);
+      await callListThings(`${ttl72Base}/m/${id}`, 'TOKEN_73H');
+      clock = hoursAfterCreation(31 * 24);
+      await callListThings(`${ttl72Base}/m/${id}`, 'TOKEN_31D');
+
+      expect(received.map((r) => r.auth)).toEqual(['Bearer TOKEN_73H', 'Bearer TOKEN_31D']);
     } finally {
-      await new Promise<void>((r) => ttl0.close(() => r()));
+      await new Promise<void>((r) => ttl72.close(() => r()));
+      vi.unstubAllEnvs();
     }
   }, 20_000);
 
