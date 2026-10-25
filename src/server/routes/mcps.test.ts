@@ -76,3 +76,22 @@ describe('GET /api/mcps', () => {
     });
   });
 });
+
+describe('DELETE /api/mcps/:id', () => {
+  it('deletes my MCP at once: its address then answers 404 Unknown MCP id (contract 26)', async () => {
+    const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+
+    const deleted = await fetch(`${baseUrl}/api/mcps/${id}`, { method: 'DELETE', headers: { cookie: account.cookie } });
+    const runtime = await fetch(`${baseUrl}/m/${id}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+    });
+
+    expect({ deleted: deleted.status, runtime: runtime.status, body: await runtime.text() }).toEqual({
+      deleted: 204,
+      runtime: 404,
+      body: '{"error":"Unknown MCP id."}',
+    });
+  });
+});
