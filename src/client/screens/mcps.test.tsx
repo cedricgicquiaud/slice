@@ -102,6 +102,18 @@ describe('My MCPs', () => {
     expect(await navigator.clipboard.readText()).toBe('http://localhost:5173/m/notion-id');
   });
 
+  it('offers no way to change an MCP (D9)', async () => {
+    server.mcps = [NOTION];
+
+    renderPage();
+
+    const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
+    expect({
+      changeButtons: row.queryAllByRole('button', { name: /edit|rename|modify|change|settings/i }).length,
+      fields: row.queryAllByRole('textbox').length,
+    }).toEqual({ changeButtons: 0, fields: 0 });
+  });
+
   it('says so when the account has no MCP yet', async () => {
     server.mcps = [];
 
