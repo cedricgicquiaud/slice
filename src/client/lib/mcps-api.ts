@@ -21,6 +21,11 @@ export async function listMcps(): Promise<Mcp[]> {
   return mcps;
 }
 
+/** Delete one of the account's MCPs, at once (D10). */
+export async function deleteMcp(id: string): Promise<void> {
+  await fetch(`/api/mcps/${id}`, { method: 'DELETE' });
+}
+
 /**
  * The server's `{ code, message }` as an `ApiError`. A 401 also sends the app
  * back to the sign-in screen, as the calls of `api.ts` do.
