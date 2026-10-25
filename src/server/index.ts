@@ -3,8 +3,7 @@ import { authBaseUrlFromEnv, authSecretFromEnv, createAuth, oauthApplicationsFro
 import { codeSenderFromEnv } from './auth/email-code';
 import { databaseConfigFromEnv, openDatabase } from './db/client';
 import { migrateDatabase } from './db/migrate';
-import { defaultTtlHours } from './routes/hosted-mcp';
-import { createHostedStore, startHostedCleanup } from './services/hosted-store';
+import { createHostedStore } from './services/hosted-store';
 
 const PORT = Number(process.env.PORT ?? 3001);
 const NODE_ENV = process.env.NODE_ENV ?? 'development';
@@ -15,8 +14,8 @@ try {
   const database = openDatabase(databaseConfig);
   await migrateDatabase(database);
 
+  // No cleanup: an MCP never expires (WAT-102, D2). `startHostedCleanup` stays, unplugged.
   const hostedStore = createHostedStore(database);
-  startHostedCleanup(hostedStore, { ttlHours: defaultTtlHours(), now: () => new Date() });
 
   const auth = createAuth({
     database,

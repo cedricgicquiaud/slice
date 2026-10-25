@@ -1,6 +1,7 @@
 /**
  * Hosted connectors in the database: created with their actions in one
- * transaction, read back by id, and purged 30 days after they expired.
+ * transaction and read back by id. The purge of expired connectors stays here,
+ * but the server no longer starts it: an MCP never expires (WAT-102, D2).
  */
 import { randomBytes } from 'node:crypto';
 import { asc, eq, lt, sql } from 'drizzle-orm';
