@@ -24,7 +24,8 @@ const LIVE_SESSION = {
 /**
  * SLICE's API as this page sees it: `GET /api/mcps` answers the account's MCPs,
  * or `refusal` when set (a 401 means the session is gone); `DELETE
- * /api/mcps/:id` deletes one; any other call is "who is signed in?" (`session`).
+ * /api/mcps/:id` deletes one, or answers `deletionRefusal` when set; any other
+ * call is "who is signed in?" (`session`).
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
 const server = vi.hoisted(() => {
@@ -32,11 +33,16 @@ const server = vi.hoisted(() => {
     session: unknown;
     mcps: unknown[];
     refusal: { status: number; code: string; message: string } | null;
-  } = { session: null, mcps: [], refusal: null };
+    deletionRefusal: { status: number; code: string; message: string } | null;
+  } = { session: null, mcps: [], refusal: null, deletionRefusal: null };
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : String(input);
+    if (init?.method === 'DELETE' && state.deletionRefusal) {
+      const { status, code, message } = state.deletionRefusal;
+      return json({ code, message }, status);
+    }
     if (init?.method === 'DELETE' && url.startsWith('/api/mcps/')) {
       state.mcps = state.mcps.filter((mcp) => `/api/mcps/${(mcp as { id: string }).id}` !== url);
       return new Response(null, { status: 204 });
@@ -58,6 +64,7 @@ function serverSession(session: unknown) {
 beforeEach(() => {
   server.mcps = [];
   server.refusal = null;
+  server.deletionRefusal = null;
 });
 
 afterEach(() => {
@@ -145,6 +152,22 @@ describe('My MCPs', () => {
       listed: screen.queryByRole('listitem', { name: 'Notion API' }) !== null,
       kept: server.mcps,
     }).toEqual({ dialog: false, listed: true, kept: [NOTION] });
+  });
+
+  it("keeps the MCP and shows the server's message when the deletion is refused", async () => {
+    server.mcps = [NOTION];
+    server.deletionRefusal = { status: 503, code: 'SERVICE_UNAVAILABLE', message: 'SLICE is unavailable for the moment.' };
+    const user = userEvent.setup();
+    renderPage();
+    const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
+
+    await user.click(row.getByRole('button', { name: 'Delete' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }));
+
+    expect({
+      message: (await screen.findByRole('alert')).textContent,
+      listed: screen.queryByRole('listitem', { name: 'Notion API' }) !== null,
+    }).toEqual({ message: 'SLICE is unavailable for the moment.', listed: true });
   });
 
   it('says so when the account has no MCP yet', async () => {
