@@ -64,4 +64,13 @@ describe('the MCPs of an account', () => {
 
     expect(listed.map((m) => m.id)).toEqual([kept.id]);
   });
+
+  it("names an MCP without an API name after its API's domain (D9)", async () => {
+    const { workspaceId } = await createTestAccount({ database, email: 'nameless@example.com' });
+    await store.put(mcp({ baseUrl: 'https://api.acme.io/v2', actions: 1 }), workspaceId, MONDAY);
+
+    const [listed] = await createAccountMcps(database).list(workspaceId);
+
+    expect(listed?.apiName).toBe('api.acme.io');
+  });
 });
