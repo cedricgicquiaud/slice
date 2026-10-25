@@ -1,6 +1,7 @@
 // WAT-63 — migrations run before the server listens, once, even when two servers start together.
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
@@ -30,6 +31,24 @@ describe('database migrations', () => {
       if (second !== first) await second.close();
       await first.close();
       await testDb.dispose();
+    }
+  });
+});
+
+describe('a local database from an older schema (dev, PGlite)', () => {
+  it('says the folder to delete when the migration finds its objects already there', async () => {
+    const dataDir = path.join(mkdtempSync(path.join(tmpdir(), 'slice-old-data-')), 'pglite');
+    const database = openDatabase({ driver: 'pglite', dataDir });
+    try {
+      // What a ./data migrated before the regenerated migration holds.
+      await database.rows(sql`CREATE TYPE http_method AS ENUM ('GET')`);
+
+      await expect(migrateDatabase(database)).rejects.toThrow(
+        `type "http_method" already exists. The local database in ${dataDir} dates from an older schema: delete that folder`
+      );
+    } finally {
+      await database.close();
+      rmSync(path.dirname(dataDir), { recursive: true, force: true });
     }
   });
 });
