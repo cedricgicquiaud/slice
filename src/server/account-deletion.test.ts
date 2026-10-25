@@ -32,6 +32,8 @@ let app: Server;
 let baseUrl: string;
 /** The addresses of the account's two MCPs, one created from each device. */
 let addresses: string[];
+/** The `Cookie` header of the account's session on its other device, the one that did not delete. */
+let phoneCookie: string;
 
 /** "Deploy to SLICE Cloud" from the device holding `cookie`: the new MCP's address. */
 async function deployMcp(cookie: string, mcpName: string): Promise<string> {
@@ -84,7 +86,8 @@ beforeAll(async () => {
   const laptop = await openSession(auth, EMAIL);
   const phone = await openSession(auth, EMAIL);
   const laptopCookie = `${laptop.name}=${laptop.value}`;
-  addresses = [await deployMcp(laptopCookie, 'first'), await deployMcp(`${phone.name}=${phone.value}`, 'second')];
+  phoneCookie = `${phone.name}=${phone.value}`;
+  addresses = [await deployMcp(laptopCookie, 'first'), await deployMcp(phoneCookie, 'second')];
 
   // Deleted from the laptop, as the page does.
   await fetch(`${baseUrl}/api/auth/delete-user`, {
@@ -113,5 +116,14 @@ describe('after the account is deleted', () => {
       { status: 404, body: '{"error":"Unknown MCP id."}' },
       { status: 404, body: '{"error":"Unknown MCP id."}' },
     ]);
+  });
+
+  it('refuses its session on the other device with 401 (contract 28)', async () => {
+    const res = await fetch(`${baseUrl}/api/mcps`, { headers: { cookie: phoneCookie } });
+
+    expect({ status: res.status, body: await res.json() }).toEqual({
+      status: 401,
+      body: { code: 'UNAUTHORIZED', message: 'Sign in to continue.' },
+    });
   });
 });
