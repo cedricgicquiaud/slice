@@ -95,6 +95,11 @@ The app does not configure Express `trust proxy`. Behind a TLS-terminating rever
 
 Account for both when exposing an instance publicly.
 
+The ten sign-in codes an hour per IP are counted on the `X-Forwarded-For` header. The proxy in front of SLICE must
+**overwrite** that header with the client's address, never append to it: SLICE reads a single address only. A request
+whose header holds several addresses, or none, counts in one quota shared by every such request, so without a proxy
+that sets it every visitor shares the same ten codes an hour.
+
 ### Development scripts
 
 These variables are read only by the helper scripts in `scripts/`, not by the server.
