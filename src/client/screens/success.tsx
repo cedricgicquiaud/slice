@@ -26,14 +26,9 @@ export interface SuccessScreenProps {
   zipBlob?: Blob;
   /** Hosted flow — the live MCP URL. Absent in the bundle flow. */
   hostedUrl?: string;
-  /** Hosted flow — free-tier expiry (ISO). `null`/absent = no expiry (TTL disabled). */
-  expiresAt?: string | null;
   onRestart: () => void;
   onBackToSelection: () => void;
 }
-
-const PERMANENT_PLAN_MAILTO =
-  'mailto:contact@giveme5xxxxx.fr?subject=SLICE%20%E2%80%94%20permanent%20hosting';
 
 export function SuccessScreen({
   config,
@@ -41,7 +36,6 @@ export function SuccessScreen({
   economySnapshot,
   zipBlob,
   hostedUrl,
-  expiresAt,
   onRestart,
   onBackToSelection,
 }: SuccessScreenProps) {
@@ -77,21 +71,6 @@ export function SuccessScreen({
         <section className="mt-10 flex flex-col gap-3">
           <p className="eyebrow">Your live endpoint</p>
           <UrlRow url={hostedUrl} />
-          {expiresAt && (
-            <p className="text-sm text-muted-foreground">
-              This URL stays live until{' '}
-              <span className="text-foreground">
-                {new Date(expiresAt).toLocaleString(undefined, {
-                  dateStyle: 'medium',
-                  timeStyle: 'short',
-                })}
-              </span>{' '}
-              — plenty to wire it into your agent and test it. Need it permanent?{' '}
-              <a href={PERMANENT_PLAN_MAILTO} className="underline text-foreground hover:opacity-80">
-                Get a permanent plan
-              </a>
-            </p>
-          )}
         </section>
       ) : (
         <ol className="mt-10 space-y-4">

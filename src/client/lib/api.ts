@@ -105,8 +105,6 @@ export interface HostResult {
   id: string;
   /** Public URL of the hosted MCP (`<origin>/m/<id>`) to paste into the agent. */
   url: string;
-  /** Free-tier expiry (ISO), or `null` when the instance has no TTL. */
-  expiresAt: string | null;
 }
 
 /**
