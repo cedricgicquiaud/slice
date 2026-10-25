@@ -1,7 +1,8 @@
 // WAT-103/104 — "My MCPs": the account finds its MCPs, copies an address, deletes one.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import App from '../App';
 import { McpsScreen } from './mcps';
 import { AuthGate } from '../components/auth-gate';
 import { ToastProvider } from '../components/toast';
@@ -53,6 +54,10 @@ function serverSession(session: unknown) {
 beforeEach(() => {
   server.mcps = [];
   server.refusal = null;
+});
+
+afterEach(() => {
+  window.history.pushState({}, '', '/');
 });
 
 function renderPage() {
@@ -113,6 +118,15 @@ describe('My MCPs', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('SLICE is unavailable for the moment.');
   });
 
+  it('opens at /mcps, as when the page is reloaded there, with the list (contract 9)', async () => {
+    window.history.pushState({}, '', '/mcps');
+    server.mcps = [NOTION];
+
+    render(<App />);
+
+    expect(await screen.findByRole('listitem', { name: 'Notion API' })).toBeInTheDocument();
+  });
+
   // Contract 13: the session ran out while the page was on screen.
   it('shows the sign-in screen when the list is refused for want of a session', async () => {
     serverSession(LIVE_SESSION);
@@ -123,6 +137,7 @@ describe('My MCPs', () => {
         <McpsScreen />
       </AuthGate>
     );
+    await screen.findByRole('heading', { name: 'My MCPs' });
 
     expect(await screen.findByRole('heading', { name: 'Sign in to SLICE' })).toBeInTheDocument();
   });
