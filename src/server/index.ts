@@ -11,6 +11,7 @@ const NODE_ENV = process.env.NODE_ENV ?? 'development';
 try {
   const databaseConfig = databaseConfigFromEnv(process.env);
   const authSecret = authSecretFromEnv(process.env);
+  const authBaseUrl = authBaseUrlFromEnv(process.env);
   const database = openDatabase(databaseConfig);
   await migrateDatabase(database);
 
@@ -20,7 +21,7 @@ try {
   const auth = createAuth({
     database,
     secret: authSecret,
-    baseURL: authBaseUrlFromEnv(process.env),
+    baseURL: authBaseUrl,
     ...oauthApplicationsFromEnv(process.env),
     sendCode: codeSenderFromEnv(process.env),
   });

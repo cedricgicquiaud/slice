@@ -145,12 +145,16 @@ export function authSecretFromEnv(env: NodeJS.ProcessEnv): string | undefined {
 }
 
 /**
- * SLICE's public address: BETTER_AUTH_URL. Outside production it defaults to
+ * SLICE's public address: BETTER_AUTH_URL. Refused missing in production, where behind
+ * a proxy every write from SLICE's own page would answer 403. Elsewhere it defaults to
  * the Vite page (`pnpm dev`), whose proxy hands the API another address.
  */
-export function authBaseUrlFromEnv(env: NodeJS.ProcessEnv): string | undefined {
+export function authBaseUrlFromEnv(env: NodeJS.ProcessEnv): string {
   if (env.BETTER_AUTH_URL) return env.BETTER_AUTH_URL;
-  return env.NODE_ENV === 'production' ? undefined : 'http://localhost:5173';
+  if (env.NODE_ENV === 'production') {
+    throw new Error('BETTER_AUTH_URL is required in production (the address the browser uses, e.g. https://slice.example.com).');
+  }
+  return 'http://localhost:5173';
 }
 
 /** The Google and Microsoft applications of the environment; one without its ID or secret is left out. */
