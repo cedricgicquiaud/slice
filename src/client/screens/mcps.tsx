@@ -4,20 +4,31 @@
  */
 import { useEffect, useId, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
+import { ApiError } from '../lib/api';
 import { listMcps, type Mcp } from '../lib/mcps-api';
 
 const CREATED = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 
 export function McpsScreen() {
   const [mcps, setMcps] = useState<Mcp[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void listMcps().then(setMcps);
+    listMcps()
+      .then(setMcps)
+      .catch((err: unknown) => {
+        setError(err instanceof ApiError ? err.message : 'Could not reach the server. Try again in a moment.');
+      });
   }, []);
 
   return (
     <div className="mx-auto w-full max-w-3xl overflow-y-auto px-6 py-12">
       <h1 className="font-serif text-4xl italic">My MCPs</h1>
+      {error && (
+        <p role="alert" className="mt-8 text-sm text-destructive">
+          {error}
+        </p>
+      )}
       {mcps?.length === 0 && <p className="mt-8 text-sm text-muted-foreground">You have no MCP yet.</p>}
       {mcps && mcps.length > 0 && (
         <ul className="mt-8 flex flex-col gap-3">
