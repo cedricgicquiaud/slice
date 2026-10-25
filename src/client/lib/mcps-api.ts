@@ -1,4 +1,5 @@
 import { ApiError, type ApiErrorBody } from './api';
+import { refreshSession } from './auth-client';
 
 /** One MCP of the signed-in account, as `GET /api/mcps` lists it. */
 export interface Mcp {
@@ -20,8 +21,12 @@ export async function listMcps(): Promise<Mcp[]> {
   return mcps;
 }
 
-/** The server's `{ code, message }` as an `ApiError`. */
+/**
+ * The server's `{ code, message }` as an `ApiError`. A 401 also sends the app
+ * back to the sign-in screen, as the calls of `api.ts` do.
+ */
 async function throwRefusal(res: Response): Promise<never> {
+  if (res.status === 401) refreshSession();
   const body = (await res.json().catch(() => null)) as ApiErrorBody | null;
   throw new ApiError(
     res.status,
