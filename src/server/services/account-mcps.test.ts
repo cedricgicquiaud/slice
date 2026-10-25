@@ -73,4 +73,17 @@ describe('the MCPs of an account', () => {
 
     expect(listed?.apiName).toBe('api.acme.io');
   });
+
+  it("deletes an MCP of the workspace, so it is neither listed nor served any more (D10)", async () => {
+    const { workspaceId } = await createTestAccount({ database, email: 'deleter@example.com' });
+    const kept = await store.put(mcp({ apiName: 'Kept', actions: 1 }), workspaceId, MONDAY);
+    const gone = await store.put(mcp({ apiName: 'Gone', actions: 2 }), workspaceId, TUESDAY);
+
+    await createAccountMcps(database).delete(workspaceId, gone.id);
+
+    expect({
+      listed: (await createAccountMcps(database).list(workspaceId)).map((m) => m.id),
+      served: await store.get(gone.id),
+    }).toEqual({ listed: [kept.id], served: undefined });
+  });
 });
