@@ -163,6 +163,29 @@ http://localhost:5173).
   commande sans la ligne `Origin` répond `HTTP/1.1 400` et `INVALID_SPEC` : la session était bonne, seul l'autre site
   est refusé.
 
+**Mon MCP ne périme plus (WAT-102)**
+
+Préparer : se connecter (le plus simple : code par e-mail, sans clé Resend).
+
+- [ ] Connecté, créer un MCP hébergé (« Deploy to SLICE Cloud ») : l'écran 4 affiche l'adresse du MCP, sans aucune
+  date d'expiration (plus de phrase « This URL stays live until… ») ni lien « Get a permanent plan ».
+- [ ] La réponse de création ne porte plus de date : dans les outils du navigateur (Réseau, requête `host`), la
+  réponse vaut `{"id":"…","url":"…"}`, sans `expiresAt`.
+- [ ] Un MCP répond encore au-delà de 72 h et de 30 jours, même avec `SLICE_HOSTED_TTL_HOURS=72`. Contrôle accéléré :
+  arrêter `pnpm dev`, le relancer avec `SLICE_HOSTED_TTL_HOURS=0.01 pnpm dev` (36 secondes), créer un MCP hébergé,
+  attendre une minute, puis dans un terminal, avec l'adresse affichée à l'écran 4 :
+  `curl -s -X POST <adresse> -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'`
+  affiche la liste des actions (`"tools"`), et jamais « This MCP URL has expired ». Le cas à 73 h puis à 31 jours est
+  prouvé par le test automatique « still serves its actions 73 h and 31 days after creation, with
+  SLICE_HOSTED_TTL_HOURS=72 » (`src/server/routes/hosted-mcp.test.ts`).
+- [ ] `CONTEXT.md` (entrée « Expiration »), `docs/configuration.md` et le README disent qu'un MCP n'expire pas ;
+  `docs/configuration.md` indique que `SLICE_HOSTED_TTL_HOURS` est ignorée.
+- [ ] Refus : aucun nettoyage ne supprime un MCP, ni au démarrage ni à l'heure. Ce cas ne se joue pas en temps réel ;
+  il est prouvé par le test automatique « keeps at startup a connector created 40 days ago, with
+  SLICE_HOSTED_TTL_HOURS=72 » (`src/server/index.test.ts`) : un MCP de 40 jours, que l'ancien nettoyage aurait
+  supprimé, est toujours servi après le démarrage. Le nettoyage horaire partait de ce même démarrage : il n'est plus
+  lancé du tout.
+
 ## SLICE — Les MCP rangés en base de données
 
 ### Livraison 2 — Un connecteur hébergé est créé, servi et expiré depuis la base
@@ -224,20 +247,8 @@ http://localhost:5173).
 
 **Expiration (WAT-64)**
 
-- [ ] Créer un connecteur : la date d'expiration affichée à l'écran 4 vaut l'heure de création plus 72 heures.
-- [ ] Relancer avec `SLICE_HOSTED_TTL_HOURS=0`, créer un connecteur : l'écran 4 n'affiche aucune date d'expiration,
-  et l'adresse reste servie.
-- [ ] Relancer avec `SLICE_HOSTED_TTL_HOURS=0.01` (36 secondes), créer un connecteur, attendre une minute, ouvrir
-  l'adresse deux fois de suite : les deux fois elle répond « expirée » (`This MCP URL has expired…`).
-- [ ] Passé 30 jours après l'expiration, le connecteur et ses actions ont disparu de la base, même sans visite. Ce cas
-  ne se joue pas en temps réel ; il est prouvé par les tests automatiques du nettoyage (conservé à 29 jours, supprimé
-  à 31 jours, actions comprises).
-- [ ] Le nettoyage passe au démarrage puis toutes les heures : avec `DATABASE_URL`, insérer à la main un connecteur
-  daté de plus de 33 jours (`docker exec slice-recette psql -U postgres -c "INSERT INTO connectors (id, name,
-  base_url, upstream_auth_type, created_at) VALUES ('ancien', 'ancien', 'https://api.example.com', 'none',
-  now() - interval '40 days')"`), démarrer le serveur : l'adresse `/m/ancien` répond « inconnue ».
-- [ ] Refus : une adresse expirée ne sert jamais ses actions : l'agent qui l'utilise reçoit « expirée », jamais la
-  liste des actions.
+Remplacée par « Mon MCP ne périme plus (WAT-102) », dans la section « SLICE — Compte et liste de ses MCP » ci-dessus :
+un MCP n'expire plus, son adresse ne répond jamais « expirée », et aucun nettoyage ne le supprime.
 
 **Base injoignable (WAT-65)**
 
@@ -255,8 +266,8 @@ http://localhost:5173).
 
 **Documentation (WAT-66)**
 
-- [ ] `docs/configuration.md` et le README décrivent `DATABASE_URL` (obligatoire en production), `SLICE_DATA_DIR`,
-  la conservation de 30 jours après expiration et le nettoyage toutes les heures.
+- [ ] `docs/configuration.md` et le README décrivent `DATABASE_URL` (obligatoire en production) et `SLICE_DATA_DIR`.
+  (La conservation de 30 jours après expiration et le nettoyage horaire ont disparu avec WAT-102.)
 - [ ] Dans `CLAUDE.md`, la ligne « Prochaine étape » liste `DATABASE_URL`, `SLICE_HOSTED_TTL_HOURS` et
   `NODE_ENV=production`.
 - [ ] `docs/API.md` décrit le code `SERVICE_UNAVAILABLE` (503) de la création et la réponse 503 d'une adresse.
