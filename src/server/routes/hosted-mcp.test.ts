@@ -261,57 +261,11 @@ describe('hosted runtime routes', () => {
     }
   }, 20_000);
 
-  it('POST /api/host returns expiresAt aligned with the TTL (null when TTL is 0)', async () => {
-    const res = await fetch(`${baseUrl}/api/host`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', cookie: account.cookie },
-      body: JSON.stringify({
-        parsedSpec: {},
-        rawSpec: SPEC,
-        selectedIds: ['GET /things'],
-        config: {
-          mcpName: 'demo',
-          baseUrl: upstreamUrl,
-          upstreamAuth: { type: 'bearer' },
-          hosting: 'cloud',
-          mode: 'remote',
-          includeParamDescriptions: false,
-          retryOnServerError: false,
-        },
-      }),
-    });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { id: string; expiresAt: string | null };
-    // Default TTL is 72h — created 2026-10-24 09:00 UTC, expires three days later.
-    expect(body.expiresAt).toBe('2026-10-27T09:00:00.000Z');
+  it('POST /api/host answers with the id and the URL of the MCP, and no expiry date', async () => {
+    const res = await hostRequest(baseUrl);
 
-    // TTL 0 (self-host) → no expiry advertised.
-    const ttl0 = createApp({ nodeEnv: 'test', hostedStore: store, hostedTtlHours: 0, now, auth: account.auth }).listen(0);
-    await new Promise<void>((r) => ttl0.once('listening', r));
-    try {
-      const res0 = await fetch(`http://127.0.0.1:${(ttl0.address() as AddressInfo).port}/api/host`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', cookie: account.cookie },
-        body: JSON.stringify({
-          parsedSpec: {},
-          rawSpec: SPEC,
-          selectedIds: ['GET /things'],
-          config: {
-            mcpName: 'demo',
-            baseUrl: upstreamUrl,
-            upstreamAuth: { type: 'bearer' },
-            hosting: 'cloud',
-            mode: 'remote',
-            includeParamDescriptions: false,
-            retryOnServerError: false,
-          },
-        }),
-      });
-      const body0 = (await res0.json()) as { expiresAt: string | null };
-      expect(body0.expiresAt).toBeNull();
-    } finally {
-      await new Promise<void>((r) => ttl0.close(() => r()));
-    }
+    expect(res.status).toBe(200);
+    expect(Object.keys((await res.json()) as object).sort()).toEqual(['id', 'url']);
   });
 
   it('lets an agent call a hosted MCP from any site (CORS open on /m)', async () => {
