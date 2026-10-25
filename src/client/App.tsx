@@ -26,6 +26,8 @@ interface SuccessState {
 function AppInner() {
   const { theme, toggle } = useTheme();
   const [screen, setScreen] = useState<ScreenIndex>(1);
+  // The address picks the page (contract 9): reloaded at /mcps, the list shows again.
+  const [path, setPath] = useState(window.location.pathname);
   const [apiName, setApiName] = useState<string | null>(null);
   const [parsedSpec, setParsedSpec] = useState<ParsedSpec | null>(null);
   const [rawSpec, setRawSpec] = useState<string>('');
@@ -35,6 +37,10 @@ function AppInner() {
   const { push } = useToast();
 
   const handleReset = () => {
+    if (path !== '/') {
+      window.history.pushState({}, '', '/');
+      setPath('/');
+    }
     setScreen(1);
     setApiName(null);
     setParsedSpec(null);
@@ -115,10 +121,9 @@ function AppInner() {
       />
 
       <main className="flex flex-1 flex-col overflow-hidden px-6">
-        {/* The address picks the page (contract 9): reloaded at /mcps, the list shows again. */}
-        {window.location.pathname === '/mcps' && <McpsScreen />}
+        {path === '/mcps' && <McpsScreen />}
 
-        {window.location.pathname !== '/mcps' && screen === 1 && <UploadScreen onParsed={handleParsed} />}
+        {path !== '/mcps' && screen === 1 && <UploadScreen onParsed={handleParsed} />}
 
         {screen === 2 && parsedSpec && (
           <SelectionScreen
