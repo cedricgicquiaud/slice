@@ -1,5 +1,5 @@
 import type { ApiErrorCode, GenerateRequest, ParsedSpec, ParseErrorCode } from '@shared/types';
-import { authClient } from './auth-client';
+import { refreshSession } from './auth-client';
 
 export interface ApiErrorBody {
   code: ParseErrorCode | ApiErrorCode | 'NO_FILE' | 'UNSUPPORTED_FORMAT' | string;
@@ -27,7 +27,7 @@ export class ApiError extends Error {
 async function throwApiError(res: Response, fallbackCode: ApiErrorBody['code']): Promise<never> {
   // No live session any more (D1): the auth client asks the server again, and
   // the gate brings the sign-in screen back.
-  if (res.status === 401) authClient.$store.notify('$sessionSignal');
+  if (res.status === 401) refreshSession();
   let body: ApiErrorBody = {
     code: fallbackCode,
     message: res.statusText || `Erreur ${res.status} du serveur.`,

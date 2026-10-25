@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import type { GenerateRequest } from '@shared/types';
 import App from '../App';
 import { apiHost } from '../lib/api';
-import { authClient } from '../lib/auth-client';
+import { refreshSession } from '../lib/auth-client';
 import { AuthGate } from './auth-gate';
 
 /**
@@ -35,7 +35,7 @@ const LIVE_SESSION = {
 /** The server now answers `session`; like a sign-in or out, the client is told to ask again. */
 function serverSession(session: unknown) {
   server.session = session;
-  authClient.$store.notify('$sessionSignal');
+  refreshSession();
 }
 
 afterEach(() => {

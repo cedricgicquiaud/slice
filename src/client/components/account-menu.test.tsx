@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from '../App';
-import { authClient } from '../lib/auth-client';
+import { refreshSession } from '../lib/auth-client';
 import { AccountMenu } from './account-menu';
 import { AuthGate } from './auth-gate';
 
@@ -26,7 +26,7 @@ const server = vi.hoisted(() => {
 /** The server now answers `session`; like a sign-in or out, the client is told to ask again. */
 function serverSession(session: unknown) {
   server.session = session;
-  authClient.$store.notify('$sessionSignal');
+  refreshSession();
 }
 
 function signedInAs(email: string) {
