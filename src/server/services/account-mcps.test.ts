@@ -53,4 +53,15 @@ describe('the MCPs of an account', () => {
       { id: notion.id, apiName: 'Notion API', actionCount: 3, createdAt: '2026-10-19T08:30:00.000Z' },
     ]);
   });
+
+  it("never lists another account's MCPs (contract 17)", async () => {
+    const mine = await createTestAccount({ database, email: 'mine@example.com' });
+    const theirs = await createTestAccount({ database, email: 'theirs@example.com' });
+    const kept = await store.put(mcp({ apiName: 'Mine', actions: 1 }), mine.workspaceId, MONDAY);
+    await store.put(mcp({ apiName: 'Theirs', actions: 1 }), theirs.workspaceId, TUESDAY);
+
+    const listed = await createAccountMcps(database).list(mine.workspaceId);
+
+    expect(listed.map((m) => m.id)).toEqual([kept.id]);
+  });
 });
