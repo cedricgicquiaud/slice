@@ -70,6 +70,24 @@ Only codes that left count in the two hourly quotas: a `code_not_sent` spends no
 memory, so a restart gives them back. In production, Better Auth also limits each of the two routes to 3 calls a minute
 per IP (`429` without `code`).
 
+Account deletion (Better Auth's delete user): `POST /api/auth/delete-user` with `{}` and the session cookie erases
+the signed-in account at once and answers `{ "success": true, "message": "User deleted" }`. Its sessions go with it on
+every device, and so do its personal workspace and every MCP in it: their URLs answer
+`404 { "error": "Unknown MCP id." }` from then on (see [`ANY /m/:id`](#any-mid)). There is no undo and no grace
+period. Signing in again with the same address opens a new, empty account. The page `/account/delete` sends this call
+once `delete` is typed.
+
+| Status | `code` | When |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | No live session; nothing is deleted |
+| 400 | `SESSION_EXPIRED` | The session was opened more than a day ago; nothing is deleted. Signing out and in again opens a session that can delete |
+| 403 | `INVALID_ORIGIN` | Sent from another site than SLICE's page (`BETTER_AUTH_URL`); nothing is deleted |
+| 403 | `MISSING_OR_NULL_ORIGIN` | The session cookie without any `Origin` header (a script, `curl`): send `Origin: <BETTER_AUTH_URL>` |
+
+This route is under `/api/auth/*`, so SLICE's own origin guard above does not see it: Better Auth's origin check
+refuses foreign writes instead, and stricter, since it also wants the `Origin` header whenever a session cookie comes
+along. That check is off under `NODE_ENV=test` or `TEST=true`.
+
 The hosted runtime `/m/:id` is protected by the unguessable id in its URL (see [Hosted runtime](#any-mid)).
 
 ### CORS

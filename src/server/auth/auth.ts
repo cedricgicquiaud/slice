@@ -54,6 +54,9 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
     advanced: { database: { validateSchema: false } },
     // D8: seven days from the last visit, whenever it falls; every visit renews the session.
     session: { expiresIn: 7 * 24 * 60 * 60, updateAge: 0 },
+    // D11: `POST /api/auth/delete-user` erases the account at once; the schema cascades
+    // to its sessions, workspace and MCPs.
+    user: { deleteUser: { enabled: true } },
     database: drizzleAdapter(database.db, {
       provider: 'pg',
       schema: { user: users, session: sessions, account: accounts, verification: verifications },
