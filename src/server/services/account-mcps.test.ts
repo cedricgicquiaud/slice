@@ -86,4 +86,17 @@ describe('the MCPs of an account', () => {
       served: await store.get(gone.id),
     }).toEqual({ listed: [kept.id], served: undefined });
   });
+
+  it("never deletes another account's MCP: it answers unknown, and the MCP stays (contract 17)", async () => {
+    const mine = await createTestAccount({ database, email: 'prowler@example.com' });
+    const theirs = await createTestAccount({ database, email: 'victim@example.com' });
+    const target = await store.put(mcp({ apiName: 'Theirs', actions: 1 }), theirs.workspaceId, MONDAY);
+
+    const deleted = await createAccountMcps(database).delete(mine.workspaceId, target.id);
+
+    expect({ deleted, stillServed: (await store.get(target.id)) !== undefined }).toEqual({
+      deleted: false,
+      stillServed: true,
+    });
+  });
 });
