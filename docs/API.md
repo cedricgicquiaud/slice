@@ -12,6 +12,8 @@ The browser front end uses the `/api/*` routes; AI agents use the hosted runtime
 | `POST` | `/api/upload-url` | Fetch an API description from a public HTTPS URL, then parse it | Yes |
 | `POST` | `/api/generate` | Build a self-hostable MCP server and stream it as a ZIP | Yes |
 | `POST` | `/api/host` | Store a hosted MCP configuration and return its URL | Yes |
+| `GET` | `/api/mcps` | List the signed-in account's hosted MCPs | Yes |
+| `DELETE` | `/api/mcps/:id` | Delete one of the signed-in account's hosted MCPs | Yes |
 | any | `/m/:id` | Hosted MCP runtime (MCP Streamable HTTP, stateless) | No |
 
 In production (`NODE_ENV=production`) the server also serves the built front end from `dist/client`,
@@ -441,6 +443,67 @@ A hosted MCP has no expiry date: its URL keeps working until the MCP is deleted.
 
 ---
 
+## `GET /api/mcps`
+
+Lists the hosted MCPs of the signed-in account's personal workspace, newest first. MCPs of any other account never
+appear. Nothing about an MCP can be changed through the API: an MCP is created by [`POST /api/host`](#post-apihost)
+and deleted by [`DELETE /api/mcps/:id`](#delete-apimcpsid).
+
+**Response `200`**
+
+```json
+{
+  "mcps": [
+    {
+      "id": "Q2xhdWRlIGlzIG5vdCBoZXJl",
+      "apiName": "Notion API",
+      "actionCount": 2,
+      "createdAt": "2026-10-21T10:15:00.000Z",
+      "url": "https://slice.example.com/m/Q2xhdWRlIGlzIG5vdCBoZXJl"
+    }
+  ]
+}
+```
+
+| Field | Description |
+|---|---|
+| `id` | The MCP's id, as returned by `POST /api/host` |
+| `apiName` | The API's name as read in its description; for an MCP stored without one, the host name of its `baseUrl` (for example `api.acme.io`) |
+| `actionCount` | Number of actions (tools) the MCP exposes |
+| `createdAt` | Creation date, ISO 8601 |
+| `url` | `<request protocol>://<Host header>/m/<id>`, the address to paste into the agent |
+
+An account without any MCP gets `{ "mcps": [] }`.
+
+**Errors**
+
+| HTTP | `code` | Cause |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | No live session |
+| 429 | (none) | Rate limit exceeded |
+| 503 | `SERVICE_UNAVAILABLE` | The database is unreachable |
+
+---
+
+## `DELETE /api/mcps/:id`
+
+Deletes one hosted MCP of the signed-in account, with its actions, at once. From then on its URL answers
+`404 { "error": "Unknown MCP id." }` (see [`ANY /m/:id`](#any-mid)). There is no undo.
+
+**Response `204`**, with no body.
+
+**Errors**
+
+| HTTP | `code` | Cause |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | No live session; nothing is deleted |
+| 403 | `FORBIDDEN` | Sent from another site than SLICE's page; nothing is deleted |
+| 404 | `NOT_FOUND` | No MCP under this id in the account's workspace. Message: "Unknown MCP id." The answer is the same whether the id does not exist or belongs to another account, so an id reveals nothing; the other account's MCP is left untouched |
+| 429 | (none) | Rate limit exceeded |
+| 503 | `SERVICE_UNAVAILABLE` | The database is unreachable; nothing is deleted |
+
+---
+
 ## `ANY /m/:id`
 
 The hosted MCP runtime. One generic engine serves every hosted MCP: on each request it loads the stored
@@ -482,7 +545,7 @@ ignored.
 
 | HTTP | Body | Cause |
 |---|---|---|
-| 404 | `{ "error": "Unknown MCP id." }` | No configuration under this id |
+| 404 | `{ "error": "Unknown MCP id." }` | No configuration under this id, including a deleted MCP |
 | 500 | `{ "error": "Internal error." }` | The MCP transport failed before sending a response |
 | 503 | `{ "error": "This MCP is unavailable for the moment. Try again in a few minutes." }` | The database is unreachable; the id may well exist, so it is never reported unknown |
 
