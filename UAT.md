@@ -254,6 +254,58 @@ fin de son adresse, après `/m/`.
 - [ ] `docs/API.md` décrit `GET /api/mcps` et `DELETE /api/mcps/:id` : la réponse, les champs, et les refus 401, 403,
   404 et 503.
 
+### Livraison 3 — Je supprime mon compte
+
+**Préparer la recette**
+
+- Lancer `pnpm dev`, ouvrir http://localhost:5173 et se connecter avec une adresse C qui ne sert qu'à ce test (code
+  par e-mail, le code s'affiche dans le terminal de `pnpm dev`). Se connecter juste avant : une session ouverte il y a
+  plus d'un jour ne peut pas supprimer le compte (voir le dernier refus de WAT-106).
+- Créer deux MCP hébergés (« Deploy to SLICE Cloud »), par exemple depuis l'adresse de description
+  `https://petstore3.swagger.io/api/v3/openapi.json`, et noter l'adresse de chacun, affichée à l'écran 4.
+- Dans une fenêtre de navigation privée (un « second appareil »), se connecter aussi avec l'adresse C : « My MCPs »
+  y montre les deux MCP. Copier la valeur de son cookie `better-auth.session_token` (outils du navigateur, onglet
+  Application ou Stockage, Cookies, `http://localhost:5173`).
+- Revenir dans la fenêtre normale et ouvrir « Delete account » depuis le menu de compte (l'adresse e-mail en haut à
+  droite), ou directement http://localhost:5173/account/delete.
+
+**Je confirme la suppression de mon compte en tapant delete (WAT-106)**
+
+- [ ] La page « Delete your account » s'affiche sans les étapes 1-2-3 en haut, et dit ce qui disparaît : « Your
+  account and all its MCPs are deleted at once. Their addresses stop working for every agent that uses them. This
+  can't be undone. » Recharger la page (Cmd+R) : la même page revient, et non l'accueil.
+- [ ] Refus : le bouton « Delete my account » reste grisé et ne réagit pas au clic tant que le champ « Type delete to
+  confirm » ne contient pas exactement `delete` : champ vide, `Delete` (majuscule), `delet`, `deletee`, ` delete`
+  (espace devant) le laissent inactif.
+- [ ] Taper exactement `delete` : le bouton s'active. Le cliquer : aucune autre confirmation n'est demandée, l'écran
+  de connexion « Sign in to SLICE » s'affiche aussitôt, à l'adresse http://localhost:5173/.
+- [ ] Refus : la page ne parle jamais d'espace. Aucun des mots « space » ou « workspace » n'y apparaît (Cmd+F
+  « space »), avant comme après avoir tapé `delete`.
+- [ ] Refus : une session ouverte il y a plus d'un jour ne supprime pas le compte ; la page affiche « For your safety,
+  sign out and sign in again, then delete your account. » et le compte reste. Ce cas demande d'attendre un jour : il
+  est prouvé par le test automatique « asks to sign in again when the session is too old to delete the account, and
+  stays on the page » (`src/client/screens/delete-account.test.tsx`).
+
+**Après suppression du compte, il ne reste rien (WAT-107)**
+
+- [ ] Refus : les adresses des deux MCP répondent « Unknown MCP id ». Dans un terminal, pour chaque adresse notée :
+  `curl -i -X POST <adresse> -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'`
+  affiche `HTTP/1.1 404` et `{"error":"Unknown MCP id."}`.
+- [ ] Refus : la session du second appareil ne marche plus. Dans la fenêtre privée, recharger la page : l'écran de
+  connexion s'affiche. Et `curl -i http://localhost:3001/api/mcps -H 'Cookie: better-auth.session_token=<valeur
+  copiée>'` affiche `HTTP/1.1 401` et `{"code":"UNAUTHORIZED","message":"Sign in to continue."}`.
+- [ ] Refus : se reconnecter avec l'adresse C (nouveau code par e-mail) ouvre un compte vide : « My MCPs » affiche
+  « You have no MCP yet. »
+- [ ] Refus : une demande de suppression venue d'un autre site est refusée. Connecté avec une adresse D, copier son
+  cookie comme ci-dessus, puis
+  `curl -i -X POST http://localhost:3001/api/auth/delete-user -H 'content-type: application/json' -H 'Origin: https://evil.example' -H 'Cookie: better-auth.session_token=<valeur de D>' -d '{}'`
+  affiche `HTTP/1.1 403` et `"code":"INVALID_ORIGIN"` ; recharger SLICE : D est toujours connecté.
+- [ ] Refus : sans session, la suppression répond 401.
+  `curl -i -X POST http://localhost:3001/api/auth/delete-user -H 'content-type: application/json' -d '{}'` affiche
+  `HTTP/1.1 401` ; rien n'est supprimé.
+- [ ] `docs/API.md` décrit `POST /api/auth/delete-user` (section « Authentication ») : ce qu'elle efface, et les refus
+  401, 400 `SESSION_EXPIRED` et 403.
+
 ## SLICE — Les MCP rangés en base de données
 
 ### Livraison 2 — Un connecteur hébergé est créé, servi et expiré depuis la base
