@@ -14,21 +14,29 @@ const NOTION = {
 };
 
 /**
- * SLICE's API as this page sees it: `GET /api/mcps` answers the account's MCPs.
+ * SLICE's API as this page sees it: `GET /api/mcps` answers the account's MCPs,
+ * or `refusal` when set.
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
 const server = vi.hoisted(() => {
-  const state: { mcps: unknown[] } = { mcps: [] };
+  const state: { mcps: unknown[]; refusal: { status: number; code: string; message: string } | null } = {
+    mcps: [],
+    refusal: null,
+  };
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = input instanceof Request ? input.url : String(input);
-    const body = url === '/api/mcps' ? { mcps: state.mcps } : null;
-    return new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+    if (url !== '/api/mcps') return json(null);
+    if (state.refusal) return json({ code: state.refusal.code, message: state.refusal.message }, state.refusal.status);
+    return json({ mcps: state.mcps });
   }) as typeof fetch;
   return state;
 });
 
 beforeEach(() => {
   server.mcps = [];
+  server.refusal = null;
 });
 
 function renderPage() {
@@ -79,5 +87,13 @@ describe('My MCPs', () => {
     renderPage();
 
     expect(await screen.findByText('You have no MCP yet.')).toBeInTheDocument();
+  });
+
+  it("shows the server's message when the list is refused", async () => {
+    server.refusal = { status: 503, code: 'SERVICE_UNAVAILABLE', message: 'SLICE is unavailable for the moment.' };
+
+    renderPage();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('SLICE is unavailable for the moment.');
   });
 });
