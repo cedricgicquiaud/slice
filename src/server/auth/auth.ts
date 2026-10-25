@@ -53,7 +53,9 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
     // The check expects Better Auth's `account.password` column, deliberately absent.
     advanced: { database: { validateSchema: false } },
     // D8: seven days from the last visit, whenever it falls; every visit renews the session.
-    session: { expiresIn: 7 * 24 * 60 * 60, updateAge: 0 },
+    // Decision 25: any live session deletes the account. Better Auth asks for one opened less
+    // than a day ago, which guards a password retyped; SLICE has none.
+    session: { expiresIn: 7 * 24 * 60 * 60, updateAge: 0, freshAge: 0 },
     // D11: `POST /api/auth/delete-user` erases the account at once; the schema cascades
     // to its sessions, workspace and MCPs.
     user: { deleteUser: { enabled: true } },
