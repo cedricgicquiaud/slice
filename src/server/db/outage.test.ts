@@ -68,19 +68,18 @@ withPostgres('a database outage (runs only with DATABASE_URL)', () => {
     viaRelay.hostname = '127.0.0.1';
     viaRelay.port = String(relay.port());
     const database = openDatabase({ driver: 'postgres', url: viaRelay.toString() });
-    // Signed in on a database of its own, out of the relay: this test is about the connectors' storage.
-    const signedIn = await createTestAccount();
     let app: Server | undefined;
     try {
       await migrateDatabase(database);
+      // The account lives behind the relay too: its workspace is the one the connectors point to.
+      const signedIn = await createTestAccount({ database });
       const store = createHostedStore(database);
       app = createApp({ nodeEnv: 'test', hostedStore: store, auth: signedIn.auth }).listen(0);
       await new Promise<void>((r) => app!.once('listening', r));
       const base = `http://127.0.0.1:${(app.address() as AddressInfo).port}`;
-      const { workspaceId } = await createTestAccount({ database });
       const { id } = await store.put(
         { name: 'demo', baseUrl: 'http://127.0.0.1:9', upstreamAuth: { type: 'none' }, endpoints: [] },
-        workspaceId,
+        signedIn.workspaceId,
         new Date()
       );
       const statuses = async () => [
@@ -99,7 +98,6 @@ withPostgres('a database outage (runs only with DATABASE_URL)', () => {
       await relay.cut().catch(() => {});
       await database.close().catch(() => {});
       await testDb.dispose();
-      await signedIn.dispose();
     }
   }, 30_000);
 });
