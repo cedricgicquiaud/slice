@@ -212,7 +212,8 @@ describe('server entry point', () => {
     }
   }, 60_000);
 
-  it('deletes at startup a connector expired for more than 30 days', async () => {
+  // WAT-102 (D2) — no cleanup deletes an MCP. The old one deleted past 72 h + 30 days, so 40 days old.
+  it('keeps at startup a connector created 40 days ago, with SLICE_HOSTED_TTL_HOURS=72', async () => {
     const scratch = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
     try {
       const database = openDatabase({ driver: 'pglite', dataDir: path.join(scratch, 'pglite') });
@@ -221,13 +222,15 @@ describe('server entry point', () => {
       const { id } = await createHostedStore(database).put(
         { name: 'old', baseUrl: 'https://api.example.com', upstreamAuth: { type: 'none' }, endpoints: [] },
         workspaceId,
-        new Date('2020-01-01T00:00:00.000Z')
+        new Date(Date.now() - 40 * 86_400_000)
       );
       await database.close();
 
       const server = await startServer(ROOT, { SLICE_DATA_DIR: scratch, SLICE_HOSTED_TTL_HOURS: '72' });
       try {
-        await expect.poll(async () => (await postToolsList(`${server.baseUrl}/m/${id}`)).status).toBe(404);
+        const res = await postToolsList(`${server.baseUrl}/m/${id}`);
+
+        expect(res.status).toBe(200);
       } finally {
         await server.stop();
       }
