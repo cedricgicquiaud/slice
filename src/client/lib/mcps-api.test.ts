@@ -29,4 +29,15 @@ describe('listMcps', () => {
 
     expect(await listMcps()).toEqual([NOTION]);
   });
+
+  it("throws the server's refusal when the list is refused", async () => {
+    serverAnswers(503, { code: 'SERVICE_UNAVAILABLE', message: 'SLICE is unavailable for the moment.' });
+
+    await expect(listMcps()).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 503,
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'SLICE is unavailable for the moment.',
+    });
+  });
 });
