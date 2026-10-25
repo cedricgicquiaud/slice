@@ -131,6 +131,22 @@ describe('My MCPs', () => {
     expect(server.mcps).toEqual([]);
   });
 
+  it('deletes nothing when the deletion is cancelled (contract 25)', async () => {
+    server.mcps = [NOTION];
+    const user = userEvent.setup();
+    renderPage();
+    const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
+
+    await user.click(row.getByRole('button', { name: 'Delete' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+
+    expect({
+      dialog: screen.queryByRole('dialog') !== null,
+      listed: screen.queryByRole('listitem', { name: 'Notion API' }) !== null,
+      kept: server.mcps,
+    }).toEqual({ dialog: false, listed: true, kept: [NOTION] });
+  });
+
   it('says so when the account has no MCP yet', async () => {
     server.mcps = [];
 
