@@ -78,7 +78,7 @@ No expiry: a hosted MCP is served whatever its age, and no cleanup deletes it, n
 
 Accounts and their sessions live in the same database (`users`, `sessions`, `accounts`, `verifications`, managed by
 Better Auth; no password column). An account rests on a verified email address: a Google or Microsoft address the provider did not verify creates no account and opens none. One verified address is one account, whichever way its owner signs in. Every `/api/*` route except `GET /api/health`, Better Auth's own `/api/auth/*` and,
-outside production, `POST /api/dev/sign-in` answers `401 UNAUTHORIZED` without a live session.
+when `NODE_ENV` is `development` or `test`, `POST /api/dev/sign-in` answers `401 UNAUTHORIZED` without a live session.
 
 When the database is unreachable, the server stays up: every API call that checks the session fails with
 `503 SERVICE_UNAVAILABLE`, creating a hosted MCP fails with `503 SERVICE_UNAVAILABLE`,

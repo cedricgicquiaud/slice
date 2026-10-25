@@ -1,7 +1,8 @@
 /**
  * Dev only — POST /api/dev/sign-in opens a session for the recette account, so
  * the visual test pass (`.pilot/amorce-recette.js`) gets past the sign-in
- * screen. `createApp` never mounts it in production.
+ * screen. `createApp` mounts it only where NODE_ENV says development or test
+ * (`pnpm dev` sets development): never in production, nor without NODE_ENV.
  */
 import type { RequestHandler } from 'express';
 import type { SliceAuth } from './auth';

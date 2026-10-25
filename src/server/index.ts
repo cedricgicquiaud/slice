@@ -25,7 +25,8 @@ try {
     sendCode: codeSenderFromEnv(process.env),
   });
 
-  const app = createApp({ nodeEnv: NODE_ENV, hostedStore, auth });
+  // The NODE_ENV as declared: the recette sign-in opens only where it says development or test.
+  const app = createApp({ nodeEnv: process.env.NODE_ENV, hostedStore, auth });
 
   app.listen(PORT, () => {
     console.log(`SLICE server running on http://localhost:${PORT} (${NODE_ENV})`);

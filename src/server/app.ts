@@ -34,7 +34,8 @@ export interface CreateAppOptions {
 }
 
 export function createApp(options: CreateAppOptions = {}): Express {
-  const nodeEnv = options.nodeEnv ?? process.env.NODE_ENV ?? 'development';
+  const declaredEnv = options.nodeEnv ?? process.env.NODE_ENV;
+  const nodeEnv = declaredEnv ?? 'development';
   const allowPrivateHosts = options.allowPrivateHosts ?? nodeEnv !== 'production';
   const app = express();
 
@@ -76,8 +77,10 @@ export function createApp(options: CreateAppOptions = {}): Express {
 
   // Sign-in routes answer without a session (Better Auth rate-limits them itself).
   if (options.auth) app.all('/api/auth/{*any}', toNodeHandler(options.auth));
-  // Recette primer: a session without proof, so never mounted in production.
-  if (options.auth && nodeEnv !== 'production') app.post('/api/dev/sign-in', devSignIn(options.auth));
+  // Recette primer: a session without proof, so mounted only where NODE_ENV says development or test.
+  if (options.auth && (declaredEnv === 'development' || declaredEnv === 'test')) {
+    app.post('/api/dev/sign-in', devSignIn(options.auth));
+  }
 
   app.use('/api/', apiLimiter);
   app.use('/api/', requireSameOrigin(options.auth));
