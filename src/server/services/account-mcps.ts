@@ -1,7 +1,7 @@
 /**
  * The MCPs of an account, as its "My MCPs" page shows them (D9).
  */
-import { count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { connectorActions, connectors } from '../db/schema';
 
@@ -18,8 +18,11 @@ export interface AccountMcp {
 export interface AccountMcps {
   /** The MCPs of `workspaceId`, newest first. */
   list(workspaceId: string): Promise<AccountMcp[]>;
-  /** Delete the MCP `id` of `workspaceId`, with its actions, at once (D10). */
-  delete(workspaceId: string, id: string): Promise<void>;
+  /**
+   * Delete the MCP `id` of `workspaceId`, with its actions, at once (D10).
+   * `false` when `workspaceId` has no such MCP, whoever else owns it (contract 17).
+   */
+  delete(workspaceId: string, id: string): Promise<boolean>;
 }
 
 export function createAccountMcps(database: Database): AccountMcps {
@@ -46,8 +49,12 @@ export function createAccountMcps(database: Database): AccountMcps {
         createdAt: createdAt.toISOString(),
       }));
     },
-    async delete(_workspaceId, id) {
-      await db.delete(connectors).where(eq(connectors.id, id));
+    async delete(workspaceId, id) {
+      const deleted = await db
+        .delete(connectors)
+        .where(and(eq(connectors.id, id), eq(connectors.workspaceId, workspaceId)))
+        .returning();
+      return deleted.length > 0;
     },
   };
 }
