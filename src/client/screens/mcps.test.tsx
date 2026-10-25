@@ -1,6 +1,7 @@
 // WAT-103/104 — "My MCPs": the account finds its MCPs, copies an address, deletes one.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { McpsScreen } from './mcps';
 import { ToastProvider } from '../components/toast';
 
@@ -59,5 +60,16 @@ describe('My MCPs', () => {
 
     const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
     expect(row.queryByText('1 action')).toBeInTheDocument();
+  });
+
+  it("copies an MCP's address to the clipboard", async () => {
+    server.mcps = [NOTION];
+    const user = userEvent.setup();
+    renderPage();
+
+    const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
+    await user.click(row.getByRole('button', { name: 'Copy address' }));
+
+    expect(await navigator.clipboard.readText()).toBe('http://localhost:5173/m/notion-id');
   });
 });
