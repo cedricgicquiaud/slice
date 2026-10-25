@@ -18,6 +18,7 @@ try {
 
   // No cleanup: an MCP never expires (WAT-102, D2). `startHostedCleanup` stays, unplugged.
   const hostedStore = createHostedStore(database);
+  const accountMcps = createAccountMcps(database);
 
   const auth = createAuth({
     database,
@@ -28,7 +29,7 @@ try {
   });
 
   // The NODE_ENV as declared: the recette sign-in opens only where it says development or test.
-  const app = createApp({ nodeEnv: process.env.NODE_ENV, hostedStore, accountMcps: createAccountMcps(database), auth });
+  const app = createApp({ nodeEnv: process.env.NODE_ENV, hostedStore, accountMcps, auth });
 
   app.listen(PORT, () => {
     console.log(`SLICE server running on http://localhost:${PORT} (${NODE_ENV})`);
