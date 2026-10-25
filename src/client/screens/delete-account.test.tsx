@@ -142,4 +142,19 @@ describe('Delete account', () => {
       path: '/account/delete',
     });
   });
+
+  it('says the account could not be deleted on any other refusal, and stays on the page', async () => {
+    window.history.pushState({}, '', '/account/delete');
+    server.deletionRefusal = { status: 500, code: 'INTERNAL_SERVER_ERROR', message: 'Internal Server Error' };
+    const user = userEvent.setup();
+    render(<DeleteAccountScreen />);
+
+    await user.type(screen.getByLabelText('Type delete to confirm'), 'delete');
+    await user.click(screen.getByRole('button', { name: 'Delete my account' }));
+
+    expect({
+      message: (await screen.findByRole('alert')).textContent,
+      path: window.location.pathname,
+    }).toEqual({ message: "Couldn't delete your account. Try again in a moment.", path: '/account/delete' });
+  });
 });
