@@ -47,4 +47,13 @@ describe('Delete account', () => {
 
     expect(screen.getByRole('button', { name: 'Delete my account' })).toBeDisabled();
   });
+
+  it('activates the button once delete is typed (D11)', async () => {
+    const user = userEvent.setup();
+    render(<DeleteAccountScreen />);
+
+    await user.type(screen.getByLabelText('Type delete to confirm'), 'delete');
+
+    expect(screen.getByRole('button', { name: 'Delete my account' })).toBeEnabled();
+  });
 });
