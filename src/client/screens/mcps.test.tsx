@@ -1,6 +1,6 @@
 // WAT-103/104 — "My MCPs": the account finds its MCPs, copies an address, deletes one.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from '../App';
 import { McpsScreen } from './mcps';
@@ -139,6 +139,20 @@ describe('My MCPs', () => {
       home: screen.queryByRole('heading', { name: /any api, in any agent/i }) !== null,
       path: window.location.pathname,
     }).toEqual({ home: true, path: '/' });
+  });
+
+  it("shows My MCPs again when the browser's Back returns to /mcps", async () => {
+    window.history.pushState({}, '', '/mcps');
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Reset' }));
+
+    act(() => {
+      window.history.pushState({}, '', '/mcps');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+
+    expect(await screen.findByRole('heading', { name: 'My MCPs' })).toBeInTheDocument();
   });
 
   // Contract 13: the session ran out while the page was on screen.
