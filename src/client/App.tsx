@@ -117,7 +117,7 @@ function AppInner() {
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <Topbar
-        current={screen}
+        current={path === '/mcps' ? null : screen}
         apiName={apiName}
         theme={theme}
         onReset={handleReset}
