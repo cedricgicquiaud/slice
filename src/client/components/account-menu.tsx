@@ -8,7 +8,7 @@ const ITEM_CLASS =
 /**
  * Signed in, the account's address at the top right; clicked, its menu (D12).
  * Below 640 px an account icon stands for the address, which heads the menu.
- * `/mcps` and `/account/delete` show the home screen until their own deliveries.
+ * `/account/delete` shows the home screen until its own delivery.
  */
 export function AccountMenu() {
   const { data } = authClient.useSession();
