@@ -7,6 +7,7 @@ const CONFIRMATION = 'delete';
 
 /** Better Auth's refusal of a session opened more than a day ago (`SESSION_EXPIRED`): a fresh one deletes. */
 const SESSION_TOO_OLD = 'For your safety, sign out and sign in again, then delete your account.';
+const NOT_DELETED = "Couldn't delete your account. Try again in a moment.";
 
 const FIELD_CLASS =
   'w-full rounded-lg border border-border bg-background px-4 py-3 font-mono text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground';
@@ -22,7 +23,7 @@ export function DeleteAccountScreen() {
   async function handleDelete() {
     const { error } = await authClient.deleteUser();
     if (error) {
-      setRefusal(SESSION_TOO_OLD);
+      setRefusal(error.code === 'SESSION_EXPIRED' ? SESSION_TOO_OLD : NOT_DELETED);
       return;
     }
     window.history.replaceState({}, '', '/');
