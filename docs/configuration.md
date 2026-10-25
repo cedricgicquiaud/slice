@@ -25,7 +25,7 @@ in production, set the variables in the platform's settings.
 | `RESEND_API_KEY` | (none) | Sends the sign-in codes by email through [Resend](https://resend.com). Without it, the code of each request is printed in the server's terminal (`Sign-in code for <address>: <code>`) and no email leaves: fine on a developer's machine, not for real users. |
 | `RESEND_FROM` | `SLICE <onboarding@resend.dev>` | Sender of the sign-in emails, on a domain verified with Resend (`SLICE <codes@example.com>`). Resend's default test sender only delivers to the Resend account's own address. |
 | `SLICE_DATA_DIR` | `./data` | Without `DATABASE_URL` only: folder of the embedded PostgreSQL (PGlite, nothing to install), kept in its `pglite/` subfolder. Resolved from the working directory; created if missing. |
-| `SLICE_HOSTED_TTL_HOURS` | `72` | Lifetime of a hosted MCP URL, in hours. `0` disables expiry (useful for a private self-hosted instance). A negative or non-numeric value falls back to `72`. An expired MCP is kept 30 more days, then deleted (see [Persistent data](#persistent-data)). |
+| `SLICE_HOSTED_TTL_HOURS` | (ignored) | Ignored: a hosted MCP never expires, whatever this value (see [Persistent data](#persistent-data)). |
 | `PARSE_MAX_CONCURRENT` | `3` | Maximum number of spec parses running at the same time (minimum 1). Each parse is a child process with a 512 MB heap cap, so peak parse memory is about this value × 512 MB. |
 | `PARSE_MAX_QUEUE` | `12` | Maximum number of parses waiting for a slot (minimum 0). Requests beyond it get `429 PARSE_BUSY`. |
 
@@ -74,11 +74,7 @@ Hosted MCPs live in the database: one row per MCP in `connectors`, one row per s
 - **Development and tests:** without `DATABASE_URL`, `pnpm dev` uses PGlite on disk under `SLICE_DATA_DIR`, and
   `pnpm test` uses a fresh in-memory PGlite per test file. Nothing to install.
 
-Expiry and cleanup:
-
-- An expired hosted URL answers `410` at every visit; its MCP stays in the database for **30 days** after expiring.
-- A cleanup deletes the MCPs expired for more than 30 days, with their endpoints, even if their URL is never visited
-  again. It runs at startup, then **every hour**. With `SLICE_HOSTED_TTL_HOURS=0`, nothing expires and nothing is deleted.
+No expiry: a hosted MCP is served whatever its age, and no cleanup deletes it, neither at startup nor later.
 
 Accounts and their sessions live in the same database (`users`, `sessions`, `accounts`, `verifications`, managed by
 Better Auth; no password column). An account rests on a verified email address: a Google or Microsoft address the provider did not verify creates no account and opens none. One verified address is one account, whichever way its owner signs in. Every `/api/*` route except `GET /api/health`, Better Auth's own `/api/auth/*` and,

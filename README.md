@@ -56,8 +56,7 @@ No database to install for development: without `DATABASE_URL`, hosted connector
 (PGlite) under `./data` (`SLICE_DATA_DIR`), and each test file gets its own in-memory one. In production
 (`NODE_ENV=production`), `DATABASE_URL` must point to a PostgreSQL database; the server refuses to start without it.
 
-A free hosted URL expires after 72 hours (`SLICE_HOSTED_TTL_HOURS`, `0` = never) and then answers "expired". Its
-connector is kept 30 more days, then a cleanup that runs at startup and every hour deletes it. All variables:
+A hosted MCP does not expire: its URL keeps working, whatever its age. All variables:
 [docs/configuration.md](docs/configuration.md).
 
 ## Architecture

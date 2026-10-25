@@ -412,8 +412,7 @@ otherwise the request fails with `BLOCKED_HOST`. In development this check is of
 ```json
 {
   "id": "Q2xhdWRlIGlzIG5vdCBoZXJl",
-  "url": "https://slice.example.com/m/Q2xhdWRlIGlzIG5vdCBoZXJl",
-  "expiresAt": "2026-10-08T17:30:00.000Z"
+  "url": "https://slice.example.com/m/Q2xhdWRlIGlzIG5vdCBoZXJl"
 }
 ```
 
@@ -421,7 +420,8 @@ otherwise the request fails with `BLOCKED_HOST`. In development this check is of
 |---|---|
 | `id` | 16 random bytes, base64url-encoded (22 characters, about 128 bits of entropy) |
 | `url` | `<request protocol>://<Host header>/m/<id>` |
-| `expiresAt` | Creation time plus the TTL (`SLICE_HOSTED_TTL_HOURS`, default 72 h), or `null` when expiry is disabled (TTL `0`) |
+
+A hosted MCP has no expiry date: its URL keeps working until the MCP is deleted.
 
 **Errors**
 
@@ -475,16 +475,14 @@ goes out without a credential, and the upstream API's own error comes back to th
 - A non-2xx upstream response becomes a tool error carrying the upstream status and response body.
 - A JSON response is returned as pretty-printed JSON text; anything else is returned as text.
 
-**Expiry:** a configuration older than the TTL (`SLICE_HOSTED_TTL_HOURS`, default 72 hours, `0` for no expiry)
-gets `410` at every request. It is kept 30 days after expiring, then a cleanup that runs at startup and every hour
-deletes it; its id then gets `404`.
+**No expiry:** a configuration is served whatever its age, and no cleanup deletes it. `SLICE_HOSTED_TTL_HOURS` is
+ignored.
 
 **Responses outside the MCP protocol**
 
 | HTTP | Body | Cause |
 |---|---|---|
 | 404 | `{ "error": "Unknown MCP id." }` | No configuration under this id |
-| 410 | `{ "error": "This MCP URL has expired. Generate it again on SLICE, or ask for a permanent plan." }` | The configuration has expired (kept 30 days, then deleted) |
 | 500 | `{ "error": "Internal error." }` | The MCP transport failed before sending a response |
 | 503 | `{ "error": "This MCP is unavailable for the moment. Try again in a few minutes." }` | The database is unreachable; the id may well exist, so it is never reported unknown |
 
@@ -504,7 +502,6 @@ Protocol-level errors (wrong `Accept` header, unsupported method, invalid JSON-R
 | SSRF guard | Outbound URLs must be `http(s)` and resolve only to public addresses. Blocked: `0.0.0.0/8`, `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16` (including cloud metadata `169.254.169.254`), `100.64.0.0/10`, IPv6 `::`, `::1`, `fe80::/10`, `fc00::/7`, and IPv4-mapped IPv6 forms of the above. Applied to `/api/upload-url` (always, on every redirect and candidate), to `config.baseUrl` in `/api/host`, and again before every hosted tool call (both production only). |
 | Token relayed, never stored | The hosted runtime reads the caller's `Authorization` header per request (Node.js `AsyncLocalStorage`), forwards it upstream, and keeps nothing. Stored configurations contain no credential. |
 | Unguessable hosted URLs | Ids are 128-bit random values. |
-| Hosted URL expiry | Configurations expire after `SLICE_HOSTED_TTL_HOURS` (default 72), and are deleted 30 days later. |
 | No disk writes for uploads and bundles | Uploads use in-memory storage; ZIPs are built in memory and streamed. Hosted configurations live in the database (PostgreSQL, or the embedded PGlite files under `SLICE_DATA_DIR` outside production). |
 | Header-injection safe download name | The `Content-Disposition` file name is reduced to `[a-z0-9-]` before use. |
 
