@@ -18,6 +18,8 @@ export interface AccountMcp {
 export interface AccountMcps {
   /** The MCPs of `workspaceId`, newest first. */
   list(workspaceId: string): Promise<AccountMcp[]>;
+  /** Delete the MCP `id` of `workspaceId`, with its actions, at once (D10). */
+  delete(workspaceId: string, id: string): Promise<void>;
 }
 
 export function createAccountMcps(database: Database): AccountMcps {
@@ -43,6 +45,9 @@ export function createAccountMcps(database: Database): AccountMcps {
         actionCount,
         createdAt: createdAt.toISOString(),
       }));
+    },
+    async delete(_workspaceId, id) {
+      await db.delete(connectors).where(eq(connectors.id, id));
     },
   };
 }
