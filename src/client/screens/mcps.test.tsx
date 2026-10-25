@@ -51,4 +51,13 @@ describe('My MCPs', () => {
       address: row.queryByText('http://localhost:5173/m/notion-id') !== null,
     }).toEqual({ actions: true, created: true, address: true });
   });
+
+  it('counts a single action in the singular', async () => {
+    server.mcps = [{ ...NOTION, actionCount: 1 }];
+
+    renderPage();
+
+    const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
+    expect(row.queryByText('1 action')).toBeInTheDocument();
+  });
 });
