@@ -8,6 +8,7 @@ import { Check, Copy } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -103,6 +104,9 @@ function McpRow({ mcp, onDelete }: { mcp: Mcp; onDelete: () => Promise<void> }) 
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
             <Button variant="destructive" onClick={() => void onDelete()}>
               Delete
             </Button>
