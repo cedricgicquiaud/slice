@@ -72,4 +72,12 @@ describe('My MCPs', () => {
 
     expect(await navigator.clipboard.readText()).toBe('http://localhost:5173/m/notion-id');
   });
+
+  it('says so when the account has no MCP yet', async () => {
+    server.mcps = [];
+
+    renderPage();
+
+    expect(await screen.findByText('You have no MCP yet.')).toBeInTheDocument();
+  });
 });
