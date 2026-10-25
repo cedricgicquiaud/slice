@@ -16,13 +16,13 @@ import { isDatabaseUnreachable } from '../db/errors';
 export interface HostedMcpRouterOptions {
   /** Where the hosted connectors are read from. */
   store: HostedStore;
-  /** Clock used to tell an expired connector. */
-  now: () => Date;
   /** Forwarded to the engine — disables the SSRF guard (tests/dev only). */
   allowPrivateHosts?: boolean;
-  /** Free-tier TTL in hours; 0 disables expiry. Defaults to SLICE_HOSTED_TTL_HOURS or 72. */
-  ttlHours?: number;
 }
+
+// An MCP never expires while there is no billing (WAT-102, D2): the expiry
+// below stays in the code but nothing calls it. Plugging it back means testing
+// `isExpired` again in the route below, before serving the connector.
 
 /** Env-resolved default TTL (hours). `0` disables expiry (self-host deployments). */
 export function defaultTtlHours(): number {
@@ -39,7 +39,6 @@ export function isExpired(createdAt: string | undefined, ttlHours: number, now =
 
 export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
   const router = Router();
-  const ttlHours = options.ttlHours ?? defaultTtlHours();
 
   router.all('/:id', async (req, res) => {
     let config: HostedMcpConfig | undefined;
@@ -58,14 +57,6 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
       res.status(404).json({ error: 'Unknown MCP id.' });
       return;
     }
-    // Kept in the database 30 days after expiry, so it keeps answering "expired".
-    if (isExpired(config.createdAt, ttlHours, options.now().getTime())) {
-      res.status(410).json({
-        error: 'This MCP URL has expired. Generate it again on SLICE, or ask for a permanent plan.',
-      });
-      return;
-    }
-
     const server = buildHostedMcpServer(config, {
       allowPrivateHosts: options.allowPrivateHosts,
     });

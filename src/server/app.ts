@@ -25,14 +25,9 @@ export interface CreateAppOptions {
    * upstream can be reached. Never enable this on a deployed instance.
    */
   allowPrivateHosts?: boolean;
-  /**
-   * Free-tier TTL (hours) for hosted MCP URLs; 0 disables expiry entirely
-   * (self-host deployments). Defaults to SLICE_HOSTED_TTL_HOURS or 72.
-   */
-  hostedTtlHours?: number;
   /** Where hosted connectors live. Without it, the hosted routes are not mounted. */
   hostedStore?: HostedStore;
-  /** Clock for hosted connectors (creation date, expiry). Defaults to the system clock. */
+  /** Clock that dates a created connector. Defaults to the system clock. */
   now?: () => Date;
   /** Accounts and sessions. Without it, every `/api/*` call but health is refused. */
   auth?: SliceAuth;
@@ -105,7 +100,6 @@ export function createApp(options: CreateAppOptions = {}): Express {
       store: options.hostedStore,
       now: options.now ?? (() => new Date()),
       allowPrivateHosts,
-      ttlHours: options.hostedTtlHours,
     };
     app.use('/api/host', createHostRouter(hosted));
     app.use('/m', createHostedMcpRouter(hosted));
