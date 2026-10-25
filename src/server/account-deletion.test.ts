@@ -3,6 +3,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import request from 'supertest';
 import { createApp } from './app';
 import { createAuth } from './auth/auth';
 import { openSession } from './auth/open-session';
@@ -34,6 +35,8 @@ let baseUrl: string;
 let addresses: string[];
 /** The `Cookie` header of the account's session on its other device, the one that did not delete. */
 let phoneCookie: string;
+/** The sign-in codes SLICE sent, by address. */
+const inbox = new Map<string, string>();
 
 /** "Deploy to SLICE Cloud" from the device holding `cookie`: the new MCP's address. */
 async function deployMcp(cookie: string, mcpName: string): Promise<string> {
@@ -72,7 +75,13 @@ beforeAll(async () => {
   testDb = await createTestDatabase();
   database = openDatabase(testDb.config);
   await migrateDatabase(database);
-  const auth = createAuth({ database, secret: TEST_AUTH_SECRET });
+  const auth = createAuth({
+    database,
+    secret: TEST_AUTH_SECRET,
+    sendCode: async (email, code) => {
+      inbox.set(email, code);
+    },
+  });
   app = createApp({
     nodeEnv: 'test',
     auth,
@@ -125,5 +134,15 @@ describe('after the account is deleted', () => {
       status: 401,
       body: { code: 'UNAUTHORIZED', message: 'Sign in to continue.' },
     });
+  });
+
+  it('opens an account without any MCP when the same address signs in again with a code (contract 28)', async () => {
+    const browser = request.agent(app);
+
+    await browser.post('/api/auth/email-otp/send-verification-otp').send({ email: EMAIL, type: 'sign-in' });
+    await browser.post('/api/auth/sign-in/email-otp').send({ email: EMAIL, otp: inbox.get(EMAIL) });
+    const res = await browser.get('/api/mcps');
+
+    expect({ status: res.status, body: res.body }).toEqual({ status: 200, body: { mcps: [] } });
   });
 });
