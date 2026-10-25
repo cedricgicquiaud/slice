@@ -8,7 +8,9 @@ import { createUploadRouter, createUploadUrlRouter } from './routes/upload';
 import { createGenerateRouter } from './routes/generate';
 import { createHostRouter } from './routes/host';
 import { createHostedMcpRouter } from './routes/hosted-mcp';
+import { createMcpsRouter } from './routes/mcps';
 import type { HostedStore } from './services/hosted-store';
+import type { AccountMcps } from './services/account-mcps';
 import type { SliceAuth } from './auth/auth';
 import { devSignIn } from './auth/dev-sign-in';
 import { requireSameOrigin, requireSession } from './middleware/require-session';
@@ -27,6 +29,8 @@ export interface CreateAppOptions {
   allowPrivateHosts?: boolean;
   /** Where hosted connectors live. Without it, the hosted routes are not mounted. */
   hostedStore?: HostedStore;
+  /** The MCPs of each account's workspace. Without it, `/api/mcps` is not mounted. */
+  accountMcps?: AccountMcps;
   /** Clock that dates a created connector. Defaults to the system clock. */
   now?: () => Date;
   /** Accounts and sessions. Without it, every `/api/*` call but health is refused. */
@@ -94,6 +98,9 @@ export function createApp(options: CreateAppOptions = {}): Express {
   // POST /api/generate — phase 08. Mounts its own 15 MB JSON parser; the
   // 10 MB app-level one is bypassed by the path-specific router order.
   app.use('/api/generate', createGenerateRouter());
+
+  // GET /api/mcps — the account's own MCPs (D9).
+  if (options.accountMcps) app.use('/api/mcps', createMcpsRouter(options.accountMcps));
 
   // Pivot-4 — SLICE Cloud. POST /api/host stores a config and returns a URL;
   // /m/:id is the hosted MCP runtime (not under /api/, so not rate-limited
