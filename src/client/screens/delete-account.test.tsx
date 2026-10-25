@@ -3,21 +3,45 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from '../App';
+import { AuthGate } from '../components/auth-gate';
+import { refreshSession } from '../lib/auth-client';
 import { DeleteAccountScreen } from './delete-account';
 
+const LIVE_SESSION = {
+  session: { id: 's1', userId: 'u1', token: 't', expiresAt: '2026-11-01T00:00:00.000Z' },
+  user: { id: 'u1', email: 'ada@example.com', name: '', emailVerified: true },
+};
+
 /**
- * SLICE's API as this page sees it: any call is "who is signed in?" (`session`).
+ * SLICE's API as this page sees it: `POST /api/auth/delete-user` deletes the
+ * account and ends its session (counted in `deletions`); any other call is
+ * "who is signed in?" (`session`).
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
 const server = vi.hoisted(() => {
-  const state: { session: unknown } = { session: null };
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify(state.session), { headers: { 'content-type': 'application/json' } })) as typeof fetch;
+  const state: { session: unknown; deletions: number } = { session: null, deletions: 0 };
+  const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (url.endsWith('/api/auth/delete-user')) {
+      state.deletions += 1;
+      state.session = null;
+      return json({ success: true, message: 'User deleted' });
+    }
+    return json(state.session);
+  }) as typeof fetch;
   return state;
 });
 
+/** The server now answers `session`; like a sign-in or out, the client is told to ask again. */
+function serverSession(session: unknown) {
+  server.session = session;
+  refreshSession();
+}
+
 afterEach(() => {
   server.session = null;
+  server.deletions = 0;
   window.history.pushState({}, '', '/');
 });
 
@@ -55,5 +79,25 @@ describe('Delete account', () => {
     await user.type(screen.getByLabelText('Type delete to confirm'), 'delete');
 
     expect(screen.getByRole('button', { name: 'Delete my account' })).toBeEnabled();
+  });
+
+  it('deletes the account at once when clicked, and lands on the sign-in screen at / (D11, D1)', async () => {
+    window.history.pushState({}, '', '/account/delete');
+    serverSession(LIVE_SESSION);
+    const user = userEvent.setup();
+    render(
+      <AuthGate>
+        <App />
+      </AuthGate>
+    );
+
+    await user.type(await screen.findByLabelText('Type delete to confirm'), 'delete');
+    await user.click(screen.getByRole('button', { name: 'Delete my account' }));
+
+    expect({
+      signIn: (await screen.findByRole('heading', { name: 'Sign in to SLICE' })) !== null,
+      deletions: server.deletions,
+      path: window.location.pathname,
+    }).toEqual({ signIn: true, deletions: 1, path: '/' });
   });
 });
