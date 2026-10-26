@@ -591,3 +591,78 @@ Après chaque refus, « History » ne montre aucune version de plus.
 - [ ] `docs/API.md` décrit `GET /api/mcps/:id/selection`, `POST /api/mcps/:id/versions` (la demande, la réponse, les
   refus 400, 401, 403, 404, 409 et 503) et le message d'une action retirée sous `ANY /m/:id` ; il ne dit plus
   qu'aucune modification n'est possible.
+
+### Livraison 3 — Je reviens à une version précédente en un clic
+
+**Préparer la recette**
+
+- Lancer `pnpm dev`, ouvrir http://localhost:5173 et se connecter avec une adresse A (code par e-mail ; sans clé
+  Resend, le code s'affiche dans le terminal de `pnpm dev`).
+- Raccourci : l'amorce `.pilot/recette/amorce-restore.js`, collée dans la console du navigateur sur
+  http://localhost:5173, ouvre une session pour `recette@slice.local`, reprend le MCP « Recette Notes » du compte (ou
+  le crée), et s'assure qu'il a au moins deux versions dont la plus récente est l'active. Pour un MCP neuf : la
+  version 1 coche « List notes » et « Create a note », la version 2 (active) « List notes » seule. Elle place la page
+  sur son écran « History ». Recharger ensuite la page.
+- Sans l'amorce : créer un MCP hébergé (« Deploy to SLICE Cloud ») depuis `fixtures/uat-deprecated.yaml` en cochant 2
+  actions, puis « Edit actions » sur sa ligne de « My MCPs » : décocher l'une des deux et « Save ». Il a alors une
+  version 1 (2 actions) et une version 2 active (1 action).
+- Noter l'adresse du MCP (« My MCPs ») et, pour les vérifications en terminal, copier la valeur du cookie
+  `better-auth.session_token` (outils du navigateur, onglet Application ou Stockage, Cookies, `http://localhost:5173`)
+  et l'identifiant du MCP, la fin de son adresse après `/m/`.
+
+Les exemples ci-dessous supposent un MCP neuf de l'amorce : version 2 active (1 action, « List notes »), version 1 de
+2 actions. Avec un MCP passé plusieurs fois par l'amorce, remplacer « version 1 » par une version non active et
+« version 2 » par la version active.
+
+**Je restaure une version : elle redevient active, et l'agent la voit à sa prochaine conversation (WAT-148)**
+
+- [ ] Sur « History », la version active (en tête, marquée « Active since <date> ») n'a pas de bouton « Restore ».
+  Chaque autre version a le sien, à droite de sa ligne.
+- [ ] Cliquer « Restore » sur « Version 1 » : sous le nom du MCP s'affiche exactement « Version 1 restored. Your agent
+  sees these actions in its next conversation, with nothing to paste again. »
+- [ ] Juste après : « Version 1 » porte « Active since <date du jour> » et n'a plus de bouton « Restore » ; « Version
+  2 » n'a plus de marque « Active since » et montre à son tour « Restore ».
+- [ ] Refus : aucune version n'est créée. « History » montre toujours le même nombre de versions, avec les mêmes
+  numéros (« Version 2 » puis « Version 1 »). Recharger la page (Cmd+R) : même liste, « Version 1 » toujours active
+  depuis la date du jour.
+- [ ] Sur « My MCPs », la ligne du MCP affiche le nombre d'actions de la version 1 (« 2 actions » avec l'amorce), et
+  son adresse est identique à celle notée avant.
+- [ ] Lister les actions à l'adresse, dans un terminal :
+  `curl -s -X POST <adresse> -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'`
+  La réponse contient exactement les actions de la version 1 (`list_notes` et `create_note` avec l'amorce), rien de
+  plus. Dans Claude Desktop, une nouvelle conversation montre ces actions sans recoller l'adresse.
+- [ ] Après la restauration de la version 1, ouvrir « Edit actions » : les cases cochées sont celles de la version 1
+  (« List notes » et « Create a note »). Cocher « Delete a note » et « Save » : « Saved as version 3… » s'affiche. Dans
+  « History », « Version 3 » est en tête, active, avec 3 actions : les 2 de la version 1 plus « Delete a note ».
+- [ ] Refus : cliquer « Restore » sur la version déjà active est impossible (pas de bouton). Par l'API, la restaurer
+  réussit sans rien changer : `curl -i -X POST http://localhost:3001/api/mcps/<identifiant>/versions/<numéro de la
+  version active>/restore -H 'Cookie: better-auth.session_token=<valeur de A>'` affiche `HTTP/1.1 200` et
+  `{"number":<numéro>,"activeSince":"<date>"}`, où la date est celle déjà affichée par « Active since » (et non
+  l'heure de la commande). « History » ne montre aucune version de plus.
+- [ ] Refus : double-cliquer « Restore » sur une version non active : le bouton se grise dès le premier clic, et une
+  seule restauration part (un seul message « Version N restored… »). Preuve aussi par le test automatique « greys
+  "Restore" during the call: a double click restores once (contract 25) » (`src/client/screens/history.test.tsx`).
+- [ ] Un « Restore » et un « Save » envoyés au même instant ne laissent jamais deux versions actives : preuve par le
+  test « never leaves two active versions when a "Restore" and a "Save" of the same MCP run at once »
+  (`src/server/services/mcp-versions.test.ts`), qui tourne sur un vrai PostgreSQL dans la CI.
+
+**Refus : on ne restaure qu'une version existante de son propre MCP (WAT-149)**
+
+Dans les commandes ci-dessous, remplacer `<id>` par l'identifiant du MCP, `<A>` par la valeur du cookie de l'adresse A
+(propriétaire du MCP), `<B>` par celle d'une adresse B (connectée en navigation privée). Après chaque refus,
+« History » de A montre la même version active qu'avant, avec la même date.
+
+- [ ] Le propriétaire restaure une version existante : `curl -i -X POST http://localhost:3001/api/mcps/<id>/versions/1/restore -H 'Cookie: better-auth.session_token=<A>'`
+  affiche `HTTP/1.1 200` et `{"number":1,"activeSince":"<date>"}`.
+- [ ] Refus : une version que le MCP n'a pas, par exemple `.../versions/99/restore` avec le cookie de A, affiche
+  `HTTP/1.1 404` et `{"code":"NOT_FOUND","message":"Unknown version of this MCP."}`. De même pour
+  `.../versions/latest/restore`.
+- [ ] Refus : la même demande sur la version 1 avec le cookie de B (`-H 'Cookie: better-auth.session_token=<B>'`)
+  affiche `HTTP/1.1 404` et `{"code":"NOT_FOUND","message":"Unknown MCP id."}`, exactement comme sur un identifiant
+  inventé (`.../api/mcps/nexistepas/versions/1/restore`). Le MCP de A ne change pas.
+- [ ] Refus : la même demande sans cookie affiche `HTTP/1.1 401` et
+  `{"code":"UNAUTHORIZED","message":"Sign in to continue."}`.
+- [ ] Refus : la même demande avec le cookie de A et `-H 'Origin: https://evil.example'` affiche `HTTP/1.1 403` et
+  `{"code":"FORBIDDEN","message":"SLICE takes orders from its own page only."}`.
+- [ ] `docs/API.md` décrit `POST /api/mcps/:id/versions/:number/restore` : l'absence de corps, la réponse et ses
+  champs, la restauration de la version active qui ne change rien, et les refus 401, 403, 404 et 503.
