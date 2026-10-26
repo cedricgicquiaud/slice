@@ -5,14 +5,21 @@
  */
 import { useEffect, useId, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
+import { ApiError } from '../lib/api';
 import { getMcpHistory, type McpHistory, type McpVersion } from '../lib/mcps-api';
 import { CREATED, countOfActions } from './mcps';
 
 export function HistoryScreen({ mcpId }: { mcpId: string }) {
   const [history, setHistory] = useState<McpHistory | null>(null);
+  const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
-    void getMcpHistory(mcpId).then(setHistory);
+    getMcpHistory(mcpId)
+      .then(setHistory)
+      .catch((err: unknown) => {
+        // Another account's MCP answers as an unknown one (D12): one case here.
+        if (err instanceof ApiError && err.status === 404) setNotFound(true);
+      });
   }, [mcpId]);
 
   return (
@@ -20,6 +27,12 @@ export function HistoryScreen({ mcpId }: { mcpId: string }) {
       <a href="/mcps" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
         Back to My MCPs
       </a>
+      {notFound && (
+        <>
+          <h1 className="mt-4 font-serif text-4xl italic">MCP not found</h1>
+          <p className="mt-4 text-sm text-muted-foreground">There is no MCP at this address in your account.</p>
+        </>
+      )}
       {history && (
         <>
           <h1 className="mt-4 font-serif text-4xl italic">{history.apiName}</h1>
