@@ -86,4 +86,16 @@ describe('History', () => {
       ['Version 1', 'Created Oct 21, 2026', '2 actions'],
     ]);
   });
+
+  it('marks the active version "Active since" the day it became active, and only that one (contract 9)', async () => {
+    server.histories['notion-id'] = TWO_VERSIONS;
+
+    render(<HistoryScreen mcpId="notion-id" />);
+
+    const versions = await screen.findAllByRole('listitem', { name: /^Version/ });
+    expect(versions.map((version) => within(version).queryByText(/^Active since/)?.textContent ?? null)).toEqual([
+      'Active since Oct 22, 2026',
+      null,
+    ]);
+  });
 });
