@@ -99,7 +99,7 @@ function McpRow({ mcp, onDelete }: { mcp: Mcp; onDelete: () => Promise<void> }) 
           {copied ? <Check size={14} /> : <Copy size={14} />}
         </button>
       </div>
-      <div className="flex justify-end gap-1">
+      <div className="flex flex-wrap justify-end gap-1">
         <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
           <a href={`/mcps/${mcp.id}/edit`}>Edit actions</a>
         </Button>
