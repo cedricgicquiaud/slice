@@ -4,7 +4,7 @@
  * but the server no longer starts it: an MCP never expires (WAT-102, D2).
  */
 import { randomBytes } from 'node:crypto';
-import { asc, eq, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, lt, sql } from 'drizzle-orm';
 import type { HttpMethod, UpstreamAuth } from '@shared/types';
 import type { ApiAction, HostedMcpConfig } from './hosted-mcp-factory';
 import type { Database } from '../db/client';
@@ -76,10 +76,24 @@ export function createHostedStore(database: Database): HostedStore {
     async get(id) {
       const [connector] = await db.select().from(connectors).where(eq(connectors.id, id));
       if (!connector) return undefined;
+      // The address serves the active version's actions, never the other versions' (D4).
       const actions = await db
-        .select()
+        .select({
+          name: connectorActions.name,
+          description: connectorActions.description,
+          method: connectorActions.method,
+          path: connectorActions.path,
+          params: connectorActions.params,
+        })
         .from(connectorActions)
-        .where(eq(connectorActions.connectorId, id))
+        .innerJoin(
+          connectorVersions,
+          and(
+            eq(connectorVersions.connectorId, connectorActions.connectorId),
+            eq(connectorVersions.number, connectorActions.version)
+          )
+        )
+        .where(and(eq(connectorActions.connectorId, id), isNotNull(connectorVersions.activeSince)))
         .orderBy(asc(connectorActions.position));
       return {
         name: connector.name,
