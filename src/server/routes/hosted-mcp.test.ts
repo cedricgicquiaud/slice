@@ -571,6 +571,19 @@ describe('a batch of action calls', () => {
       })
     );
   });
+
+  it('notes each of its calls with its own result, even when two calls share one id (contract 13)', async () => {
+    const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+
+    await postBatch(`${baseUrl}/m/${id}`, [toolCall(7, 'list_things', {}), toolCall(7, 'delete_thing', { id: '404' })]);
+
+    await vi.waitFor(async () =>
+      expect((await calls.of(id)).map(({ action, result }) => `${action} ${JSON.stringify(result)}`).sort()).toEqual([
+        'delete_thing {"kind":"failed","status":404}',
+        'list_things {"kind":"succeeded"}',
+      ])
+    );
+  });
 });
 
 // WAT-158 — what is never noted.
