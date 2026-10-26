@@ -5,7 +5,7 @@
  */
 import { useEffect, useId, useState } from 'react';
 import { ApiError } from '../lib/api';
-import { getMcpUsage, type ActionUsage, type McpUsage } from '../lib/mcps-api';
+import { getMcpUsage, type ActionUsage, type CallResult, type McpUsage, type RecentCall } from '../lib/mcps-api';
 import { messageOf } from './mcps';
 
 /** A call's date and time at the computer's time (D11), e.g. "Oct 26, 2026, 14:02". */
@@ -66,9 +66,57 @@ export function UsageScreen({ mcpId }: { mcpId: string }) {
             </p>
           ))}
           <ActionsTable actions={usage.actions} />
+          <RecentCallsTable calls={usage.recentCalls} />
         </>
       )}
     </div>
+  );
+}
+
+/** A call's result as the page words it (D4), e.g. "Failed (404)". */
+function resultOf(result: CallResult): string {
+  switch (result.kind) {
+    case 'succeeded':
+      return 'Succeeded';
+    case 'failed':
+      return `Failed (${result.status})`;
+    default:
+      return result.kind;
+  }
+}
+
+function RecentCallsTable({ calls }: { calls: RecentCall[] }) {
+  const titleId = useId();
+  return (
+    <section className="mt-8">
+      <h2 id={titleId} className="text-base font-medium text-foreground">
+        Recent calls
+      </h2>
+      <div className="mt-3 overflow-hidden rounded-lg border border-border bg-card">
+        <table aria-labelledby={titleId} className="w-full text-sm">
+          <thead className="bg-muted/40 text-left text-muted-foreground">
+            <tr>
+              <th scope="col" className="px-4 py-2 font-medium">Date</th>
+              <th scope="col" className="px-4 py-2 font-medium">Action</th>
+              <th scope="col" className="px-4 py-2 font-medium">Result</th>
+              <th scope="col" className="px-4 py-2 text-right font-medium">Duration</th>
+              <th scope="col" className="px-4 py-2 text-right font-medium">Version</th>
+            </tr>
+          </thead>
+          <tbody>
+            {calls.map((call, position) => (
+              <tr key={position} className="border-t border-border">
+                <td className="px-4 py-2 text-muted-foreground">{CALLED.format(new Date(call.calledAt))}</td>
+                <td className="px-4 py-2 text-foreground">{call.label}</td>
+                <td className="px-4 py-2 text-foreground">{resultOf(call.result)}</td>
+                <td className="px-4 py-2 text-right tabular-nums">{durationOf(call.durationMs)}</td>
+                <td className="px-4 py-2 text-right tabular-nums">{call.version}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
