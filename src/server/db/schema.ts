@@ -203,3 +203,31 @@ export const connectorApiActions = pgTable(
   },
   (table) => [primaryKey({ columns: [table.connectorId, table.position] })]
 );
+
+/** What became of an action call (D4); a failure keeps the API's status code. */
+export const callResult = pgEnum('call_result', [
+  'succeeded',
+  'failed',
+  'api_unreachable',
+  'invalid_request',
+  'not_available',
+  'slice_error',
+]);
+
+/**
+ * The note of each action call an agent made (D3): never the values it sent,
+ * the API's response or error message, nor the token.
+ */
+export const connectorCalls = pgTable('connector_calls', {
+  connectorId: text('connector_id').notNull(),
+  /** The version active when the call arrived. */
+  version: integer('version').notNull(),
+  action: text('action').notNull(),
+  /** When the call arrived at SLICE (D6). */
+  calledAt: timestamp('called_at', { withTimezone: true }).notNull(),
+  result: callResult('result').notNull(),
+  /** The API's status code, for a failure only. */
+  status: integer('status'),
+  /** From the call's arrival to the end of its handling by SLICE (D6). */
+  durationMs: integer('duration_ms').notNull(),
+});

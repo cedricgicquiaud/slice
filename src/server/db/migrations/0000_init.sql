@@ -1,3 +1,4 @@
+CREATE TYPE "public"."call_result" AS ENUM('succeeded', 'failed', 'api_unreachable', 'invalid_request', 'not_available', 'slice_error');--> statement-breakpoint
 CREATE TYPE "public"."http_method" AS ENUM('GET', 'POST', 'PUT', 'PATCH', 'DELETE');--> statement-breakpoint
 CREATE TYPE "public"."upstream_auth_type" AS ENUM('none', 'apiKey', 'bearer', 'oauth2');--> statement-breakpoint
 CREATE TABLE "accounts" (
@@ -40,6 +41,16 @@ CREATE TABLE "connector_api_actions" (
 	"path" text NOT NULL,
 	"params" jsonb NOT NULL,
 	CONSTRAINT "connector_api_actions_connector_id_position_pk" PRIMARY KEY("connector_id","position")
+);
+--> statement-breakpoint
+CREATE TABLE "connector_calls" (
+	"connector_id" text NOT NULL,
+	"version" integer NOT NULL,
+	"action" text NOT NULL,
+	"called_at" timestamp with time zone NOT NULL,
+	"result" "call_result" NOT NULL,
+	"status" integer,
+	"duration_ms" integer NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "connector_versions" (
