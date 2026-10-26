@@ -472,6 +472,26 @@ describe('the note of an action call refused before the API', () => {
     );
   });
 
+  it('is "Invalid request" when the MCP protocol refuses the request itself, and the API is not called (D4)', async () => {
+    const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+    received = [];
+
+    // Without `text/event-stream` in Accept, the MCP transport refuses the request before any action runs.
+    const res = await fetch(`${baseUrl}/m/${id}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify(toolCall(1, 'list_things', {})),
+    });
+
+    expect(res.status).toBe(406);
+    await vi.waitFor(async () =>
+      expect({ upstreamCalls: received.length, results: (await calls.of(id)).map((note) => note.result) }).toEqual({
+        upstreamCalls: 0,
+        results: [{ kind: 'invalid_request' }],
+      })
+    );
+  });
+
   it('is "Not available" for an action of the API the active version lacks: retired, or never chosen (contract 6, D4)', async () => {
     const neverChosen = { name: 'archive_thing', description: 'Archive a thing', method: 'POST' as const, path: '/things/archive', params: [] };
     const config = withApiActions({ ...threeActions(), endpoints: [...threeActions().endpoints, neverChosen] });
