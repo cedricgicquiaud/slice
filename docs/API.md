@@ -13,6 +13,7 @@ The browser front end uses the `/api/*` routes; AI agents use the hosted runtime
 | `POST` | `/api/generate` | Build a self-hostable MCP server and stream it as a ZIP | Yes |
 | `POST` | `/api/host` | Store a hosted MCP configuration and return its URL | Yes |
 | `GET` | `/api/mcps` | List the signed-in account's hosted MCPs | Yes |
+| `GET` | `/api/mcps/:id/versions` | Read the versions of one of the signed-in account's hosted MCPs | Yes |
 | `DELETE` | `/api/mcps/:id` | Delete one of the signed-in account's hosted MCPs | Yes |
 | any | `/m/:id` | Hosted MCP runtime (MCP Streamable HTTP, stateless) | No |
 
@@ -420,9 +421,16 @@ Creates a hosted MCP: stores a configuration and returns the URL agents connect 
 The server re-parses `rawSpec` and filters `selectedIds` in the same way.
 
 **Stored configuration:** the MCP name, `baseUrl`, `upstreamAuth` (type, plus header name, token URL and scopes when relevant),
-and for each selected endpoint its tool name, one-line description, method, path and parameters, plus a creation date,
-the API's name as read in the spec (`info.title`, else `Untitled API`) and the personal workspace of the signed-in account, which owns the
-MCP. The raw spec, `mcpServerToken` and any upstream credential are not stored.
+a creation date, the API's name as read in the spec (`info.title`, else `Untitled API`) and the personal workspace of the
+signed-in account, which owns the MCP. Alongside it:
+
+- **the full list of the API's actions**, checked or not, as the selection screen shows them: tool name, label, group (tag),
+  description, `deprecated` mark, method, path and parameters;
+- **version 1**, the selection: for each selected endpoint its tool name, label, one-line description, method, path and
+  parameters. It is created and made active at the creation date. An MCP has one active version at a time, and its URL
+  serves that version's actions only (see [`GET /api/mcps/:id/versions`](#get-apimcpsidversions)).
+
+The raw spec, `mcpServerToken` and any upstream credential are not stored, in the MCP, its versions or its list.
 
 **SSRF check:** when the server runs with `NODE_ENV=production`, `config.baseUrl` must resolve only to public addresses;
 otherwise the request fails with `BLOCKED_HOST`. In development this check is off so a local upstream can be used.
@@ -464,8 +472,9 @@ A hosted MCP has no expiry date: its URL keeps working until the MCP is deleted.
 ## `GET /api/mcps`
 
 Lists the hosted MCPs of the signed-in account's personal workspace, newest first. MCPs of any other account never
-appear. Nothing about an MCP can be changed through the API: an MCP is created by [`POST /api/host`](#post-apihost)
-and deleted by [`DELETE /api/mcps/:id`](#delete-apimcpsid).
+appear. Nothing about an MCP can be changed through the API: an MCP is created by [`POST /api/host`](#post-apihost),
+its versions are read by [`GET /api/mcps/:id/versions`](#get-apimcpsidversions), and it is deleted by
+[`DELETE /api/mcps/:id`](#delete-apimcpsid).
 
 **Response `200`**
 
@@ -487,7 +496,7 @@ and deleted by [`DELETE /api/mcps/:id`](#delete-apimcpsid).
 |---|---|
 | `id` | The MCP's id, as returned by `POST /api/host` |
 | `apiName` | The API's name as read in its description; for an MCP stored without one, the host name of its `baseUrl` (for example `api.acme.io`) |
-| `actionCount` | Number of actions (tools) the MCP exposes |
+| `actionCount` | Number of actions (tools) the MCP exposes: those of its active version, not the API's full list |
 | `createdAt` | Creation date, ISO 8601 |
 | `url` | `<request protocol>://<Host header>/m/<id>`, the address to paste into the agent |
 
@@ -503,9 +512,49 @@ An account without any MCP gets `{ "mcps": [] }`.
 
 ---
 
+## `GET /api/mcps/:id/versions`
+
+Reads the versions of one hosted MCP of the signed-in account, newest first. A version is a selection of actions,
+numbered from 1 and dated; one version is active at a time, and the MCP's URL serves it.
+
+**Response `200`**
+
+```json
+{
+  "apiName": "Notion API",
+  "versions": [
+    {
+      "number": 1,
+      "createdAt": "2026-10-21T10:15:00.000Z",
+      "activeSince": "2026-10-21T10:15:00.000Z",
+      "actionLabels": ["Search", "Get a page"]
+    }
+  ]
+}
+```
+
+| Field | Description |
+|---|---|
+| `apiName` | The MCP's name, as [`GET /api/mcps`](#get-apimcps) gives it |
+| `versions[].number` | 1 for the selection made at creation, then 2, 3… |
+| `versions[].createdAt` | Creation date of the version, ISO 8601 |
+| `versions[].activeSince` | Date the version last became the active one, ISO 8601; `null` for every other version. For version 1 of a new MCP, its creation date |
+| `versions[].actionLabels` | The labels of the version's actions, in their order |
+
+**Errors**
+
+| HTTP | `code` | Cause |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | No live session |
+| 404 | `NOT_FOUND` | No MCP under this id in the account's workspace. Message: "Unknown MCP id." The answer is the same whether the id does not exist or belongs to another account, so an id reveals nothing |
+| 429 | (none) | Rate limit exceeded |
+| 503 | `SERVICE_UNAVAILABLE` | The database is unreachable |
+
+---
+
 ## `DELETE /api/mcps/:id`
 
-Deletes one hosted MCP of the signed-in account, with its actions, at once. From then on its URL answers
+Deletes one hosted MCP of the signed-in account, with its actions, its versions and the list of its API's actions, at once. From then on its URL answers
 `404 { "error": "Unknown MCP id." }` (see [`ANY /m/:id`](#any-mid)). There is no undo.
 
 **Response `204`**, with no body.
@@ -525,7 +574,8 @@ Deletes one hosted MCP of the signed-in account, with its actions, at once. From
 ## `ANY /m/:id`
 
 The hosted MCP runtime. One generic engine serves every hosted MCP: on each request it loads the stored
-configuration for `:id` and builds an MCP server in memory whose tools call the upstream API.
+configuration for `:id` and builds an MCP server in memory whose tools call the upstream API. The tools are the
+actions of the MCP's active version, never the rest of the API's full list.
 
 **Transport:** MCP Streamable HTTP in stateless mode, through the official MCP TypeScript SDK.
 A new server and transport are created for each HTTP request; there is no session id and no shared state between requests.

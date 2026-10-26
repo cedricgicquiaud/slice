@@ -23,7 +23,25 @@ export interface HostedMcpOptions {
 /** One endpoint the hosted MCP exposes as a tool. */
 export interface HostedEndpoint {
   name: string;
+  /** The action's label on the selection screen, kept for the MCP's history; the engine ignores it. */
+  label?: string;
   description: string;
+  method: HttpMethod;
+  path: string;
+  params: EndpointParam[];
+}
+
+/**
+ * One action of the API as the selection screen shows it, checked or not (D1):
+ * kept at creation so the selection can change later without the API description.
+ */
+export interface ApiAction {
+  name: string;
+  label: string;
+  /** The tag the action is grouped under. */
+  group: string;
+  description?: string;
+  deprecated: boolean;
   method: HttpMethod;
   path: string;
   params: EndpointParam[];
@@ -37,6 +55,8 @@ export interface HostedMcpConfig {
   baseUrl: string;
   upstreamAuth: UpstreamAuth;
   endpoints: HostedEndpoint[];
+  /** Every action of the API, the selection's and the others (D1); the engine never serves them. */
+  apiActions?: ApiAction[];
   /** ISO creation date: set by the store, which stamps the connector on `put` and returns it on `get`. */
   createdAt?: string;
   /** The workspace the connector belongs to (D15): given to the store's `put`, returned by `get`. */

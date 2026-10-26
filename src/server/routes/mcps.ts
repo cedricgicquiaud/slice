@@ -1,6 +1,7 @@
 /**
  * The signed-in account's MCPs: `GET /api/mcps` lists those of its workspace
- * (D9), `DELETE /api/mcps/:id` deletes one at once (D10). Mounted under the
+ * (D9), `GET /api/mcps/:id/versions` reads the versions of one (D8),
+ * `DELETE /api/mcps/:id` deletes one at once (D10). Mounted under the
  * session guard, which sets `res.locals.workspaceId`: another workspace's
  * MCPs are out of reach.
  */
@@ -17,6 +18,15 @@ export function createMcpsRouter(accountMcps: AccountMcps): Router {
     const mcps = await accountMcps.list(res.locals.workspaceId);
     const origin = `${req.protocol}://${req.get('host')}`;
     res.json({ mcps: mcps.map((mcp) => ({ ...mcp, url: `${origin}/m/${mcp.id}` })) });
+  });
+
+  router.get('/:id/versions', async (req, res) => {
+    const history = await accountMcps.history(res.locals.workspaceId, req.params.id);
+    if (!history) {
+      res.status(404).json(UNKNOWN_MCP);
+      return;
+    }
+    res.json(history);
   });
 
   router.delete('/:id', async (req, res) => {

@@ -24,6 +24,12 @@ Le serveur MCP produit par SLICE à partir d'une sélection. Le mot que cherchen
 utilisateurs dans leur agent ; c'est celui de l'interface (décision du 24/10/2026).
 _Éviter_ : connecteur (dans l'interface), bot, plugin
 
+**Version** :
+Une sélection d'un MCP, numérotée (1, 2, 3…) et datée. La sélection faite à la création est
+la version 1. Une seule version est active à la fois : c'est elle que sert l'adresse du MCP.
+« History » montre toutes ses versions.
+_Éviter_ : révision, snapshot, release (dans l'interface)
+
 **MCP hébergé** :
 Un MCP que SLICE fait tourner et rend accessible par une adresse.
 _Éviter_ : SLICE Cloud (nom commercial seulement), instance

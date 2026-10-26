@@ -8,11 +8,15 @@ import { SelectionScreen } from './screens/selection';
 import { ConfigScreen } from './screens/config';
 import { SuccessScreen } from './screens/success';
 import { McpsScreen } from './screens/mcps';
+import { HistoryScreen } from './screens/history';
 import { DeleteAccountScreen } from './screens/delete-account';
 import { useTheme } from './hooks/use-theme';
 import { ApiError, apiGenerate, apiHost } from './lib/api';
 
 type ScreenIndex = 1 | 2 | 3 | 4;
+
+/** An MCP's history (D10): `/mcps/<id>/history`. */
+const HISTORY_PATH = /^\/mcps\/([^/]+)\/history$/;
 
 interface SuccessState {
   config: SliceConfig;
@@ -116,8 +120,15 @@ function AppInner() {
   };
 
   // The pages outside the three steps: no steps at the top.
+  const historyOf = HISTORY_PATH.exec(path)?.[1];
   const offStepsPage =
-    path === '/mcps' ? <McpsScreen /> : path === '/account/delete' ? <DeleteAccountScreen /> : null;
+    path === '/mcps' ? (
+      <McpsScreen />
+    ) : historyOf ? (
+      <HistoryScreen mcpId={historyOf} />
+    ) : path === '/account/delete' ? (
+      <DeleteAccountScreen />
+    ) : null;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">

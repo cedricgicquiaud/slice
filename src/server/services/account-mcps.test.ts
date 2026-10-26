@@ -1,5 +1,6 @@
 // WAT-103/104/105 — an account finds the MCPs of its workspace, and deletes one; never another account's.
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { sql } from 'drizzle-orm';
 import { createAccountMcps } from './account-mcps';
 import { createHostedStore, type HostedStore } from './hosted-store';
 import type { HostedEndpoint, HostedMcpConfig } from './hosted-mcp-factory';
@@ -54,6 +55,25 @@ describe('the MCPs of an account', () => {
       { id: stripe.id, apiName: 'Stripe', actionCount: 1, createdAt: '2026-10-20T14:00:00.000Z' },
       { id: notion.id, apiName: 'Notion API', actionCount: 3, createdAt: '2026-10-19T08:30:00.000Z' },
     ]);
+  });
+
+  it('counts the actions of the active version, not those of the others (D11)', async () => {
+    const { workspaceId } = await createTestAccount({ database, email: 'versions@example.com' });
+    const { id } = await store.put(mcp({ apiName: 'Notion API', actions: 3 }), workspaceId, MONDAY);
+    // "Save" comes with the next delivery: version 2, holding one action, is made active here.
+    await database.rows(sql`update connector_versions set active_since = null where connector_id = ${id}`);
+    await database.rows(
+      sql`insert into connector_versions (connector_id, number, created_at, active_since)
+          values (${id}, 2, ${TUESDAY}, ${TUESDAY})`
+    );
+    await database.rows(
+      sql`insert into connector_actions (connector_id, version, position, name, label, description, method, path, params)
+          values (${id}, 2, 0, 'search', 'Search', 'Search', 'POST', '/search', '[]'::jsonb)`
+    );
+
+    const [listed] = await createAccountMcps(database).list(workspaceId);
+
+    expect(listed?.actionCount).toBe(1);
   });
 
   it("never lists another account's MCPs (contract 17)", async () => {

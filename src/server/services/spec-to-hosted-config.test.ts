@@ -48,6 +48,68 @@ describe('specToHostedConfig', () => {
     expect(ep.params).toEqual([{ name: 'id', in: 'path', type: 'string', required: true }]);
   });
 
+  it('keeps the label of each selected action, as the selection screen shows it', () => {
+    const hosted = specToHostedConfig(SPEC, ['GET /things/{id}'], CONFIG);
+
+    expect(hosted.endpoints.map((e) => e.label)).toEqual(['Get a thing']);
+  });
+
+  it("keeps every action of the API, checked or not, with what the selection screen shows of it (D1)", () => {
+    const spec: ParsedSpec = {
+      ...SPEC,
+      groups: [
+        ...SPEC.groups,
+        {
+          tag: 'Legacy',
+          endpoints: [
+            {
+              id: 'DELETE /old/{id}',
+              method: 'DELETE',
+              path: '/old/{id}',
+              label: 'Remove an old thing',
+              description: 'Removes it.\nForever.',
+              deprecated: true,
+              params: [{ name: 'id', in: 'path', type: 'string', required: true }],
+            },
+          ],
+        },
+      ],
+    };
+
+    const hosted = specToHostedConfig(spec, ['GET /things'], CONFIG);
+
+    expect(hosted.apiActions).toEqual([
+      {
+        name: 'list_things',
+        label: 'List things',
+        group: 'Things',
+        deprecated: false,
+        method: 'GET',
+        path: '/things',
+        params: [],
+      },
+      {
+        name: 'get_a_thing',
+        label: 'Get a thing',
+        group: 'Things',
+        deprecated: false,
+        method: 'GET',
+        path: '/things/{id}',
+        params: [{ name: 'id', in: 'path', type: 'string', required: true }],
+      },
+      {
+        name: 'remove_an_old_thing',
+        label: 'Remove an old thing',
+        group: 'Legacy',
+        description: 'Removes it.\nForever.',
+        deprecated: true,
+        method: 'DELETE',
+        path: '/old/{id}',
+        params: [{ name: 'id', in: 'path', type: 'string', required: true }],
+      },
+    ]);
+  });
+
   it("keeps the API's name as read in its description (D9)", () => {
     const hosted = specToHostedConfig(SPEC, ['GET /things'], CONFIG);
 

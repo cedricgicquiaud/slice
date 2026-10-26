@@ -19,11 +19,25 @@ export function specToHostedConfig(
     .filter((e) => selected.has(e.id))
     .map((e) => ({
       name: toolNameFor(e),
+      label: e.label,
       description: (e.description ?? e.label).split('\n')[0],
       method: e.method,
       path: e.path,
       params: e.params,
     }));
+
+  const apiActions = spec.groups.flatMap((g) =>
+    g.endpoints.map((e) => ({
+      name: toolNameFor(e),
+      label: e.label,
+      group: g.tag,
+      ...(e.description !== undefined && { description: e.description }),
+      deprecated: e.deprecated ?? false,
+      method: e.method,
+      path: e.path,
+      params: e.params,
+    }))
+  );
 
   return {
     name: config.mcpName,
@@ -31,5 +45,6 @@ export function specToHostedConfig(
     baseUrl: config.baseUrl,
     upstreamAuth: config.upstreamAuth,
     endpoints,
+    apiActions,
   };
 }

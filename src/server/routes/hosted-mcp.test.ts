@@ -7,6 +7,7 @@ import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { createApp } from '../app';
 import { createHostedStore, type HostedStore } from '../services/hosted-store';
+import { createAccountMcps } from '../services/account-mcps';
 import type { HostedMcpConfig } from '../services/hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
@@ -63,7 +64,13 @@ beforeAll(async () => {
   store = createHostedStore(database);
   account = await createTestAccount({ database });
 
-  app = createApp({ nodeEnv: 'test', hostedStore: store, now, auth: account.auth }).listen(0);
+  app = createApp({
+    nodeEnv: 'test',
+    hostedStore: store,
+    accountMcps: createAccountMcps(database),
+    now,
+    auth: account.auth,
+  }).listen(0);
   await new Promise<void>((r) => app.once('listening', r));
   baseUrl = `http://127.0.0.1:${(app.address() as AddressInfo).port}`;
 });
@@ -134,6 +141,27 @@ describe('hosted connector served from the database', () => {
     ]);
   });
 
+  it('serves the actions of its active version only (D4)', async () => {
+    const { id } = await store.put(threeActions(), account.workspaceId, CREATED);
+    // "Save" comes with the next delivery: version 2, holding only the deletion, is made active here.
+    await database.rows(sql`update connector_versions set active_since = null where connector_id = ${id}`);
+    await database.rows(
+      sql`insert into connector_versions (connector_id, number, created_at, active_since)
+          values (${id}, 2, ${hoursAfterCreation(1)}, ${hoursAfterCreation(1)})`
+    );
+    await database.rows(
+      sql`insert into connector_actions (connector_id, version, position, name, label, description, method, path, params)
+          values (${id}, 2, 0, 'delete_thing', 'Delete a thing', 'Delete a thing', 'DELETE', '/things/{id}',
+                  ${JSON.stringify([{ name: 'id', in: 'path', type: 'string', required: true }])}::jsonb)`
+    );
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`, 'TOKEN');
+    const { tools } = await agent.listTools();
+    await agent.close();
+
+    expect(tools.map((t) => t.name)).toEqual(['delete_thing']);
+  });
+
   it('gives a connector created from screen 4 a 22-character address kept in the database', async () => {
     const url = await host();
     const id = url.split('/m/')[1]!;
@@ -163,7 +191,7 @@ describe('hosted connector served from the database', () => {
     expect(received.map((r) => r.apiKey)).toEqual(['KEY-123']);
   });
 
-  it('keeps no upstream key or token in the database', async () => {
+  it('keeps no upstream key, no token and not the API description in the database, versions and lists included (contract 24)', async () => {
     const res = await fetch(`${baseUrl}/api/host`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: account.cookie },
@@ -189,12 +217,76 @@ describe('hosted connector served from the database', () => {
     await agent.callTool({ name: 'list_things', arguments: {} });
     await agent.close();
 
-    const everything = await database.rows<{ row: string }>(
-      sql`select row_to_json(c)::text as row from connectors c
-          union all select row_to_json(a)::text from connector_actions a`
+    const everything = await database.rows<{ kind: string; row: string }>(
+      sql`select 'connector' as kind, row_to_json(c)::text as row from connectors c
+          union all select 'version', row_to_json(v)::text from connector_versions v
+          union all select 'action', row_to_json(a)::text from connector_actions a
+          union all select 'api action', row_to_json(l)::text from connector_api_actions l`
     );
-    expect(everything.length).toBeGreaterThan(0);
-    expect(everything.filter((r) => /feedface|AGENT-SECRET/.test(r.row))).toEqual([]);
+    expect(new Set(everything.map((r) => r.kind))).toEqual(new Set(['connector', 'version', 'action', 'api action']));
+    expect(everything.filter((r) => /feedface|AGENT-SECRET|openapi: 3\.0\.3|info: \{ title/.test(r.row))).toEqual([]);
+  });
+});
+
+/** Two actions: the agent may only read things, or only create them, as the user checks. */
+const READ_AND_WRITE_SPEC = `openapi: 3.0.3
+info: { title: Demo, version: "1.0" }
+servers: [{ url: http://placeholder }]
+paths:
+  /things:
+    get:
+      operationId: listThings
+      summary: List things
+      responses: { '200': { description: ok } }
+    post:
+      operationId: createThing
+      summary: Create a thing
+      responses: { '201': { description: created } }
+`;
+
+/** Create an MCP from screen 4 with `selectedIds` checked among the actions of `rawSpec`. */
+async function hostSelection(rawSpec: string, selectedIds: string[]): Promise<string> {
+  const res = await fetch(`${baseUrl}/api/host`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: account.cookie },
+    body: JSON.stringify({
+      parsedSpec: {},
+      rawSpec,
+      selectedIds,
+      config: {
+        mcpName: 'demo',
+        baseUrl: upstreamUrl,
+        upstreamAuth: { type: 'bearer' },
+        hosting: 'cloud',
+        mode: 'remote',
+        includeParamDescriptions: false,
+        retryOnServerError: false,
+      },
+    }),
+  });
+  expect(res.status).toBe(200);
+  return ((await res.json()) as { id: string }).id;
+}
+
+// WAT-141 — the selection made on screens 2 and 3 becomes the MCP's version 1.
+describe('the versions of an MCP created from screen 4', () => {
+  it('start with a version 1, active since its creation, holding exactly the checked actions (contract 1, 9)', async () => {
+    const id = await hostSelection(READ_AND_WRITE_SPEC, ['POST /things']);
+
+    const res = await fetch(`${baseUrl}/api/mcps/${id}/versions`, { headers: { cookie: account.cookie } });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      apiName: 'Demo',
+      versions: [
+        {
+          number: 1,
+          createdAt: '2026-10-24T09:00:00.000Z',
+          activeSince: '2026-10-24T09:00:00.000Z',
+          actionLabels: ['Create a thing'],
+        },
+      ],
+    });
   });
 });
 
@@ -405,6 +497,7 @@ describe('hosted routes when storing or reading fails for another reason', () =>
     const buggy: HostedStore = {
       put: () => Promise.reject(new Error('Failed query: insert', { cause: constraintViolation })),
       get: () => Promise.reject(new TypeError("Cannot read properties of undefined (reading 'params')")),
+      apiActions: () => Promise.resolve([]),
       purgeExpired: () => Promise.resolve(),
       ping: () => Promise.resolve(),
     };

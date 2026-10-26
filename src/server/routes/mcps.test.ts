@@ -79,6 +79,26 @@ describe('GET /api/mcps', () => {
   });
 });
 
+describe('GET /api/mcps/:id/versions', () => {
+  it("answers another account's MCP exactly as an unknown id, and changes nothing (contract 19, D12)", async () => {
+    const other = await createTestAccount({ database, email: 'curious-neighbour@example.com' });
+    const { id } = await store.put(NOTION, other.workspaceId, CREATED);
+
+    const theirs = await fetch(`${baseUrl}/api/mcps/${id}/versions`, { headers: { cookie: account.cookie } });
+    const unknown = await fetch(`${baseUrl}/api/mcps/no-such-mcp-id/versions`, { headers: { cookie: account.cookie } });
+
+    expect({
+      theirs: { status: theirs.status, body: await theirs.text() },
+      unknown: { status: unknown.status, body: await unknown.text() },
+      stillServed: (await store.get(id))?.endpoints.length,
+    }).toEqual({
+      theirs: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+      unknown: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+      stillServed: 2,
+    });
+  });
+});
+
 describe('DELETE /api/mcps/:id', () => {
   it('deletes my MCP at once: its address then answers 404 Unknown MCP id (contract 26)', async () => {
     const { id } = await store.put(NOTION, account.workspaceId, CREATED);
@@ -118,6 +138,14 @@ describe('/api/mcps refusals inherited from the guards', () => {
     const res = await fetch(`${baseUrl}/api/mcps${method === 'DELETE' ? `/${id}` : ''}`, { method });
 
     expect({ status: res.status, kept: (await store.get(id)) !== undefined }).toEqual({ status: 401, kept: true });
+  });
+
+  it("answers 401 to an MCP's history without a session (contract 20)", async () => {
+    const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+
+    const res = await fetch(`${baseUrl}/api/mcps/${id}/versions`);
+
+    expect(res.status).toBe(401);
   });
 
   it('answers 403 to a deletion sent from another site, session or not (D16)', async () => {

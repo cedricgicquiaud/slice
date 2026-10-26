@@ -1,6 +1,7 @@
 /**
  * The hosted connectors' tables (D3). A connector holds what the hosted runtime
- * needs to serve it; never an upstream key or token, never the API description.
+ * needs to serve it, its numbered versions and the full list of its API's
+ * actions (D1, D4); never an upstream key or token, never the API description.
  * Accounts, their sign-in methods and sessions follow Better Auth's model, minus
  * its password field: SLICE signs in without any password.
  * Migrations are generated from this file (see `drizzle.config.ts`).
@@ -9,6 +10,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -17,6 +19,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import type { EndpointParam } from '@shared/types';
 
@@ -136,15 +139,64 @@ export const connectors = pgTable(
   ]
 );
 
+/** A connector's selections, numbered from 1 (D4). */
+export const connectorVersions = pgTable(
+  'connector_versions',
+  {
+    connectorId: text('connector_id')
+      .notNull()
+      .references(() => connectors.id, { onDelete: 'cascade' }),
+    number: integer('number').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    /** When the version last became the active one (D8, D9); null while it is not. */
+    activeSince: timestamp('active_since', { withTimezone: true }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.connectorId, table.number] }),
+    // One active version per connector (D4): the one its address serves.
+    uniqueIndex('connector_versions_one_active_idx')
+      .on(table.connectorId)
+      .where(sql`${table.activeSince} is not null`),
+  ]
+);
+
+/** The actions of a connector's version: what its address serves while the version is active. */
 export const connectorActions = pgTable(
   'connector_actions',
+  {
+    connectorId: text('connector_id').notNull(),
+    version: integer('version').notNull(),
+    position: integer('position').notNull(),
+    name: text('name').notNull(),
+    label: text('label').notNull(),
+    description: text('description').notNull(),
+    method: httpMethod('method').notNull(),
+    path: text('path').notNull(),
+    params: jsonb('params').$type<EndpointParam[]>().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.connectorId, table.version, table.position] }),
+    foreignKey({
+      name: 'connector_actions_version_fk',
+      columns: [table.connectorId, table.version],
+      foreignColumns: [connectorVersions.connectorId, connectorVersions.number],
+    }).onDelete('cascade'),
+  ]
+);
+
+/** Every action of the connector's API, checked or not, as the selection screen shows it (D1). */
+export const connectorApiActions = pgTable(
+  'connector_api_actions',
   {
     connectorId: text('connector_id')
       .notNull()
       .references(() => connectors.id, { onDelete: 'cascade' }),
     position: integer('position').notNull(),
     name: text('name').notNull(),
-    description: text('description').notNull(),
+    label: text('label').notNull(),
+    groupName: text('group_name').notNull(),
+    description: text('description'),
+    deprecated: boolean('deprecated').notNull(),
     method: httpMethod('method').notNull(),
     path: text('path').notNull(),
     params: jsonb('params').$type<EndpointParam[]>().notNull(),

@@ -129,6 +129,15 @@ describe('My MCPs', () => {
     expect(await navigator.clipboard.readText()).toBe('http://localhost:5173/m/notion-id');
   });
 
+  it("opens an MCP's history from its row, at /mcps/<id>/history (contract 2, D10)", async () => {
+    server.mcps = [NOTION];
+
+    renderPage();
+
+    const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
+    expect(row.getByRole('link', { name: 'History' })).toHaveAttribute('href', '/mcps/notion-id/history');
+  });
+
   it('offers no way to change an MCP (D9)', async () => {
     server.mcps = [NOTION];
 
