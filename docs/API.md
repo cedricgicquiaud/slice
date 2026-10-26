@@ -745,10 +745,32 @@ goes out without a credential, and the upstream API's own error comes back to th
 - Requests are sent with `Accept: application/json` and `Content-Type: application/json`.
 - A call of a tool the active version lacks — removed by a later version, or never part of the MCP — is answered with a
   tool error, and the upstream API is not called: "This action is no longer available in this MCP. Start a new
-  conversation to get the current list of actions." An agent connected before a change keeps its old list until its
+  conversation to get the current list of actions." The same holds for each call of a JSON-RPC batch (several
+  messages in one request): the others are served. An agent connected before a change keeps its old list until its
   next conversation; SLICE does not notify it.
 - A non-2xx upstream response becomes a tool error carrying the upstream status and response body.
 - A JSON response is returned as pretty-printed JSON text; anything else is returned as text.
+
+**Notes of action calls:** each `tools/call` whose tool is one of the actions of the MCP's API (the full list kept at
+its creation) leaves a note in the database: the action, the number of the version active when the call arrived, the
+date of its arrival, its result and its duration in milliseconds, from its arrival to the end of its handling by SLICE.
+Nothing else is kept: neither the values the agent sent, nor the API's response or error message, nor the token.
+`initialize`, `tools/list`, notifications, a tool name the API does not have and a call at an unknown address are not
+noted. The result is one of:
+
+| Result | When |
+|---|---|
+| `succeeded` | The API answered with a 2xx code |
+| `failed` | The API answered with another code, kept with the note (for example 404) |
+| `api_unreachable` | The API did not answer: network failure, or its address refused by the SSRF guard at the time of the call |
+| `invalid_request` | The call was refused before the API: values the action's schema refuses, or a request the MCP protocol refuses |
+| `not_available` | The action is not in the active version (answered with the message above) |
+| `slice_error` | SLICE itself failed during the call; the API is never blamed for it |
+
+The note is written after the response has left: the agent never waits for it, and a note the database refuses only
+reaches the server's log (`[hosted-mcp] noting calls failed:`), never the agent. An agent that leaves before the answer
+gets its call noted with the result it would have read. A note still unwritten when the server stops is lost. Deleting
+an MCP, or the account that owns it, deletes its notes. The downloadable kit notes nothing.
 
 **No expiry:** a configuration is served whatever its age, and no cleanup deletes it. `SLICE_HOSTED_TTL_HOURS` is
 ignored.
