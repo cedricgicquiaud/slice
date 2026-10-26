@@ -35,8 +35,9 @@ const TWO_VERSIONS = {
 /**
  * SLICE's API as this page sees it: `GET /api/mcps/:id/versions` answers the
  * history kept in `histories` under that id, else 404 as for an unknown MCP or
- * another account's, or `refusal` when set; any other call is "who is signed
- * in?" (`session`).
+ * another account's, or `refusal` when set; `POST /api/mcps/:id/versions/:number/restore`
+ * is kept in `restores` and answers the version active since Oct 26, 2026;
+ * any other call is "who is signed in?" (`session`).
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
 const server = vi.hoisted(() => {
@@ -44,11 +45,17 @@ const server = vi.hoisted(() => {
     session: unknown;
     histories: Record<string, unknown>;
     refusal: { status: number; code: string; message: string } | null;
-  } = { session: null, histories: {}, refusal: null };
+    restores: string[];
+  } = { session: null, histories: {}, refusal: null, restores: [] };
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : String(input);
+    const restored = /^\/api\/mcps\/[^/]+\/versions\/(\d+)\/restore$/.exec(url);
+    if (init?.method === 'POST' && restored) {
+      state.restores.push(url);
+      return json({ number: Number(restored[1]), activeSince: '2026-10-26T15:00:00.000Z' });
+    }
     const asked = /^\/api\/mcps\/([^/]+)\/versions$/.exec(url);
     if (!asked) return json(state.session);
     if (state.refusal) return json({ code: state.refusal.code, message: state.refusal.message }, state.refusal.status);
@@ -61,6 +68,7 @@ const server = vi.hoisted(() => {
 afterEach(() => {
   server.histories = {};
   server.refusal = null;
+  server.restores = [];
   window.history.pushState({}, '', '/');
 });
 
@@ -155,5 +163,25 @@ describe('Restore', () => {
       false,
       true,
     ]);
+  });
+
+  it('makes version 1 the active one on "Restore", dated by the server, and says the agent sees it next time (contract 10, D6)', async () => {
+    server.histories['notion-id'] = TWO_VERSIONS;
+    const user = userEvent.setup();
+    render(<HistoryScreen mcpId="notion-id" />);
+    const version1 = within(await screen.findByRole('listitem', { name: 'Version 1' }));
+
+    await user.click(version1.getByRole('button', { name: 'Restore' }));
+
+    const versions = screen.getAllByRole('listitem', { name: /^Version/ });
+    expect({
+      message: (await screen.findByRole('status')).textContent,
+      marks: versions.map((version) => within(version).queryByText(/^Active since/)?.textContent ?? null),
+      restores: server.restores,
+    }).toEqual({
+      message: 'Version 1 restored. Your agent sees these actions in its next conversation, with nothing to paste again.',
+      marks: [null, 'Active since Oct 26, 2026'],
+      restores: ['/api/mcps/notion-id/versions/1/restore'],
+    });
   });
 });
