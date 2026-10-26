@@ -6,7 +6,7 @@
 import { useEffect, useId, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { getMcpHistory, type McpHistory, type McpVersion } from '../lib/mcps-api';
-import { CREATED } from './mcps';
+import { CREATED, countOfActions } from './mcps';
 
 export function HistoryScreen({ mcpId }: { mcpId: string }) {
   const [history, setHistory] = useState<McpHistory | null>(null);
@@ -38,7 +38,6 @@ function VersionRow({ version }: { version: McpVersion }) {
   const nameId = useId();
   const actionsId = useId();
   const [unfolded, setUnfolded] = useState(false);
-  const actionCount = version.actionLabels.length;
   return (
     <li aria-labelledby={nameId} className="flex flex-col gap-2 rounded-lg border border-border bg-card px-4 py-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -59,7 +58,7 @@ function VersionRow({ version }: { version: McpVersion }) {
           </button>
         </h2>
         <span className="text-sm text-muted-foreground">
-          {actionCount} {actionCount === 1 ? 'action' : 'actions'}
+          {countOfActions(version.actionLabels.length)}
         </span>
         <span className="text-sm text-muted-foreground">Created {CREATED.format(new Date(version.createdAt))}</span>
         {version.activeSince && (
