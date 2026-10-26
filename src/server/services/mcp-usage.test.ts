@@ -139,3 +139,23 @@ describe('the usage of an MCP', () => {
     expect(usage?.cappedDays).toEqual(['2026-10-24']);
   });
 });
+
+describe('the recent calls of an MCP', () => {
+  it('show a call with its date, its action, its result, its duration and its version (contract 1, D10)', async () => {
+    const { id } = await store.put(NOTES, workspaceId, CREATED);
+    await createMcpCalls(database).write(id, [call('create_note', 1, { kind: 'failed', status: 404 }, 420)]);
+
+    const usage = await readMcpUsage(database, workspaceId, id, NOW);
+
+    expect(usage?.recentCalls).toEqual([
+      {
+        calledAt: '2026-10-26T13:00:00.000Z',
+        action: 'create_note',
+        label: 'Create a note',
+        result: { kind: 'failed', status: 404 },
+        durationMs: 420,
+        version: 1,
+      },
+    ]);
+  });
+});
