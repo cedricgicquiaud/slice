@@ -132,10 +132,17 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
       res.status(404).json({ error: 'Unknown MCP id.' });
       return;
     }
+    const noted =
+      options.calls && config.activeVersion !== undefined
+        ? noteActionCalls(options.calls, req.params.id, config.activeVersion, arrival, req.body, responded)
+        : undefined;
+    const onActionResult = (requestId: string | number, result: CallResult) => noted?.get(requestId)?.(result);
+
     // An agent connected before a "Save" may still call an action the active version lacks (D7):
     // it is told to start over, and the API is never called.
     const call = actionCall(req.body);
     if (call && !config.endpoints.some((endpoint) => endpoint.name === call.name)) {
+      onActionResult(call.id, { kind: 'not_available' });
       res.json({ jsonrpc: '2.0', id: call.id, result: { content: [{ type: 'text', text: ACTION_GONE }], isError: true } });
       return;
     }
@@ -147,12 +154,6 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
       void transport.close();
       void server.close();
     });
-
-    const noted =
-      options.calls && config.activeVersion !== undefined
-        ? noteActionCalls(options.calls, req.params.id, config.activeVersion, arrival, req.body, responded)
-        : undefined;
-    const onActionResult = (requestId: string | number, result: CallResult) => noted?.get(requestId)?.(result);
 
     try {
       await server.connect(transport);
