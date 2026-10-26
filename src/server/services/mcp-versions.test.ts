@@ -139,4 +139,17 @@ describe('"Restore"', () => {
       active: (await readMcpHistory(database, owner.workspaceId, id))?.versions.map((version) => version.activeSince),
     }).toEqual({ outcome: { refused: 'unknown-mcp' }, active: ['2026-10-20T14:00:00.000Z', null] });
   });
+
+  it('refuses a version the MCP does not have, and leaves its active version as it is (contract 21)', async () => {
+    const { workspaceId } = await createTestAccount({ database, email: 'restore-missing@example.com' });
+    const { id } = await store.put(NOTION, workspaceId, MONDAY);
+    await activateVersion2(id, TUESDAY);
+
+    const outcome = await restoreMcpVersion(database, workspaceId, id, 7, WEDNESDAY);
+
+    expect({
+      outcome,
+      active: (await readMcpHistory(database, workspaceId, id))?.versions.map((version) => version.activeSince),
+    }).toEqual({ outcome: { refused: 'unknown-version' }, active: ['2026-10-20T14:00:00.000Z', null] });
+  });
 });
