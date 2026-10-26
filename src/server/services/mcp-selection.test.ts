@@ -141,4 +141,23 @@ describe('"Save"', () => {
       served: ['list_notes', 'create_note'],
     });
   });
+
+  it('refuses a change started from a version that is no longer the active one, and saves nothing (contract 23, D13)', async () => {
+    const { workspaceId } = await createTestAccount({ database, email: 'two-tabs@example.com' });
+    const { id } = await store.put(NOTES, workspaceId, MONDAY);
+    await saveMcpSelection(database, workspaceId, id, { fromVersion: 1, selectedIds: ['GET /notes'] }, TUESDAY);
+
+    const outcome = await saveMcpSelection(
+      database,
+      workspaceId,
+      id,
+      { fromVersion: 1, selectedIds: ['GET /notes', 'DELETE /trash'] },
+      TUESDAY
+    );
+
+    expect({ outcome, now: (await readMcpSelection(database, workspaceId, id))?.version }).toEqual({
+      outcome: { refused: 'changed-meanwhile' },
+      now: 2,
+    });
+  });
 });
