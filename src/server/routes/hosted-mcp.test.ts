@@ -318,7 +318,35 @@ describe('the note of an action call that reaches the API', () => {
       ])
     );
   });
+
+  it('is "API unreachable" when nothing answers at the API\'s address, and the agent reads an error (contract 4, D4)', async () => {
+    const { id } = await store.put(
+      withApiActions({ ...threeActions(), baseUrl: await closedAddress() }),
+      account.workspaceId,
+      CREATED
+    );
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`, 'TOKEN');
+    const answer = await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    await vi.waitFor(async () =>
+      expect({ agentError: answer.isError, results: (await calls.of(id)).map((note) => note.result) }).toEqual({
+        agentError: true,
+        results: [{ kind: 'api_unreachable' }],
+      })
+    );
+  });
 });
+
+/** An address where nothing listens: a port just released. */
+async function closedAddress(): Promise<string> {
+  const server = createServer();
+  await new Promise<void>((r) => server.listen(0, r));
+  const { port } = server.address() as AddressInfo;
+  await new Promise<void>((r) => server.close(() => r()));
+  return `http://127.0.0.1:${port}`;
+}
 
 /** Two actions: the agent may only read things, or only create them, as the user checks. */
 const READ_AND_WRITE_SPEC = `openapi: 3.0.3
