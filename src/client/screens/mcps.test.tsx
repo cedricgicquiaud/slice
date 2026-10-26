@@ -109,6 +109,18 @@ describe('My MCPs', () => {
     }).toEqual({ truncated: false, wraps: true });
   });
 
+  // At 375 px "Edit actions", "History" and "Delete" are wider than the row: they wrap
+  // instead of spilling out of it on the left. Same as above, the class is what jsdom checks.
+  it("wraps the row's buttons instead of letting them spill out of it", async () => {
+    server.mcps = [NOTION];
+
+    renderPage();
+
+    const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
+    const buttons = row.getByRole('link', { name: 'Edit actions' }).parentElement;
+    expect(buttons?.classList.contains('flex-wrap')).toBe(true);
+  });
+
   it('counts a single action in the singular', async () => {
     server.mcps = [{ ...NOTION, actionCount: 1 }];
 
