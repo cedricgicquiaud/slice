@@ -148,4 +148,17 @@ describe('Edit actions', () => {
       saves: 1,
     });
   });
+
+  it('greys Save when no action is checked (contract 15)', async () => {
+    server.selections['notes-id'] = NOTES_SELECTION;
+    window.history.pushState({}, '', '/mcps/notes-id/edit');
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Tag: All' }));
+
+    await user.click(screen.getByRole('checkbox', { name: 'Select List notes' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Create a note' }));
+
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+  });
 });
