@@ -75,8 +75,11 @@ export async function readMcpHistory(
   return { apiName: apiNameOf(first), versions };
 }
 
-/** How a "Restore" ends: the ISO date the version is active since. */
-export type RestoreOutcome = { activeSince: string };
+/** Why a "Restore" changed nothing: no such MCP in the workspace, whoever else owns it (D12). */
+export type RestoreRefusal = 'unknown-mcp';
+
+/** How a "Restore" ends: the ISO date the version is active since, or why nothing changed. */
+export type RestoreOutcome = { activeSince: string } | { refused: RestoreRefusal };
 
 /**
  * Make version `number` of the MCP `id` of `workspaceId` the active one, from `now`,
@@ -90,6 +93,13 @@ export async function restoreMcpVersion(
   now: Date
 ): Promise<RestoreOutcome> {
   return database.db.transaction(async (tx) => {
+    // The same lock as "Save": a "Restore" and a "Save" of the same MCP run one after the other.
+    const [connector] = await tx
+      .select({ id: connectors.id })
+      .from(connectors)
+      .where(and(eq(connectors.id, id), eq(connectors.workspaceId, workspaceId)))
+      .for('update');
+    if (!connector) return { refused: 'unknown-mcp' };
     // The address serves the active version only (D4): the restored one takes over at once.
     await tx
       .update(connectorVersions)
