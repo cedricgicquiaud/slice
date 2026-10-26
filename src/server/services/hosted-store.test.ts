@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { createHostedStore, startHostedCleanup } from './hosted-store';
 import type { HttpMethod } from '@shared/types';
-import type { HostedMcpConfig } from './hosted-mcp-factory';
+import type { ApiAction, HostedMcpConfig } from './hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
 import { DATABASE_TEST_TIMEOUTS, createTestDatabase, type TestDatabase } from '../db/test-database';
@@ -51,6 +51,56 @@ const threeActions: HostedMcpConfig = {
   ],
 };
 
+/** The whole API behind `threeActions`: its three actions and a deprecated one nobody checked. */
+const fourApiActions: ApiAction[] = [
+  {
+    name: 'list_contacts',
+    label: 'List contacts',
+    group: 'Contacts',
+    description: 'List contacts.\nPaginated.',
+    deprecated: false,
+    method: 'GET',
+    path: '/contacts',
+    params: [{ name: 'limit', in: 'query', type: 'integer', required: false }],
+  },
+  {
+    name: 'create_contact',
+    label: 'Create a contact',
+    group: 'Contacts',
+    deprecated: false,
+    method: 'POST',
+    path: '/contacts',
+    params: [
+      {
+        name: 'address',
+        in: 'body',
+        required: true,
+        wireName: 'address',
+        schema: { type: 'object', properties: { city: { type: 'string' } }, requiredFields: ['city'] },
+      },
+    ],
+  },
+  {
+    name: 'delete_contact',
+    label: 'Delete a contact',
+    group: 'Contacts',
+    deprecated: false,
+    method: 'DELETE',
+    path: '/contacts/{id}',
+    params: [{ name: 'id', in: 'path', type: 'string', required: true, description: 'Contact id' }],
+  },
+  {
+    name: 'export_contacts',
+    label: 'Export contacts',
+    group: 'Legacy',
+    description: 'Use the list instead.',
+    deprecated: true,
+    method: 'GET',
+    path: '/contacts/export',
+    params: [],
+  },
+];
+
 describe('hosted store in the database', () => {
   let testDb: TestDatabase;
   let database: Database;
@@ -85,6 +135,14 @@ describe('hosted store in the database', () => {
 
     expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
     expect(await store.get(id)).toEqual({ ...threeActions, createdAt: '2026-10-24T09:00:00.000Z', workspaceId });
+  });
+
+  it("keeps every action of the connector's API, in order, with what the selection screen shows of it (D1)", async () => {
+    const store = createHostedStore(database);
+
+    const { id } = await store.put({ ...threeActions, apiActions: fourApiActions }, workspaceId, NOW);
+
+    expect(await store.apiActions(id)).toEqual(fourApiActions);
   });
 
   it('stores a lowercase method in uppercase', async () => {
