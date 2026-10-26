@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { deleteMcp, getMcpHistory, getMcpSelection, listMcps } from './mcps-api';
+import { deleteMcp, getMcpHistory, getMcpSelection, listMcps, saveMcpSelection } from './mcps-api';
 
 const NOTION = {
   id: 'Q2xhdWRlIGlzIG5vdCBoZXJl',
@@ -131,6 +131,34 @@ describe('getMcpSelection', () => {
     expect({ selection: await getMcpSelection('notion-id'), asked: fetchMock.mock.calls }).toEqual({
       selection,
       asked: [['/api/mcps/notion-id/selection']],
+    });
+  });
+});
+
+describe('saveMcpSelection', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('posts the selection and the version it starts from to POST /api/mcps/:id/versions, and returns the new number', async () => {
+    const fetchMock = serverAnswers(201, { number: 2 });
+
+    const saved = await saveMcpSelection('notion-id', { fromVersion: 1, selectedIds: ['GET /pages/{id}'] });
+
+    expect({ saved, asked: fetchMock.mock.calls }).toEqual({
+      saved: 2,
+      asked: [
+        [
+          '/api/mcps/notion-id/versions',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{"fromVersion":1,"selectedIds":["GET /pages/{id}"]}',
+          },
+        ],
+      ],
     });
   });
 });
