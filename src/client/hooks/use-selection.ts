@@ -69,8 +69,14 @@ function initialSelection(spec: ParsedSpec): Set<string> {
   return set;
 }
 
-export function useSelection(spec: ParsedSpec): UseSelectionApi {
-  const [selected, setSelected] = useState<Set<string>>(() => initialSelection(spec));
+/**
+ * The selection of `spec`'s endpoints, starting from `initialIds` when given
+ * (the active version on "Edit actions", D2), else from every read.
+ */
+export function useSelection(spec: ParsedSpec, initialIds?: readonly string[]): UseSelectionApi {
+  const [selected, setSelected] = useState<Set<string>>(() =>
+    initialIds ? new Set(initialIds) : initialSelection(spec)
+  );
   const [focused, setFocused] = useState<string | null>(null);
   const allEndpoints = useMemo(() => flattenEndpoints(spec), [spec]);
 
