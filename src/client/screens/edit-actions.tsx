@@ -7,7 +7,7 @@
 import { useEffect, useState } from 'react';
 import type { ParsedSpec } from '@shared/types';
 import { ApiError } from '../lib/api';
-import { getMcpSelection, type McpSelection } from '../lib/mcps-api';
+import { getMcpSelection, saveMcpSelection, type McpSelection } from '../lib/mcps-api';
 import { messageOf } from './mcps';
 import { SelectionScreen } from './selection';
 
@@ -15,6 +15,13 @@ export function EditActionsScreen({ mcpId }: { mcpId: string }) {
   const [selection, setSelection] = useState<McpSelection | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedAs, setSavedAs] = useState<number | null>(null);
+
+  async function handleSave(selectedIds: string[]) {
+    if (!selection) return;
+    const number = await saveMcpSelection(mcpId, { fromVersion: selection.version, selectedIds });
+    setSavedAs(number);
+  }
 
   useEffect(() => {
     getMcpSelection(mcpId)
@@ -44,13 +51,19 @@ export function EditActionsScreen({ mcpId }: { mcpId: string }) {
           </>
         )}
         {selection && <h1 className="mt-2 font-serif text-3xl italic">{selection.apiName}</h1>}
+        {savedAs !== null && (
+          <p role="status" className="mt-2 text-sm text-foreground">
+            Saved as version {savedAs}. Your agent sees the new actions in its next conversation, with nothing to
+            paste again.
+          </p>
+        )}
       </header>
       {selection && (
         <SelectionScreen
           spec={specOf(selection)}
           initialSelectedIds={selection.selectedIds}
           continueLabel="Save"
-          onContinue={() => {}}
+          onContinue={(selectedIds) => void handleSave(selectedIds)}
         />
       )}
     </div>
