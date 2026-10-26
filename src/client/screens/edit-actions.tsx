@@ -26,6 +26,8 @@ export function EditActionsScreen({ mcpId }: { mcpId: string }) {
   }
 
   const active = useMemo(() => new Set(selection?.selectedIds), [selection]);
+  // Built once per selection read or saved: the screen's counters are computed from it.
+  const spec = useMemo(() => (selection ? specOf(selection) : null), [selection]);
 
   useEffect(() => {
     getMcpSelection(mcpId)
@@ -62,9 +64,9 @@ export function EditActionsScreen({ mcpId }: { mcpId: string }) {
           </p>
         )}
       </header>
-      {selection && (
+      {selection && spec && (
         <SelectionScreen
-          spec={specOf(selection)}
+          spec={spec}
           initialSelectedIds={selection.selectedIds}
           continueLabel="Save"
           // Nothing to save while the selection is the active version's (D5).
