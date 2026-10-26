@@ -1,5 +1,5 @@
 {
-  "id": "0f9b0aad-ef31-4f9c-8cdf-c8d573fb8bae",
+  "id": "e3aa9683-6ee4-42e8-b671-bd096ad879de",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -183,15 +183,17 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "connector_actions_connector_id_connectors_id_fk": {
-          "name": "connector_actions_connector_id_connectors_id_fk",
+        "connector_actions_version_fk": {
+          "name": "connector_actions_version_fk",
           "tableFrom": "connector_actions",
-          "tableTo": "connectors",
+          "tableTo": "connector_versions",
           "columnsFrom": [
-            "connector_id"
+            "connector_id",
+            "version"
           ],
           "columnsTo": [
-            "id"
+            "connector_id",
+            "number"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"

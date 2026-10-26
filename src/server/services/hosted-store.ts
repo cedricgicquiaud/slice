@@ -8,7 +8,7 @@ import { asc, eq, lt, sql } from 'drizzle-orm';
 import type { HttpMethod, UpstreamAuth } from '@shared/types';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
 import type { Database } from '../db/client';
-import { connectorActions, connectors } from '../db/schema';
+import { connectorActions, connectorVersions, connectors } from '../db/schema';
 
 /** An expired connector stays this long, answering "expired", before the cleanup deletes it. */
 export const EXPIRED_RETENTION_DAYS = 30;
@@ -43,6 +43,8 @@ export function createHostedStore(database: Database): HostedStore {
           workspaceId,
           apiName: config.apiName ?? null,
         });
+        // The selection becomes version 1, active from its creation (D4, D8).
+        await tx.insert(connectorVersions).values({ connectorId: id, number: 1, createdAt: now, activeSince: now });
         if (config.endpoints.length === 0) return;
         await tx.insert(connectorActions).values(
           config.endpoints.map((endpoint, position) => ({

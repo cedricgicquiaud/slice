@@ -9,6 +9,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -162,9 +163,7 @@ export const connectorVersions = pgTable(
 export const connectorActions = pgTable(
   'connector_actions',
   {
-    connectorId: text('connector_id')
-      .notNull()
-      .references(() => connectors.id, { onDelete: 'cascade' }),
+    connectorId: text('connector_id').notNull(),
     version: integer('version').notNull(),
     position: integer('position').notNull(),
     name: text('name').notNull(),
@@ -174,7 +173,14 @@ export const connectorActions = pgTable(
     path: text('path').notNull(),
     params: jsonb('params').$type<EndpointParam[]>().notNull(),
   },
-  (table) => [primaryKey({ columns: [table.connectorId, table.version, table.position] })]
+  (table) => [
+    primaryKey({ columns: [table.connectorId, table.version, table.position] }),
+    foreignKey({
+      name: 'connector_actions_version_fk',
+      columns: [table.connectorId, table.version],
+      foreignColumns: [connectorVersions.connectorId, connectorVersions.number],
+    }).onDelete('cascade'),
+  ]
 );
 
 /** Every action of the connector's API, checked or not, as the selection screen shows it (D1). */
