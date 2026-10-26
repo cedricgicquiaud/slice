@@ -14,6 +14,8 @@ The browser front end uses the `/api/*` routes; AI agents use the hosted runtime
 | `POST` | `/api/host` | Store a hosted MCP configuration and return its URL | Yes |
 | `GET` | `/api/mcps` | List the signed-in account's hosted MCPs | Yes |
 | `GET` | `/api/mcps/:id/versions` | Read the versions of one of the signed-in account's hosted MCPs | Yes |
+| `POST` | `/api/mcps/:id/versions` | Save a new selection of actions as the next version, active at once | Yes |
+| `GET` | `/api/mcps/:id/selection` | Read every action of an MCP's API and those of its active version | Yes |
 | `DELETE` | `/api/mcps/:id` | Delete one of the signed-in account's hosted MCPs | Yes |
 | any | `/m/:id` | Hosted MCP runtime (MCP Streamable HTTP, stateless) | No |
 
@@ -472,9 +474,10 @@ A hosted MCP has no expiry date: its URL keeps working until the MCP is deleted.
 ## `GET /api/mcps`
 
 Lists the hosted MCPs of the signed-in account's personal workspace, newest first. MCPs of any other account never
-appear. Nothing about an MCP can be changed through the API: an MCP is created by [`POST /api/host`](#post-apihost),
-its versions are read by [`GET /api/mcps/:id/versions`](#get-apimcpsidversions), and it is deleted by
-[`DELETE /api/mcps/:id`](#delete-apimcpsid).
+appear. An MCP is created by [`POST /api/host`](#post-apihost), its versions are read by
+[`GET /api/mcps/:id/versions`](#get-apimcpsidversions), its selection of actions is changed by
+[`POST /api/mcps/:id/versions`](#post-apimcpsidversions), and it is deleted by [`DELETE /api/mcps/:id`](#delete-apimcpsid).
+Only its selection of actions can change: its name, the API's address and its upstream access stay those of its creation.
 
 **Response `200`**
 
@@ -552,6 +555,104 @@ numbered from 1 and dated; one version is active at a time, and the MCP's URL se
 
 ---
 
+## `POST /api/mcps/:id/versions`
+
+Saves a new selection of one hosted MCP of the signed-in account as its next version, numbered after the highest
+existing one, and makes it the active version at once. The MCP's URL does not change: from the agent's next
+conversation, it lists the new version's actions. A selection identical to an older, inactive version still makes a
+new version. Only the selection changes; the MCP's name, `baseUrl` and `upstreamAuth` stay those of its creation.
+
+**Request**
+
+```json
+{
+  "fromVersion": 1,
+  "selectedIds": ["GET /notes", "POST /notes", "DELETE /trash"]
+}
+```
+
+| Field | Description |
+|---|---|
+| `fromVersion` | The number of the version that was active when the selection was read (see [`GET /api/mcps/:id/selection`](#get-apimcpsidselection)) |
+| `selectedIds` | The ids of the actions to keep, `<METHOD> <path>`, all taken from the MCP's API; at least one |
+
+No other field is accepted.
+
+**Response `201`**
+
+```json
+{ "number": 2 }
+```
+
+| Field | Description |
+|---|---|
+| `number` | The new version's number |
+
+**Errors** — in every case, nothing is saved.
+
+| HTTP | `code` | Cause |
+|---|---|---|
+| 400 | `INVALID_SELECTION` | The body holds another field than `fromVersion` and `selectedIds` (a name, an API address, an upstream access…). Message: "Only the selection of actions can be changed." |
+| 400 | `INVALID_SELECTION` | `selectedIds` is empty. Message: "Pick at least one action." |
+| 400 | `INVALID_SELECTION` | An id is not one of the MCP's API's actions. Message: "This MCP's API has no such action." |
+| 400 | `INVALID_SELECTION` | The selection is the active version's, in any order. Message: "This selection is already the active version." |
+| 401 | `UNAUTHORIZED` | No live session |
+| 403 | `FORBIDDEN` | Sent from another site than SLICE's page |
+| 404 | `NOT_FOUND` | No MCP under this id in the account's workspace. Message: "Unknown MCP id." The answer is the same whether the id does not exist or belongs to another account; the other account's MCP is left untouched |
+| 409 | `CONFLICT` | `fromVersion` is no longer the active version: another change was saved meanwhile, from another tab for instance. Message: "This MCP changed in the meantime. Reload to see its current actions." |
+| 429 | (none) | Rate limit exceeded |
+| 503 | `SERVICE_UNAVAILABLE` | The database is unreachable |
+
+---
+
+## `GET /api/mcps/:id/selection`
+
+Reads, for "Edit actions", every action of one hosted MCP's API — kept at its creation, checked or not — and those of
+its active version.
+
+**Response `200`**
+
+```json
+{
+  "apiName": "Notes API",
+  "version": 1,
+  "groups": [
+    {
+      "tag": "Notes",
+      "endpoints": [
+        { "id": "GET /notes", "method": "GET", "path": "/notes", "label": "List notes", "deprecated": false, "params": [] },
+        { "id": "POST /notes", "method": "POST", "path": "/notes", "label": "Create a note", "deprecated": false, "params": [] }
+      ]
+    },
+    {
+      "tag": "Trash",
+      "endpoints": [
+        { "id": "DELETE /trash", "method": "DELETE", "path": "/trash", "label": "Empty the trash", "deprecated": false, "params": [] }
+      ]
+    }
+  ],
+  "selectedIds": ["GET /notes", "POST /notes"]
+}
+```
+
+| Field | Description |
+|---|---|
+| `apiName` | The MCP's name, as [`GET /api/mcps`](#get-apimcps) gives it |
+| `version` | The active version's number; send it back as `fromVersion` when saving |
+| `groups` | Every action of the API, by group (tag), in the order of its description, with the fields of [`ParsedSpec`](#parsedspec-shape) endpoints (`description` when the API gives one) |
+| `selectedIds` | The ids of the active version's actions |
+
+**Errors**
+
+| HTTP | `code` | Cause |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | No live session |
+| 404 | `NOT_FOUND` | No MCP under this id in the account's workspace. Message: "Unknown MCP id." The same answer whether the id does not exist or belongs to another account |
+| 429 | (none) | Rate limit exceeded |
+| 503 | `SERVICE_UNAVAILABLE` | The database is unreachable |
+
+---
+
 ## `DELETE /api/mcps/:id`
 
 Deletes one hosted MCP of the signed-in account, with its actions, its versions and the list of its API's actions, at once. From then on its URL answers
@@ -603,6 +704,10 @@ goes out without a credential, and the upstream API's own error comes back to th
 - `in: "header"` parameters (for example `Notion-Version`) are sent as request headers. The relayed credential is applied after them, so a header parameter cannot overwrite it.
 - Body parameters are reassembled into a JSON body. No body is sent on `GET`.
 - Requests are sent with `Accept: application/json` and `Content-Type: application/json`.
+- A call of a tool the active version lacks — removed by a later version, or never part of the MCP — is answered with a
+  tool error, and the upstream API is not called: "This action is no longer available in this MCP. Start a new
+  conversation to get the current list of actions." An agent connected before a change keeps its old list until its
+  next conversation; SLICE does not notify it.
 - A non-2xx upstream response becomes a tool error carrying the upstream status and response body.
 - A JSON response is returned as pretty-printed JSON text; anything else is returned as text.
 
