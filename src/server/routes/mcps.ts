@@ -11,8 +11,13 @@ import type { ApiErrorPayload } from '@shared/types';
 import { mcpSelectionChangeSchema } from '@shared/config-schema';
 import type { AccountMcps } from '../services/account-mcps';
 import type { SaveRefusal } from '../services/mcp-selection';
+import type { RestoreRefusal } from '../services/mcp-versions';
 
 const UNKNOWN_MCP: ApiErrorPayload = { code: 'NOT_FOUND', message: 'Unknown MCP id.' };
+const UNKNOWN_VERSION: ApiErrorPayload = { code: 'NOT_FOUND', message: 'Unknown version of this MCP.' };
+
+/** A version number as the database keeps one: 1, 2, 3… within its integers. */
+const VERSION_NUMBER = /^[1-9]\d{0,8}$/;
 
 function invalidSelection(message: string): ApiErrorPayload {
   return { code: 'INVALID_SELECTION', message };
@@ -29,6 +34,13 @@ const SAVE_REFUSALS: Record<SaveRefusal, { status: number; payload: ApiErrorPayl
   },
   'unknown-action': { status: 400, payload: invalidSelection("This MCP's API has no such action.") },
   unchanged: { status: 400, payload: invalidSelection('This selection is already the active version.') },
+};
+
+/** How each refusal of a "Restore" is answered: nothing changes in any case. */
+const RESTORE_REFUSALS: Record<RestoreRefusal, ApiErrorPayload> = {
+  // Another account's MCP answers like a missing one (D12).
+  'unknown-mcp': UNKNOWN_MCP,
+  'unknown-version': UNKNOWN_VERSION,
 };
 
 export function createMcpsRouter(accountMcps: AccountMcps): Router {
@@ -75,10 +87,14 @@ export function createMcpsRouter(accountMcps: AccountMcps): Router {
   });
 
   router.post('/:id/versions/:number/restore', async (req, res) => {
+    if (!VERSION_NUMBER.test(req.params.number)) {
+      res.status(404).json(UNKNOWN_VERSION);
+      return;
+    }
     const number = Number(req.params.number);
     const outcome = await accountMcps.restore(res.locals.workspaceId, req.params.id, number);
     if ('refused' in outcome) {
-      res.status(404).json(UNKNOWN_MCP);
+      res.status(404).json(RESTORE_REFUSALS[outcome.refused]);
       return;
     }
     res.json({ number, activeSince: outcome.activeSince });
