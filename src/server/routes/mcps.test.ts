@@ -578,7 +578,7 @@ describe('GET /api/mcps/:id/usage', () => {
     usage = await startApp();
     notesApi = createServer((_req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end('{"notes":[]}');
+      res.end('{"notes":["API-RESPONSE-BODY"]}');
     }).listen(0);
     await new Promise<void>((r) => notesApi.once('listening', r));
     notesApiUrl = `http://127.0.0.1:${(notesApi.address() as AddressInfo).port}`;
@@ -636,6 +636,41 @@ describe('GET /api/mcps/:id/usage', () => {
       },
       calledDuringTheCall: true,
     });
+  });
+
+  it("reads back neither the values the agent sent, nor the API's response, nor the token (contract 17)", async () => {
+    const withAValue: HostedMcpConfig = {
+      ...NOTES,
+      baseUrl: notesApiUrl,
+      endpoints: [
+        {
+          name: 'list_notes',
+          label: 'List notes',
+          description: 'List notes',
+          method: 'GET',
+          path: '/notes',
+          params: [{ name: 'q', in: 'query', type: 'string', required: false }],
+        },
+      ],
+    };
+    const { id } = await store.put(withAValue, account.workspaceId, CREATED);
+    const agent = new Client({ name: 'agent', version: '0.0.0' });
+    await agent.connect(
+      new StreamableHTTPClientTransport(new URL(`${usage.url}/m/${id}`), {
+        requestInit: { headers: { Authorization: 'Bearer AGENT-TOKEN' } },
+      })
+    );
+    await agent.callTool({ name: 'list_notes', arguments: { q: 'AGENT-VALUE' } });
+    await agent.close();
+
+    const read = await vi.waitFor(async () => {
+      const res = await fetch(`${usage.url}/api/mcps/${id}/usage`, { headers: { cookie: account.cookie } });
+      const text = await res.text();
+      expect(text).toContain('"recentCalls":[{');
+      return text;
+    });
+
+    expect(['AGENT-TOKEN', 'AGENT-VALUE', 'API-RESPONSE-BODY'].filter((secret) => read.includes(secret))).toEqual([]);
   });
 
   it("answers another account's MCP exactly as an unknown id (contract 21, D13)", async () => {
