@@ -120,3 +120,16 @@ describe('<SelectionScreen> 3-col layout (phase 04bis)', () => {
     expect(screen.getByText(/no endpoints match/i)).toBeInTheDocument();
   });
 });
+
+describe('<SelectionScreen> on "Edit actions"', () => {
+  it('starts from the given actions, under the given label (D2)', async () => {
+    const onContinue = vi.fn();
+    render(
+      <SelectionScreen spec={SPEC} onContinue={onContinue} initialSelectedIds={['POST /products']} continueLabel="Save" />
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    expect(onContinue.mock.calls).toEqual([[['POST /products']]]);
+  });
+});
