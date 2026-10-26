@@ -527,6 +527,19 @@ describe('a batch of action calls', () => {
   });
 });
 
+// WAT-158 — what is never noted.
+describe('what is never noted', () => {
+  it('is a call whose name is not an action of the MCP\'s API (contract 16, D2)', async () => {
+    const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+
+    // In one request, so that both notes are written at once: the real call's note proves the write happened.
+    await postBatch(`${baseUrl}/m/${id}`, [toolCall(1, 'drop_everything', {}), toolCall(2, 'list_things', {})]);
+
+    await vi.waitFor(async () => expect(await calls.of(id)).not.toEqual([]));
+    expect((await calls.of(id)).map((note) => note.action)).toEqual(['list_things']);
+  });
+});
+
 // WAT-157 — noting a call never slows the agent down, nor fails it.
 describe('noting a call', () => {
   /** An app reading connectors from the file's database, writing notes with `notes`. */
