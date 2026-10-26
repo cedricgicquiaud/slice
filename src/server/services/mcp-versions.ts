@@ -1,7 +1,8 @@
 /**
- * The versions of an MCP, as its "History" page shows them (D8).
+ * The versions of an MCP, as its "History" page shows them (D8), and "Restore",
+ * which makes one of them the active one again (D9).
  */
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { connectorActions, connectorVersions, connectors } from '../db/schema';
 
@@ -72,4 +73,32 @@ export async function readMcpHistory(
     if (row.label !== null) version.actionLabels.push(row.label);
   }
   return { apiName: apiNameOf(first), versions };
+}
+
+/** How a "Restore" ends: the ISO date the version is active since. */
+export type RestoreOutcome = { activeSince: string };
+
+/**
+ * Make version `number` of the MCP `id` of `workspaceId` the active one, from `now`,
+ * without creating a version (D9).
+ */
+export async function restoreMcpVersion(
+  database: Database,
+  workspaceId: string,
+  id: string,
+  number: number,
+  now: Date
+): Promise<RestoreOutcome> {
+  return database.db.transaction(async (tx) => {
+    // The address serves the active version only (D4): the restored one takes over at once.
+    await tx
+      .update(connectorVersions)
+      .set({ activeSince: null })
+      .where(and(eq(connectorVersions.connectorId, id), isNotNull(connectorVersions.activeSince)));
+    await tx
+      .update(connectorVersions)
+      .set({ activeSince: now })
+      .where(and(eq(connectorVersions.connectorId, id), eq(connectorVersions.number, number)));
+    return { activeSince: now.toISOString() };
+  });
 }
