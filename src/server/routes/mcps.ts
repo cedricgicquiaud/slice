@@ -38,6 +38,15 @@ export function createMcpsRouter(accountMcps: AccountMcps): Router {
     res.json(selection);
   });
 
+  router.post('/:id/versions', async (req, res) => {
+    const outcome = await accountMcps.saveSelection(res.locals.workspaceId, req.params.id, req.body);
+    if ('refused' in outcome) {
+      res.status(404).json(UNKNOWN_MCP);
+      return;
+    }
+    res.status(201).json({ number: outcome.version });
+  });
+
   router.delete('/:id', async (req, res) => {
     if (!(await accountMcps.delete(res.locals.workspaceId, req.params.id))) {
       // Another account's MCP answers like a missing one: an id reveals nothing (contract 17).
