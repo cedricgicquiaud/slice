@@ -131,6 +131,20 @@ describe('database schema (D3)', () => {
     ]);
   });
 
+  it("keeps the API's status code of a failed call, and of a failed call only (D4)", async () => {
+    await insertConnector('noted', 'none', null, null);
+    await insertVersion('noted', 1, true);
+    const insertCall = (result: string, status: number | null) =>
+      rows(
+        sql`insert into connector_calls (connector_id, version, action, called_at, result, status, duration_ms)
+            values ('noted', 1, 'ping', now(), ${result}, ${status}, 12)`
+      );
+
+    await expect(insertCall('failed', null)).rejects.toThrow();
+    await expect(insertCall('succeeded', 200)).rejects.toThrow();
+    await expect(insertCall('failed', 404)).resolves.toBeDefined();
+  });
+
   function insertConnector(id: string, authType: string, headerName: string | null, tokenUrl: string | null) {
     return rows(
       sql`insert into connectors (id, name, base_url, upstream_auth_type, upstream_header_name, upstream_token_url, created_at, workspace_id)
