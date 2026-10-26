@@ -3,6 +3,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { readMcpHistory, restoreMcpVersion } from './mcp-versions';
+import { saveMcpSelection } from './mcp-selection';
 import { createHostedStore, type HostedStore } from './hosted-store';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
@@ -24,6 +25,10 @@ const NOTION: HostedMcpConfig = {
   endpoints: [
     { name: 'search', label: 'Search', description: 'Search', method: 'POST', path: '/search', params: [] },
     { name: 'get_a_page', label: 'Get a page', description: 'Get a page', method: 'GET', path: '/pages/{id}', params: [] },
+  ],
+  apiActions: [
+    { name: 'search', label: 'Search', group: 'Search', deprecated: false, method: 'POST', path: '/search', params: [] },
+    { name: 'get_a_page', label: 'Get a page', group: 'Pages', deprecated: false, method: 'GET', path: '/pages/{id}', params: [] },
   ],
 };
 
@@ -164,5 +169,28 @@ describe('"Restore"', () => {
       outcome,
       active: (await readMcpHistory(database, workspaceId, id))?.versions.map((version) => version.activeSince),
     }).toEqual({ outcome: { activeSince: '2026-10-20T14:00:00.000Z' }, active: ['2026-10-20T14:00:00.000Z', null] });
+  });
+
+  it('never leaves two active versions when a "Restore" and a "Save" of the same MCP run at once', async () => {
+    // A real race on PostgreSQL only (`DATABASE_URL`): PGlite's single connection runs the two one after the other.
+    const { workspaceId } = await createTestAccount({ database, email: 'restore-race@example.com' });
+    const { id } = await store.put(NOTION, workspaceId, MONDAY);
+    await activateVersion2(id, TUESDAY);
+
+    const [, saved] = await Promise.all([
+      restoreMcpVersion(database, workspaceId, id, 1, WEDNESDAY),
+      saveMcpSelection(database, workspaceId, id, { fromVersion: 2, selectedIds: ['POST /search'] }, WEDNESDAY),
+    ]);
+    const history = await readMcpHistory(database, workspaceId, id);
+
+    // Whichever runs first, version 1 ends up the only active one: "Save" is refused after
+    // the "Restore", or its version 3 is replaced by the "Restore" that follows it.
+    expect([
+      { saved: { version: 3 }, active: [1] },
+      { saved: { refused: 'changed-meanwhile' }, active: [1] },
+    ]).toContainEqual({
+      saved,
+      active: history?.versions.filter((version) => version.activeSince !== null).map((version) => version.number),
+    });
   });
 });
