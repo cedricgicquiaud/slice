@@ -138,16 +138,17 @@ describe('My MCPs', () => {
     expect(row.getByRole('link', { name: 'History' })).toHaveAttribute('href', '/mcps/notion-id/history');
   });
 
-  it('offers no way to change an MCP (D9)', async () => {
+  it('offers "Edit actions" on each row, at /mcps/<id>/edit, as the only way to change an MCP (contract 2, D3, D10)', async () => {
     server.mcps = [NOTION];
 
     renderPage();
 
     const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
     expect({
-      changeButtons: row.queryAllByRole('button', { name: /edit|rename|modify|change|settings/i }).length,
+      editActions: row.queryByRole('link', { name: 'Edit actions' })?.getAttribute('href'),
+      otherChanges: row.queryAllByRole('button', { name: /edit|rename|modify|change|settings/i }).length,
       fields: row.queryAllByRole('textbox').length,
-    }).toEqual({ changeButtons: 0, fields: 0 });
+    }).toEqual({ editActions: '/mcps/notion-id/edit', otherChanges: 0, fields: 0 });
   });
 
   it('deletes an MCP once the deletion is confirmed: it leaves the list and the account (D10)', async () => {
