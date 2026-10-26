@@ -140,6 +140,14 @@ describe('/api/mcps refusals inherited from the guards', () => {
     expect({ status: res.status, kept: (await store.get(id)) !== undefined }).toEqual({ status: 401, kept: true });
   });
 
+  it("answers 401 to an MCP's history without a session (contract 20)", async () => {
+    const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+
+    const res = await fetch(`${baseUrl}/api/mcps/${id}/versions`);
+
+    expect(res.status).toBe(401);
+  });
+
   it('answers 403 to a deletion sent from another site, session or not (D16)', async () => {
     const { id } = await store.put(NOTION, account.workspaceId, CREATED);
 
