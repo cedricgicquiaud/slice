@@ -37,29 +37,39 @@ export async function readMcpHistory(
   workspaceId: string,
   id: string
 ): Promise<McpHistory | undefined> {
-  const { db } = database;
-  const [connector] = await db
-    .select({ apiName: connectors.apiName, baseUrl: connectors.baseUrl })
+  // One statement, so one moment: a "Save" or a deletion running alongside is seen whole or not at all.
+  const rows = await database.db
+    .select({
+      apiName: connectors.apiName,
+      baseUrl: connectors.baseUrl,
+      number: connectorVersions.number,
+      createdAt: connectorVersions.createdAt,
+      activeSince: connectorVersions.activeSince,
+      label: connectorActions.label,
+    })
     .from(connectors)
-    .where(and(eq(connectors.id, id), eq(connectors.workspaceId, workspaceId)));
-  if (!connector) return undefined;
-  const versions = await db
-    .select()
-    .from(connectorVersions)
-    .where(eq(connectorVersions.connectorId, id))
-    .orderBy(desc(connectorVersions.number));
-  const actions = await db
-    .select({ version: connectorActions.version, label: connectorActions.label })
-    .from(connectorActions)
-    .where(eq(connectorActions.connectorId, id))
-    .orderBy(asc(connectorActions.position));
-  return {
-    apiName: apiNameOf(connector),
-    versions: versions.map((version) => ({
-      number: version.number,
-      createdAt: version.createdAt.toISOString(),
-      activeSince: version.activeSince?.toISOString() ?? null,
-      actionLabels: actions.filter((action) => action.version === version.number).map((action) => action.label),
-    })),
-  };
+    .innerJoin(connectorVersions, eq(connectorVersions.connectorId, connectors.id))
+    .leftJoin(
+      connectorActions,
+      and(eq(connectorActions.connectorId, connectorVersions.connectorId), eq(connectorActions.version, connectorVersions.number))
+    )
+    .where(and(eq(connectors.id, id), eq(connectors.workspaceId, workspaceId)))
+    .orderBy(desc(connectorVersions.number), asc(connectorActions.position));
+  const [first] = rows;
+  if (!first) return undefined;
+  const versions: McpVersion[] = [];
+  for (const row of rows) {
+    let version = versions.at(-1);
+    if (version?.number !== row.number) {
+      version = {
+        number: row.number,
+        createdAt: row.createdAt.toISOString(),
+        activeSince: row.activeSince?.toISOString() ?? null,
+        actionLabels: [],
+      };
+      versions.push(version);
+    }
+    if (row.label !== null) version.actionLabels.push(row.label);
+  }
+  return { apiName: apiNameOf(first), versions };
 }
