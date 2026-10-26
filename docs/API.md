@@ -15,6 +15,7 @@ The browser front end uses the `/api/*` routes; AI agents use the hosted runtime
 | `GET` | `/api/mcps` | List the signed-in account's hosted MCPs | Yes |
 | `GET` | `/api/mcps/:id/versions` | Read the versions of one of the signed-in account's hosted MCPs | Yes |
 | `POST` | `/api/mcps/:id/versions` | Save a new selection of actions as the next version, active at once | Yes |
+| `POST` | `/api/mcps/:id/versions/:number/restore` | Make an existing version the active one again | Yes |
 | `GET` | `/api/mcps/:id/selection` | Read every action of an MCP's API and those of its active version | Yes |
 | `DELETE` | `/api/mcps/:id` | Delete one of the signed-in account's hosted MCPs | Yes |
 | any | `/m/:id` | Hosted MCP runtime (MCP Streamable HTTP, stateless) | No |
@@ -476,7 +477,9 @@ A hosted MCP has no expiry date: its URL keeps working until the MCP is deleted.
 Lists the hosted MCPs of the signed-in account's personal workspace, newest first. MCPs of any other account never
 appear. An MCP is created by [`POST /api/host`](#post-apihost), its versions are read by
 [`GET /api/mcps/:id/versions`](#get-apimcpsidversions), its selection of actions is changed by
-[`POST /api/mcps/:id/versions`](#post-apimcpsidversions), and it is deleted by [`DELETE /api/mcps/:id`](#delete-apimcpsid).
+[`POST /api/mcps/:id/versions`](#post-apimcpsidversions), an older version is made active again by
+[`POST /api/mcps/:id/versions/:number/restore`](#post-apimcpsidversionsnumberrestore), and it is deleted by
+[`DELETE /api/mcps/:id`](#delete-apimcpsid).
 Only its selection of actions can change: its name, the API's address and its upstream access stay those of its creation.
 
 **Response `200`**
@@ -541,7 +544,7 @@ numbered from 1 and dated; one version is active at a time, and the MCP's URL se
 | `apiName` | The MCP's name, as [`GET /api/mcps`](#get-apimcps) gives it |
 | `versions[].number` | 1 for the selection made at creation, then 2, 3… |
 | `versions[].createdAt` | Creation date of the version, ISO 8601 |
-| `versions[].activeSince` | Date the version last became the active one, ISO 8601; `null` for every other version. For version 1 of a new MCP, its creation date |
+| `versions[].activeSince` | Date the version last became the active one, ISO 8601; `null` for every other version. For version 1 of a new MCP, its creation date; for a restored version, the date of its restoration |
 | `versions[].actionLabels` | The labels of the version's actions, in their order |
 
 **Errors**
@@ -600,6 +603,42 @@ No other field is accepted.
 | 403 | `FORBIDDEN` | Sent from another site than SLICE's page |
 | 404 | `NOT_FOUND` | No MCP under this id in the account's workspace. Message: "Unknown MCP id." The answer is the same whether the id does not exist or belongs to another account; the other account's MCP is left untouched |
 | 409 | `CONFLICT` | `fromVersion` is no longer the active version: another change was saved meanwhile, from another tab for instance. Message: "This MCP changed in the meantime. Reload to see its current actions." |
+| 429 | (none) | Rate limit exceeded |
+| 503 | `SERVICE_UNAVAILABLE` | The database is unreachable |
+
+---
+
+## `POST /api/mcps/:id/versions/:number/restore`
+
+Makes version `:number` of one hosted MCP of the signed-in account the active one again, dated from now. No version
+is created, and the version that was active is no longer. The MCP's URL does not change: from the agent's next
+conversation, it lists the restored version's actions, and `actionCount` in [`GET /api/mcps`](#get-apimcps) counts
+them. The next change saved by [`POST /api/mcps/:id/versions`](#post-apimcpsidversions) starts from the restored
+version and is numbered after the highest existing one (3 after restoring version 1 of an MCP that has a version 2).
+
+Restoring the version that is already active succeeds and changes nothing, not even its `activeSince` date.
+
+The request has no body.
+
+**Response `200`**
+
+```json
+{ "number": 1, "activeSince": "2026-10-26T15:00:00.000Z" }
+```
+
+| Field | Description |
+|---|---|
+| `number` | The restored version's number |
+| `activeSince` | Date the version is active since, ISO 8601: now, or its earlier date when it was already the active one |
+
+**Errors** — in every case, nothing changes.
+
+| HTTP | `code` | Cause |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | No live session |
+| 403 | `FORBIDDEN` | Sent from another site than SLICE's page |
+| 404 | `NOT_FOUND` | No MCP under this id in the account's workspace. Message: "Unknown MCP id." The answer is the same whether the id does not exist or belongs to another account; the other account's MCP is left untouched |
+| 404 | `NOT_FOUND` | The MCP has no version `:number` (or `:number` is not a version number). Message: "Unknown version of this MCP." |
 | 429 | (none) | Rate limit exceeded |
 | 503 | `SERVICE_UNAVAILABLE` | The database is unreachable |
 

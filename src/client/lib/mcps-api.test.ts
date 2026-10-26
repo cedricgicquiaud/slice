@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { deleteMcp, getMcpHistory, getMcpSelection, listMcps, saveMcpSelection } from './mcps-api';
+import { deleteMcp, getMcpHistory, getMcpSelection, listMcps, restoreMcpVersion, saveMcpSelection } from './mcps-api';
 
 const NOTION = {
   id: 'Q2xhdWRlIGlzIG5vdCBoZXJl',
@@ -159,6 +159,36 @@ describe('saveMcpSelection', () => {
           },
         ],
       ],
+    });
+  });
+});
+
+describe('restoreMcpVersion', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('asks POST /api/mcps/:id/versions/:number/restore, and returns the date the version is active since', async () => {
+    const fetchMock = serverAnswers(200, { number: 1, activeSince: '2026-10-26T15:00:00.000Z' });
+
+    const activeSince = await restoreMcpVersion('notion-id', 1);
+
+    expect({ activeSince, asked: fetchMock.mock.calls }).toEqual({
+      activeSince: '2026-10-26T15:00:00.000Z',
+      asked: [['/api/mcps/notion-id/versions/1/restore', { method: 'POST' }]],
+    });
+  });
+
+  it("throws the server's refusal when the restoration is refused", async () => {
+    serverAnswers(404, { code: 'NOT_FOUND', message: 'Unknown version of this MCP.' });
+
+    await expect(restoreMcpVersion('notion-id', 7)).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 404,
+      code: 'NOT_FOUND',
+      message: 'Unknown version of this MCP.',
     });
   });
 });

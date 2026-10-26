@@ -79,6 +79,14 @@ export async function saveMcpSelection(id: string, change: McpSelectionChange): 
   return number;
 }
 
+/** Make a version of one of the account's MCPs the active one again (D9); returns the ISO date it is active since. */
+export async function restoreMcpVersion(id: string, number: number): Promise<string> {
+  const res = await fetch(`/api/mcps/${id}/versions/${number}/restore`, { method: 'POST' });
+  if (!res.ok) await throwRefusal(res);
+  const { activeSince } = (await res.json()) as { activeSince: string };
+  return activeSince;
+}
+
 /** Delete one of the account's MCPs, at once (D10). */
 export async function deleteMcp(id: string): Promise<void> {
   const res = await fetch(`/api/mcps/${id}`, { method: 'DELETE' });

@@ -1,4 +1,5 @@
 // WAT-142/143 — "History", at /mcps/<id>/history: the versions of one of my MCPs, never another account's.
+// WAT-148/149 — "Restore" on a version that is not the active one makes it active again.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -34,8 +35,10 @@ const TWO_VERSIONS = {
 /**
  * SLICE's API as this page sees it: `GET /api/mcps/:id/versions` answers the
  * history kept in `histories` under that id, else 404 as for an unknown MCP or
- * another account's, or `refusal` when set; any other call is "who is signed
- * in?" (`session`).
+ * another account's, or `refusal` when set; `POST /api/mcps/:id/versions/:number/restore`
+ * is kept in `restores` and answers, once `held` resolves when set,
+ * `restoreRefusal` when set, else the version active since Oct 26, 2026;
+ * any other call is "who is signed in?" (`session`).
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
 const server = vi.hoisted(() => {
@@ -43,11 +46,24 @@ const server = vi.hoisted(() => {
     session: unknown;
     histories: Record<string, unknown>;
     refusal: { status: number; code: string; message: string } | null;
-  } = { session: null, histories: {}, refusal: null };
+    restores: string[];
+    held: Promise<void> | null;
+    restoreRefusal: { status: number; code: string; message: string } | null;
+  } = { session: null, histories: {}, refusal: null, restores: [], held: null, restoreRefusal: null };
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : String(input);
+    const restored = /^\/api\/mcps\/[^/]+\/versions\/(\d+)\/restore$/.exec(url);
+    if (init?.method === 'POST' && restored) {
+      state.restores.push(url);
+      await state.held;
+      if (state.restoreRefusal) {
+        const { status, code, message } = state.restoreRefusal;
+        return json({ code, message }, status);
+      }
+      return json({ number: Number(restored[1]), activeSince: '2026-10-26T15:00:00.000Z' });
+    }
     const asked = /^\/api\/mcps\/([^/]+)\/versions$/.exec(url);
     if (!asked) return json(state.session);
     if (state.refusal) return json({ code: state.refusal.code, message: state.refusal.message }, state.refusal.status);
@@ -60,6 +76,9 @@ const server = vi.hoisted(() => {
 afterEach(() => {
   server.histories = {};
   server.refusal = null;
+  server.restores = [];
+  server.held = null;
+  server.restoreRefusal = null;
   window.history.pushState({}, '', '/');
 });
 
@@ -140,5 +159,82 @@ describe('History', () => {
     render(<HistoryScreen mcpId="notion-id" />);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('SLICE is unavailable for the moment.');
+  });
+});
+
+describe('Restore', () => {
+  it('offers "Restore" on every version but the active one (contract 22)', async () => {
+    server.histories['notion-id'] = TWO_VERSIONS;
+
+    render(<HistoryScreen mcpId="notion-id" />);
+
+    const versions = await screen.findAllByRole('listitem', { name: /^Version/ });
+    expect(versions.map((version) => within(version).queryByRole('button', { name: 'Restore' }) !== null)).toEqual([
+      false,
+      true,
+    ]);
+  });
+
+  it('makes version 1 the active one on "Restore", dated by the server, and says the agent sees it next time (contract 10, D6)', async () => {
+    server.histories['notion-id'] = TWO_VERSIONS;
+    const user = userEvent.setup();
+    render(<HistoryScreen mcpId="notion-id" />);
+    const version1 = within(await screen.findByRole('listitem', { name: 'Version 1' }));
+
+    await user.click(version1.getByRole('button', { name: 'Restore' }));
+
+    const versions = screen.getAllByRole('listitem', { name: /^Version/ });
+    expect({
+      message: (await screen.findByRole('status')).textContent,
+      marks: versions.map((version) => within(version).queryByText(/^Active since/)?.textContent ?? null),
+      restores: server.restores,
+    }).toEqual({
+      message: 'Version 1 restored. Your agent sees these actions in its next conversation, with nothing to paste again.',
+      marks: [null, 'Active since Oct 26, 2026'],
+      restores: ['/api/mcps/notion-id/versions/1/restore'],
+    });
+  });
+
+  it('spaces the message from the MCP\'s name as the page spaces its other text under the name', async () => {
+    server.histories['notion-id'] = TWO_VERSIONS;
+    const user = userEvent.setup();
+    render(<HistoryScreen mcpId="notion-id" />);
+    const version1 = within(await screen.findByRole('listitem', { name: 'Version 1' }));
+
+    await user.click(version1.getByRole('button', { name: 'Restore' }));
+
+    expect(await screen.findByRole('status')).toHaveClass('mt-4');
+  });
+
+  it('greys "Restore" during the call: a double click restores once (contract 25)', async () => {
+    server.histories['notion-id'] = TWO_VERSIONS;
+    let answer = () => {};
+    server.held = new Promise<void>((resolve) => (answer = resolve));
+    const user = userEvent.setup();
+    render(<HistoryScreen mcpId="notion-id" />);
+    const restore = within(await screen.findByRole('listitem', { name: 'Version 1' })).getByRole('button', { name: 'Restore' });
+
+    await user.dblClick(restore);
+    const greyedDuringTheCall = restore.hasAttribute('disabled');
+    answer();
+    await screen.findByRole('status');
+
+    expect({ greyedDuringTheCall, restores: server.restores.length }).toEqual({ greyedDuringTheCall: true, restores: 1 });
+  });
+
+  it("shows a refused restoration as the server words it, claims nothing, and lets Restore be tried again (contract 21)", async () => {
+    server.histories['notion-id'] = TWO_VERSIONS;
+    server.restoreRefusal = { status: 404, code: 'NOT_FOUND', message: 'Unknown version of this MCP.' };
+    const user = userEvent.setup();
+    render(<HistoryScreen mcpId="notion-id" />);
+    const restore = within(await screen.findByRole('listitem', { name: 'Version 1' })).getByRole('button', { name: 'Restore' });
+
+    await user.click(restore);
+
+    expect({
+      alert: (await screen.findByRole('alert')).textContent,
+      status: screen.queryByRole('status'),
+      greyed: restore.hasAttribute('disabled'),
+    }).toEqual({ alert: 'Unknown version of this MCP.', status: null, greyed: false });
   });
 });

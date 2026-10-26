@@ -1,4 +1,5 @@
 // WAT-103/104/105 — `GET /api/mcps` and `DELETE /api/mcps/:id`: an account's own MCPs, never another's.
+// WAT-148/149 — `POST /api/mcps/:id/versions/:number/restore`: an existing version of one's own MCP, active again.
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -387,5 +388,180 @@ describe('POST /api/mcps/:id/versions', () => {
     const res = await save(id, { fromVersion: 1, selectedIds: ['GET /notes'] }, null);
 
     expect({ status: res.status, served: (await store.get(id))?.endpoints.length }).toEqual({ status: 401, served: 2 });
+  });
+});
+
+describe('POST /api/mcps/:id/versions/:number/restore', () => {
+  let edit: { url: string; close(): Promise<void> };
+  beforeAll(async () => {
+    edit = await startApp();
+  });
+  afterAll(async () => {
+    await edit?.close();
+  });
+
+  /** "Restore" on "History", as the signed-in account; without a session when `cookie` is `null`. */
+  function restore(id: string, number: number | string, cookie: string | null = account.cookie) {
+    return fetch(`${edit.url}/api/mcps/${id}/versions/${number}/restore`, {
+      method: 'POST',
+      headers: cookie ? { cookie } : {},
+    });
+  }
+
+  /** My MCP of the Notes API, its version 2 (the reading of notes only) active. */
+  async function notesAtVersion2(): Promise<string> {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+    await createAccountMcps(database).saveSelection(account.workspaceId, id, { fromVersion: 1, selectedIds: ['GET /notes'] });
+    return id;
+  }
+
+  it('makes version 1 active again at the same address: the agent lists its actions, My MCPs counts them, no version is made (contract 10, D11)', async () => {
+    const id = await notesAtVersion2();
+    const asked = Date.now();
+
+    const restored = await restore(id, 1);
+    const answered = Date.now();
+    const { number, activeSince } = (await restored.json()) as { number: number; activeSince: string };
+    const listed = (await (await fetch(`${edit.url}/api/mcps`, { headers: { cookie: account.cookie } })).json()) as {
+      mcps: Array<{ id: string; actionCount: number }>;
+    };
+    const history = (await (
+      await fetch(`${edit.url}/api/mcps/${id}/versions`, { headers: { cookie: account.cookie } })
+    ).json()) as { versions: Array<{ number: number }> };
+    const agent = new Client({ name: 'agent', version: '0.0.0' });
+    await agent.connect(new StreamableHTTPClientTransport(new URL(`${edit.url}/m/${id}`)));
+    const { tools } = await agent.listTools();
+    await agent.close();
+
+    expect({
+      restored: {
+        status: restored.status,
+        number,
+        activeSinceNow: asked <= Date.parse(activeSince) && Date.parse(activeSince) <= answered,
+      },
+      actionCount: listed.mcps.find((mcp) => mcp.id === id)?.actionCount,
+      versions: history.versions.map((version) => version.number),
+      tools: tools.map((tool) => tool.name),
+    }).toEqual({
+      restored: { status: 200, number: 1, activeSinceNow: true },
+      actionCount: 2,
+      versions: [2, 1],
+      tools: ['list_notes', 'create_note'],
+    });
+  });
+
+  it("numbers the change saved after restoring version 1 as version 3, started from version 1's actions (contract 11, D9)", async () => {
+    const id = await notesAtVersion2();
+    await restore(id, 1);
+
+    const { version, selectedIds } = (await (
+      await fetch(`${edit.url}/api/mcps/${id}/selection`, { headers: { cookie: account.cookie } })
+    ).json()) as { version: number; selectedIds: string[] };
+    const saved = await fetch(`${edit.url}/api/mcps/${id}/versions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: account.cookie },
+      body: JSON.stringify({ fromVersion: version, selectedIds: [...selectedIds, 'DELETE /trash'] }),
+    });
+
+    expect({
+      read: { version, selectedIds },
+      saved: { status: saved.status, body: await saved.json() },
+      served: (await store.get(id))?.endpoints.map((action) => action.name),
+    }).toEqual({
+      read: { version: 1, selectedIds: ['GET /notes', 'POST /notes'] },
+      saved: { status: 201, body: { number: 3 } },
+      served: ['list_notes', 'create_note', 'empty_trash'],
+    });
+  });
+
+  it('refuses a change started from version 2 once version 1 is restored, a tab left open, and saves nothing (contract 23, D13)', async () => {
+    const id = await notesAtVersion2();
+    await restore(id, 1);
+
+    const saved = await fetch(`${edit.url}/api/mcps/${id}/versions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: account.cookie },
+      body: JSON.stringify({ fromVersion: 2, selectedIds: ['GET /notes', 'DELETE /trash'] }),
+    });
+    const history = (await (
+      await fetch(`${edit.url}/api/mcps/${id}/versions`, { headers: { cookie: account.cookie } })
+    ).json()) as { versions: Array<{ number: number; activeSince: string | null }> };
+
+    expect({
+      saved: { status: saved.status, body: await saved.json() },
+      versions: history.versions.map((version) => version.number),
+      active: history.versions.filter((version) => version.activeSince !== null).map((version) => version.number),
+    }).toEqual({
+      saved: {
+        status: 409,
+        body: { code: 'CONFLICT', message: 'This MCP changed in the meantime. Reload to see its current actions.' },
+      },
+      versions: [2, 1],
+      active: [1],
+    });
+  });
+
+  it.each([
+    ['a number it does not have', '7'],
+    ['a number past any version', '99999999999'],
+    ['no number at all', 'latest'],
+  ])('answers 404 to a version of my MCP given as %s, and changes nothing (contract 21)', async (_what, number) => {
+    const id = await notesAtVersion2();
+
+    const res = await restore(id, number);
+
+    expect({
+      status: res.status,
+      body: await res.json(),
+      served: (await store.get(id))?.endpoints.map((action) => action.name),
+    }).toEqual({
+      status: 404,
+      body: { code: 'NOT_FOUND', message: 'Unknown version of this MCP.' },
+      served: ['list_notes'],
+    });
+  });
+
+  it("answers a version of another account's MCP exactly as an unknown id, and leaves its active version (contract 19, D12)", async () => {
+    const other = await createTestAccount({ database, email: 'neighbour-restore@example.com' });
+    const { id } = await store.put(NOTES, other.workspaceId, CREATED);
+    await createAccountMcps(database).saveSelection(other.workspaceId, id, { fromVersion: 1, selectedIds: ['GET /notes'] });
+
+    const theirs = await restore(id, 1);
+    const unknown = await restore('no-such-mcp-id', 1);
+
+    expect({
+      theirs: { status: theirs.status, body: await theirs.text() },
+      unknown: { status: unknown.status, body: await unknown.text() },
+      served: (await store.get(id))?.endpoints.map((action) => action.name),
+    }).toEqual({
+      theirs: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+      unknown: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+      served: ['list_notes'],
+    });
+  });
+
+  it('answers 401 to a restoration without a session, and changes nothing (contract 20)', async () => {
+    const id = await notesAtVersion2();
+
+    const res = await restore(id, 1, null);
+
+    expect({ status: res.status, served: (await store.get(id))?.endpoints.map((action) => action.name) }).toEqual({
+      status: 401,
+      served: ['list_notes'],
+    });
+  });
+
+  it('answers 403 to a restoration sent from another site, and changes nothing (D16)', async () => {
+    const id = await notesAtVersion2();
+
+    const res = await fetch(`${edit.url}/api/mcps/${id}/versions/1/restore`, {
+      method: 'POST',
+      headers: { cookie: account.cookie, origin: 'https://evil.example' },
+    });
+
+    expect({ status: res.status, served: (await store.get(id))?.endpoints.map((action) => action.name) }).toEqual({
+      status: 403,
+      served: ['list_notes'],
+    });
   });
 });

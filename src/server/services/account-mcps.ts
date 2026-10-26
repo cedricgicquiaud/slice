@@ -5,7 +5,7 @@ import { and, count, desc, eq, isNotNull } from 'drizzle-orm';
 import type { McpSelectionChange } from '@shared/types';
 import type { Database } from '../db/client';
 import { connectorActions, connectorVersions, connectors } from '../db/schema';
-import { apiNameOf, readMcpHistory, type McpHistory } from './mcp-versions';
+import { apiNameOf, readMcpHistory, restoreMcpVersion, type McpHistory, type RestoreOutcome } from './mcp-versions';
 import { readMcpSelection, saveMcpSelection, type McpSelection, type SaveOutcome } from './mcp-selection';
 
 /** One line of the list. */
@@ -32,6 +32,8 @@ export interface AccountMcps {
   selection(workspaceId: string, id: string): Promise<McpSelection | undefined>;
   /** Save `change` as the next version of the MCP `id` of `workspaceId`, active at once (D4). */
   saveSelection(workspaceId: string, id: string, change: McpSelectionChange): Promise<SaveOutcome>;
+  /** Make version `number` of the MCP `id` of `workspaceId` the active one again, from now (D9). */
+  restore(workspaceId: string, id: string, number: number): Promise<RestoreOutcome>;
 }
 
 export function createAccountMcps(database: Database): AccountMcps {
@@ -79,5 +81,6 @@ export function createAccountMcps(database: Database): AccountMcps {
     history: (workspaceId, id) => readMcpHistory(database, workspaceId, id),
     selection: (workspaceId, id) => readMcpSelection(database, workspaceId, id),
     saveSelection: (workspaceId, id, change) => saveMcpSelection(database, workspaceId, id, change, new Date()),
+    restore: (workspaceId, id, number) => restoreMcpVersion(database, workspaceId, id, number, new Date()),
   };
 }

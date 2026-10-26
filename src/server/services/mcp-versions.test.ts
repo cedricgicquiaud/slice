@@ -1,7 +1,9 @@
 // WAT-141/142/143 — the history of an MCP: its versions, newest first, read by its own workspace only.
+// WAT-148/149 — "Restore": an existing version of one's own MCP becomes the active one again.
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { readMcpHistory } from './mcp-versions';
+import { readMcpHistory, restoreMcpVersion } from './mcp-versions';
+import { saveMcpSelection } from './mcp-selection';
 import { createHostedStore, type HostedStore } from './hosted-store';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
@@ -13,6 +15,7 @@ vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 const MONDAY = new Date('2026-10-19T08:30:00.000Z');
 const TUESDAY = new Date('2026-10-20T14:00:00.000Z');
+const WEDNESDAY = new Date('2026-10-21T16:45:00.000Z');
 
 const NOTION: HostedMcpConfig = {
   name: 'notion',
@@ -22,6 +25,10 @@ const NOTION: HostedMcpConfig = {
   endpoints: [
     { name: 'search', label: 'Search', description: 'Search', method: 'POST', path: '/search', params: [] },
     { name: 'get_a_page', label: 'Get a page', description: 'Get a page', method: 'GET', path: '/pages/{id}', params: [] },
+  ],
+  apiActions: [
+    { name: 'search', label: 'Search', group: 'Search', deprecated: false, method: 'POST', path: '/search', params: [] },
+    { name: 'get_a_page', label: 'Get a page', group: 'Pages', deprecated: false, method: 'GET', path: '/pages/{id}', params: [] },
   ],
 };
 
@@ -96,5 +103,99 @@ describe('the history of an MCP', () => {
         ],
       },
     ]).toContainEqual(history);
+  });
+});
+
+describe('"Restore"', () => {
+  it('makes version 1 the active one again, active from now, without creating a version (contract 10, D9)', async () => {
+    const { workspaceId } = await createTestAccount({ database, email: 'restore@example.com' });
+    const { id } = await store.put(NOTION, workspaceId, MONDAY);
+    await activateVersion2(id, TUESDAY);
+
+    const outcome = await restoreMcpVersion(database, workspaceId, id, 1, WEDNESDAY);
+
+    expect({ outcome, history: await readMcpHistory(database, workspaceId, id) }).toEqual({
+      outcome: { activeSince: '2026-10-21T16:45:00.000Z' },
+      history: {
+        apiName: 'Notion API',
+        versions: [
+          { number: 2, createdAt: '2026-10-20T14:00:00.000Z', activeSince: null, actionLabels: ['Get a page'] },
+          {
+            number: 1,
+            createdAt: '2026-10-19T08:30:00.000Z',
+            activeSince: '2026-10-21T16:45:00.000Z',
+            actionLabels: ['Search', 'Get a page'],
+          },
+        ],
+      },
+    });
+  });
+
+  it("refuses another account's MCP as an unknown one, and leaves its active version as it is (contract 19, D12)", async () => {
+    const owner = await createTestAccount({ database, email: 'restore-owner@example.com' });
+    const neighbour = await createTestAccount({ database, email: 'restore-neighbour@example.com' });
+    const { id } = await store.put(NOTION, owner.workspaceId, MONDAY);
+    await activateVersion2(id, TUESDAY);
+
+    const outcome = await restoreMcpVersion(database, neighbour.workspaceId, id, 1, WEDNESDAY);
+
+    expect({
+      outcome,
+      active: (await readMcpHistory(database, owner.workspaceId, id))?.versions.map((version) => version.activeSince),
+    }).toEqual({ outcome: { refused: 'unknown-mcp' }, active: ['2026-10-20T14:00:00.000Z', null] });
+  });
+
+  it('refuses a version the MCP does not have, and leaves its active version as it is (contract 21)', async () => {
+    const { workspaceId } = await createTestAccount({ database, email: 'restore-missing@example.com' });
+    const { id } = await store.put(NOTION, workspaceId, MONDAY);
+    await activateVersion2(id, TUESDAY);
+
+    const outcome = await restoreMcpVersion(database, workspaceId, id, 7, WEDNESDAY);
+
+    expect({
+      outcome,
+      active: (await readMcpHistory(database, workspaceId, id))?.versions.map((version) => version.activeSince),
+    }).toEqual({ outcome: { refused: 'unknown-version' }, active: ['2026-10-20T14:00:00.000Z', null] });
+  });
+
+  it('restores the active version without changing anything, not even its "Active since" date (contract 12, D9)', async () => {
+    const { workspaceId } = await createTestAccount({ database, email: 'restore-active@example.com' });
+    const { id } = await store.put(NOTION, workspaceId, MONDAY);
+    await activateVersion2(id, TUESDAY);
+
+    const outcome = await restoreMcpVersion(database, workspaceId, id, 2, WEDNESDAY);
+
+    expect({
+      outcome,
+      active: (await readMcpHistory(database, workspaceId, id))?.versions.map((version) => version.activeSince),
+    }).toEqual({ outcome: { activeSince: '2026-10-20T14:00:00.000Z' }, active: ['2026-10-20T14:00:00.000Z', null] });
+  });
+
+  it('never leaves two active versions when a "Restore" and a "Save" of the same MCP run at once', async () => {
+    // A real race on PostgreSQL only (`DATABASE_URL`): PGlite's single connection runs the two one after the other.
+    // Played twenty times: without the lock, a single run would pass part of the time.
+    const { workspaceId } = await createTestAccount({ database, email: 'restore-race@example.com' });
+
+    for (let round = 0; round < 20; round += 1) {
+      const { id } = await store.put(NOTION, workspaceId, MONDAY);
+      await activateVersion2(id, TUESDAY);
+
+      const [, saved] = await Promise.all([
+        restoreMcpVersion(database, workspaceId, id, 1, WEDNESDAY),
+        saveMcpSelection(database, workspaceId, id, { fromVersion: 2, selectedIds: ['POST /search'] }, WEDNESDAY),
+      ]);
+      const history = await readMcpHistory(database, workspaceId, id);
+
+      // Whichever runs first, version 1 ends up the only active one: "Save" is refused after
+      // the "Restore", or its version 3 is replaced by the "Restore" that follows it.
+      expect([
+        { round, saved: { version: 3 }, active: [1] },
+        { round, saved: { refused: 'changed-meanwhile' }, active: [1] },
+      ]).toContainEqual({
+        round,
+        saved,
+        active: history?.versions.filter((version) => version.activeSince !== null).map((version) => version.number),
+      });
+    }
   });
 });
