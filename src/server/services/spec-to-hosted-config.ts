@@ -19,6 +19,7 @@ export function specToHostedConfig(
     .filter((e) => selected.has(e.id))
     .map((e) => ({
       name: toolNameFor(e),
+      label: e.label,
       description: (e.description ?? e.label).split('\n')[0],
       method: e.method,
       path: e.path,

@@ -23,6 +23,8 @@ export interface HostedMcpOptions {
 /** One endpoint the hosted MCP exposes as a tool. */
 export interface HostedEndpoint {
   name: string;
+  /** The action's label on the selection screen, kept for the MCP's history; the engine ignores it. */
+  label?: string;
   description: string;
   method: HttpMethod;
   path: string;
