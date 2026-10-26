@@ -81,4 +81,24 @@ describe('the usage of an MCP', () => {
       { name: 'delete_note', label: 'Delete a note', available: true, calls: 0, succeeded: 0, averageDurationMs: null, lastCalledAt: null },
     ]);
   });
+
+  it('leaves a call made more than 30 days ago out of every figure (contract 20, D9)', async () => {
+    const { id } = await store.put(NOTES, workspaceId, CREATED);
+    await createMcpCalls(database).write(id, [
+      call('list_notes', 31 * 24, { kind: 'succeeded' }, 5_000),
+      call('list_notes', 29 * 24, { kind: 'succeeded' }, 100),
+    ]);
+
+    const usage = await readMcpUsage(database, workspaceId, id, NOW);
+
+    expect(usage?.actions[0]).toEqual({
+      name: 'list_notes',
+      label: 'List notes',
+      available: true,
+      calls: 1,
+      succeeded: 1,
+      averageDurationMs: 100,
+      lastCalledAt: '2026-09-27T14:00:00.000Z',
+    });
+  });
 });
