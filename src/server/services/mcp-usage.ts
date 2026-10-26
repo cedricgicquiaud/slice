@@ -5,7 +5,7 @@
  */
 import { and, asc, count, eq, gte, isNotNull, max, sql } from 'drizzle-orm';
 import type { Database } from '../db/client';
-import { connectorActions, connectorCalls, connectorVersions, connectors } from '../db/schema';
+import { connectorActions, connectorApiActions, connectorCalls, connectorVersions, connectors } from '../db/schema';
 import { apiNameOf } from './mcp-versions';
 
 /** The page shows the last 30 days (D9). */
@@ -28,7 +28,7 @@ export interface ActionUsage {
 export interface McpUsage {
   /** The API's name as read in its description, else its domain. */
   apiName: string;
-  /** The active version's actions, in their order. */
+  /** The active version's actions, in their order, then the API's other actions called in the period. */
   actions: ActionUsage[];
 }
 
@@ -77,20 +77,34 @@ export async function readMcpUsage(
     .where(and(eq(connectorCalls.connectorId, id), gte(connectorCalls.calledAt, new Date(now.getTime() - PERIOD_MS))))
     .groupBy(connectorCalls.action);
   const statsOf = new Map(stats.map((row) => [row.action, row]));
-
-  const actions: ActionUsage[] = [];
-  for (const { name, label } of active) {
-    if (name === null || label === null) continue;
+  const lineOf = (name: string, label: string, available: boolean): ActionUsage => {
     const row = statsOf.get(name);
-    actions.push({
+    return {
       name,
       label,
-      available: true,
+      available,
       calls: row?.calls ?? 0,
       succeeded: row?.succeeded ?? 0,
       averageDurationMs: row?.averageDurationMs ?? null,
       lastCalledAt: row?.lastCalledAt?.toISOString() ?? null,
-    });
+    };
+  };
+
+  const actions: ActionUsage[] = [];
+  const activeNames = new Set<string>();
+  for (const { name, label } of active) {
+    if (name === null || label === null) continue;
+    activeNames.add(name);
+    actions.push(lineOf(name, label, true));
+  }
+  // The other actions of the API called in the period, in the API's order (D10).
+  const apiActions = await db
+    .select({ name: connectorApiActions.name, label: connectorApiActions.label })
+    .from(connectorApiActions)
+    .where(eq(connectorApiActions.connectorId, id))
+    .orderBy(asc(connectorApiActions.position));
+  for (const { name, label } of apiActions) {
+    if (!activeNames.has(name) && statsOf.has(name)) actions.push(lineOf(name, label, false));
   }
   return { apiName: apiNameOf(first), actions };
 }
