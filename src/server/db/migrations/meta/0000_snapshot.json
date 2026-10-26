@@ -1,5 +1,5 @@
 {
-  "id": "1aaf9eec-8523-4865-af26-af77479759e9",
+  "id": "0f9b0aad-ef31-4f9c-8cdf-c8d573fb8bae",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -337,7 +337,24 @@
           "notNull": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "connector_versions_one_active_idx": {
+          "name": "connector_versions_one_active_idx",
+          "columns": [
+            {
+              "expression": "connector_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"connector_versions\".\"active_since\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "connector_versions_connector_id_connectors_id_fk": {
           "name": "connector_versions_connector_id_connectors_id_fk",

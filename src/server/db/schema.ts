@@ -17,6 +17,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import type { EndpointParam } from '@shared/types';
 
@@ -148,7 +149,13 @@ export const connectorVersions = pgTable(
     /** When the version last became the active one (D8, D9); null while it is not. */
     activeSince: timestamp('active_since', { withTimezone: true }),
   },
-  (table) => [primaryKey({ columns: [table.connectorId, table.number] })]
+  (table) => [
+    primaryKey({ columns: [table.connectorId, table.number] }),
+    // One active version per connector (D4): the one its address serves.
+    uniqueIndex('connector_versions_one_active_idx')
+      .on(table.connectorId)
+      .where(sql`${table.activeSince} is not null`),
+  ]
 );
 
 /** The actions of a connector's version: what its address serves while the version is active. */
