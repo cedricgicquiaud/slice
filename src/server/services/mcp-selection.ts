@@ -73,8 +73,15 @@ export async function readMcpSelection(
   return { apiName: apiNameOf(first), version: first.version, groups, selectedIds: selected.map(actionId) };
 }
 
+/**
+ * Why a "Save" saved nothing: no such MCP in the workspace (D12), another version
+ * active since the screen opened (D13), an action its API lacks, or the active
+ * version's selection again (D5).
+ */
+export type SaveRefusal = 'unknown-mcp' | 'changed-meanwhile' | 'unknown-action' | 'unchanged';
+
 /** How a "Save" ends: the new version's number, or why nothing was saved. */
-export type SaveOutcome = { version: number } | { refused: 'unknown-mcp' | 'changed-meanwhile' | 'unknown-action' | 'unchanged' };
+export type SaveOutcome = { version: number } | { refused: SaveRefusal };
 
 /**
  * Save `change` as the next version of the MCP `id` of `workspaceId`, active from `now` (D4, D9).
