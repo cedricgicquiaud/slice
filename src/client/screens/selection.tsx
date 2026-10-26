@@ -20,6 +20,8 @@ export interface SelectionScreenProps {
   initialSelectedIds?: readonly string[];
   /** The footer button's label: "Save" on "Edit actions"; "Continue" by default. */
   continueLabel?: string;
+  /** Whether the footer button is greyed for the current selection, on top of an empty one. */
+  continueDisabled?: (selected: ReadonlySet<string>) => boolean;
 }
 
 function matchesQuery(endpoint: Endpoint, query: string): boolean {
@@ -37,7 +39,13 @@ function passesFilter(endpoint: Endpoint, mode: FilterMode): boolean {
   return endpoint.method !== 'GET';
 }
 
-export function SelectionScreen({ spec, onContinue, initialSelectedIds, continueLabel }: SelectionScreenProps) {
+export function SelectionScreen({
+  spec,
+  onContinue,
+  initialSelectedIds,
+  continueLabel,
+  continueDisabled,
+}: SelectionScreenProps) {
   const selection = useSelection(spec, initialSelectedIds);
   const [activeTag, setActiveTag] = useState<string | null>(
     spec.groups[0]?.tag ?? null
@@ -197,6 +205,7 @@ export function SelectionScreen({ spec, onContinue, initialSelectedIds, continue
         selectedCount={selection.count}
         onContinue={() => onContinue(selection.selectedIds())}
         label={continueLabel}
+        disabled={continueDisabled?.(selection.selected)}
       />
     </div>
   );
