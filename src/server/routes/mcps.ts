@@ -59,6 +59,7 @@ export function createMcpsRouter(accountMcps: AccountMcps): Router {
     if ('refused' in outcome) {
       if (outcome.refused === 'unknown-action') res.status(400).json(invalidSelection("This MCP's API has no such action."));
       else if (outcome.refused === 'changed-meanwhile') res.status(409).json(CHANGED_MEANWHILE);
+      else if (outcome.refused === 'unchanged') res.status(400).json(invalidSelection('This selection is already the active version.'));
       else res.status(404).json(UNKNOWN_MCP);
       return;
     }
