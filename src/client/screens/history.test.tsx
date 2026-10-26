@@ -237,4 +237,16 @@ describe('Restore', () => {
       greyed: restore.hasAttribute('disabled'),
     }).toEqual({ alert: 'Unknown version of this MCP.', status: null, greyed: false });
   });
+
+  it("spaces a refused restoration from the MCP's name as every page spaces its messages under the name (WAT-153)", async () => {
+    server.histories['notion-id'] = TWO_VERSIONS;
+    server.restoreRefusal = { status: 404, code: 'NOT_FOUND', message: 'Unknown version of this MCP.' };
+    const user = userEvent.setup();
+    render(<HistoryScreen mcpId="notion-id" />);
+    const restore = within(await screen.findByRole('listitem', { name: 'Version 1' })).getByRole('button', { name: 'Restore' });
+
+    await user.click(restore);
+
+    expect(await screen.findByRole('alert')).toHaveClass('mt-4');
+  });
 });
