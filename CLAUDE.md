@@ -243,3 +243,20 @@ _Leçons des audits, ajoutées par `sync` après validation. Chaque agent les ap
 - **Tant que rien n'est en ligne, le schéma tient en une seule migration** : on régénère
   la migration au lieu d'en empiler une par contrainte. Une fois déployé, on n'en réécrit
   plus aucune. *(PR #58)*
+- **`/api/auth/*` ne passe pas par `requireSameOrigin`** : ces routes (Better Auth) sont
+  montées avant la garde dans `app.ts`. Leur protection d'origine est celle de Better Auth,
+  forcée en production (WAT-112) mais éteinte ailleurs sous `NODE_ENV=test` ou `TEST`
+  posée — donc dans Vitest. Une route d'écriture neuve sous `/api/auth` se prouve contre une
+  origine étrangère avec `nodeEnv: 'production'` (`auth/origin-check.test.ts`). *(audit PR #65)*
+- **Un bouton qui déclenche une action définitive se grise pendant l'appel** (suppression,
+  envoi) : un double clic ne doit envoyer qu'une demande. *(audit PR #65)*
+- **Un `beforeAll` qui monte une base PGlite et un serveur porte un délai explicite de
+  30 s** : sous charge, les 10 s par défaut sautent et emportent tout le fichier.
+  *(audit PR #65)*
+
+## Idiomes d'interface
+
+_Remarques visuelles faites au merge, ajoutées par `sync` après validation._
+
+- **Une page hors du parcours en 3 étapes** (« My MCPs », suppression du compte)
+  **n'affiche pas les étapes en haut** : `Topbar` reçoit `current={null}`. *(merge PR #64)*

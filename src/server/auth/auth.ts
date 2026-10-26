@@ -24,6 +24,8 @@ export interface AuthOptions {
   microsoft?: OAuthApplication;
   /** Hands a sign-in code to its address; without it, no sign-in by code. */
   sendCode?: SendCode;
+  /** The NODE_ENV as declared. In production the origin check never switches off. */
+  nodeEnv?: string;
 }
 
 /** Delivers a sign-in code to an email address; rejects when it could not. */
@@ -41,7 +43,7 @@ const QUOTA_REFUSALS: Record<CodeQuota, { code: string; message: string }> = {
   ip: { code: 'too_many_codes_from_ip', message: 'Too many codes asked from your network. Try again in an hour.' },
 };
 
-export function createAuth({ database, secret, baseURL, google, microsoft, sendCode }: AuthOptions) {
+export function createAuth({ database, secret, baseURL, google, microsoft, sendCode, nodeEnv }: AuthOptions) {
   // Better Auth logs a failed send and answers success anyway: the requests
   // whose code did not leave are marked here, and answered as such below.
   const unsent = new WeakSet<object>();
@@ -51,7 +53,12 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
     baseURL,
     basePath: '/api/auth',
     // The check expects Better Auth's `account.password` column, deliberately absent.
-    advanced: { database: { validateSchema: false } },
+    advanced: {
+      database: { validateSchema: false },
+      // D16: `/api/auth/*` sits before `requireSameOrigin`; Better Auth's own origin check
+      // guards it, and switches off whenever TEST is set. Never in production.
+      ...(nodeEnv === 'production' && { disableOriginCheck: false }),
+    },
     // D8: seven days from the last visit, whenever it falls; every visit renews the session.
     session: { expiresIn: 7 * 24 * 60 * 60, updateAge: 0 },
     // D11: `POST /api/auth/delete-user` erases the account at once; the schema cascades

@@ -26,6 +26,7 @@ try {
     baseURL: authBaseUrl,
     ...oauthApplicationsFromEnv(process.env),
     sendCode: codeSenderFromEnv(process.env),
+    nodeEnv: process.env.NODE_ENV,
   });
 
   // The NODE_ENV as declared: the recette sign-in opens only where it says development or test.
