@@ -152,4 +152,17 @@ describe('"Restore"', () => {
       active: (await readMcpHistory(database, workspaceId, id))?.versions.map((version) => version.activeSince),
     }).toEqual({ outcome: { refused: 'unknown-version' }, active: ['2026-10-20T14:00:00.000Z', null] });
   });
+
+  it('restores the active version without changing anything, not even its "Active since" date (contract 12, D9)', async () => {
+    const { workspaceId } = await createTestAccount({ database, email: 'restore-active@example.com' });
+    const { id } = await store.put(NOTION, workspaceId, MONDAY);
+    await activateVersion2(id, TUESDAY);
+
+    const outcome = await restoreMcpVersion(database, workspaceId, id, 2, WEDNESDAY);
+
+    expect({
+      outcome,
+      active: (await readMcpHistory(database, workspaceId, id))?.versions.map((version) => version.activeSince),
+    }).toEqual({ outcome: { activeSince: '2026-10-20T14:00:00.000Z' }, active: ['2026-10-20T14:00:00.000Z', null] });
+  });
 });
