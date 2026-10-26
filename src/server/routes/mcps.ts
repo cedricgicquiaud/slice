@@ -2,7 +2,8 @@
  * The signed-in account's MCPs: `GET /api/mcps` lists those of its workspace
  * (D9), `GET /api/mcps/:id/versions` reads the versions of one (D8),
  * `POST /api/mcps/:id/versions/:number/restore` makes one of them active again
- * (D9), `DELETE /api/mcps/:id` deletes one at once (D10). Mounted under the
+ * (D9), `GET /api/mcps/:id/usage` reads what agents did with one over the
+ * last 30 days (D10), `DELETE /api/mcps/:id` deletes one at once (D10). Mounted under the
  * session guard, which sets `res.locals.workspaceId`: another workspace's
  * MCPs are out of reach.
  */
@@ -59,6 +60,15 @@ export function createMcpsRouter(accountMcps: AccountMcps): Router {
       return;
     }
     res.json(history);
+  });
+
+  router.get('/:id/usage', async (req, res) => {
+    const usage = await accountMcps.usage(res.locals.workspaceId, req.params.id);
+    if (!usage) {
+      res.status(404).json(UNKNOWN_MCP);
+      return;
+    }
+    res.json(usage);
   });
 
   router.get('/:id/selection', async (req, res) => {
