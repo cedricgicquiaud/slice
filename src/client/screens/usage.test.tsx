@@ -11,14 +11,12 @@ import { UsageScreen } from './usage';
  * an hour ahead of UTC on Oct 26, 2026. Set before any import, as the page's
  * formats read the time zone once.
  */
-const computerTimeZone = vi.hoisted(() => {
-  const before = process.env.TZ;
-  process.env.TZ = 'Europe/Paris';
-  return before;
+vi.hoisted(() => {
+  vi.stubEnv('TZ', 'Europe/Paris');
 });
 
 afterAll(() => {
-  process.env.TZ = computerTimeZone;
+  vi.unstubAllEnvs();
 });
 
 /**
