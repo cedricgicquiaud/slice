@@ -26,6 +26,23 @@ const NOTION: HostedMcpConfig = {
   ],
 };
 
+/** The Notes API: three actions in two groups; version 1 holds the reading and the creation of notes. */
+const NOTES: HostedMcpConfig = {
+  name: 'notes',
+  apiName: 'Notes API',
+  baseUrl: 'https://notes.example.com/v1',
+  upstreamAuth: { type: 'bearer' },
+  endpoints: [
+    { name: 'list_notes', label: 'List notes', description: 'List notes', method: 'GET', path: '/notes', params: [] },
+    { name: 'create_note', label: 'Create a note', description: 'Create a note', method: 'POST', path: '/notes', params: [] },
+  ],
+  apiActions: [
+    { name: 'list_notes', label: 'List notes', group: 'Notes', deprecated: false, method: 'GET', path: '/notes', params: [] },
+    { name: 'create_note', label: 'Create a note', group: 'Notes', deprecated: false, method: 'POST', path: '/notes', params: [] },
+    { name: 'empty_trash', label: 'Empty the trash', group: 'Trash', deprecated: false, method: 'DELETE', path: '/trash', params: [] },
+  ],
+};
+
 let testDb: TestDatabase;
 let database: Database;
 let store: HostedStore;
@@ -49,6 +66,24 @@ beforeAll(async () => {
   await new Promise<void>((r) => app.once('listening', r));
   baseUrl = `http://127.0.0.1:${(app.address() as AddressInfo).port}`;
 });
+
+/**
+ * Another server on the same database, for a block of tests: each keeps its own
+ * count of requests, so the files' tests stay under the rate limit of `/api/*`.
+ */
+async function startApp(): Promise<{ url: string; close(): Promise<void> }> {
+  const server = createApp({
+    nodeEnv: 'test',
+    hostedStore: store,
+    accountMcps: createAccountMcps(database),
+    auth: account.auth,
+  }).listen(0);
+  await new Promise<void>((r) => server.once('listening', r));
+  return {
+    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    close: () => new Promise<void>((r) => server.close(() => r())),
+  };
+}
 
 afterAll(async () => {
   await new Promise<void>((r) => (app ? app.close(() => r()) : r()));
@@ -157,5 +192,45 @@ describe('/api/mcps refusals inherited from the guards', () => {
     });
 
     expect({ status: res.status, kept: (await store.get(id)) !== undefined }).toEqual({ status: 403, kept: true });
+  });
+});
+
+describe('GET /api/mcps/:id/selection', () => {
+  let edit: { url: string; close(): Promise<void> };
+  beforeAll(async () => {
+    edit = await startApp();
+  });
+  afterAll(async () => {
+    await edit?.close();
+  });
+
+  it("answers every action of my MCP's API by group, and those of its active version (contract 3, D2)", async () => {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+
+    const res = await fetch(`${edit.url}/api/mcps/${id}/selection`, { headers: { cookie: account.cookie } });
+
+    expect({ status: res.status, body: await res.json() }).toEqual({
+      status: 200,
+      body: {
+        apiName: 'Notes API',
+        version: 1,
+        groups: [
+          {
+            tag: 'Notes',
+            endpoints: [
+              { id: 'GET /notes', method: 'GET', path: '/notes', label: 'List notes', deprecated: false, params: [] },
+              { id: 'POST /notes', method: 'POST', path: '/notes', label: 'Create a note', deprecated: false, params: [] },
+            ],
+          },
+          {
+            tag: 'Trash',
+            endpoints: [
+              { id: 'DELETE /trash', method: 'DELETE', path: '/trash', label: 'Empty the trash', deprecated: false, params: [] },
+            ],
+          },
+        ],
+        selectedIds: ['GET /notes', 'POST /notes'],
+      },
+    });
   });
 });
