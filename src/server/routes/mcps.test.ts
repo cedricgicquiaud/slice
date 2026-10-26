@@ -1,4 +1,5 @@
 // WAT-103/104/105 — `GET /api/mcps` and `DELETE /api/mcps/:id`: an account's own MCPs, never another's.
+// WAT-148/149 — `POST /api/mcps/:id/versions/:number/restore`: an existing version of one's own MCP, active again.
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -387,5 +388,61 @@ describe('POST /api/mcps/:id/versions', () => {
     const res = await save(id, { fromVersion: 1, selectedIds: ['GET /notes'] }, null);
 
     expect({ status: res.status, served: (await store.get(id))?.endpoints.length }).toEqual({ status: 401, served: 2 });
+  });
+});
+
+describe('POST /api/mcps/:id/versions/:number/restore', () => {
+  let edit: { url: string; close(): Promise<void> };
+  beforeAll(async () => {
+    edit = await startApp();
+  });
+  afterAll(async () => {
+    await edit?.close();
+  });
+
+  /** "Restore" on "History", as the signed-in account; without a session when `cookie` is `null`. */
+  function restore(id: string, number: number | string, cookie: string | null = account.cookie) {
+    return fetch(`${edit.url}/api/mcps/${id}/versions/${number}/restore`, {
+      method: 'POST',
+      headers: cookie ? { cookie } : {},
+    });
+  }
+
+  /** My MCP of the Notes API, its version 2 (the reading of notes only) active. */
+  async function notesAtVersion2(): Promise<string> {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+    await createAccountMcps(database).saveSelection(account.workspaceId, id, { fromVersion: 1, selectedIds: ['GET /notes'] });
+    return id;
+  }
+
+  it('makes version 1 active again at the same address: the agent lists its actions, My MCPs counts them, no version is made (contract 10, D11)', async () => {
+    const id = await notesAtVersion2();
+    const asked = Date.now();
+
+    const restored = await restore(id, 1);
+    const answered = Date.now();
+    const { number, activeSince } = (await restored.json()) as { number: number; activeSince: string };
+    const listed = (await (await fetch(`${edit.url}/api/mcps`, { headers: { cookie: account.cookie } })).json()) as {
+      mcps: Array<{ id: string; actionCount: number }>;
+    };
+    const history = (await (await fetch(`${edit.url}/api/mcps/${id}/versions`, { headers: { cookie: account.cookie } })).json()) as {
+      versions: Array<{ number: number }>;
+    };
+    const agent = new Client({ name: 'agent', version: '0.0.0' });
+    await agent.connect(new StreamableHTTPClientTransport(new URL(`${edit.url}/m/${id}`)));
+    const { tools } = await agent.listTools();
+    await agent.close();
+
+    expect({
+      restored: { status: restored.status, number, activeSinceNow: asked <= Date.parse(activeSince) && Date.parse(activeSince) <= answered },
+      actionCount: listed.mcps.find((mcp) => mcp.id === id)?.actionCount,
+      versions: history.versions.map((version) => version.number),
+      tools: tools.map((tool) => tool.name),
+    }).toEqual({
+      restored: { status: 200, number: 1, activeSinceNow: true },
+      actionCount: 2,
+      versions: [2, 1],
+      tools: ['list_notes', 'create_note'],
+    });
   });
 });
