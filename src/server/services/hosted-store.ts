@@ -47,31 +47,26 @@ export function createHostedStore(database: Database): HostedStore {
           workspaceId,
           apiName: config.apiName ?? null,
         });
-        if (config.apiActions?.length) {
-          await tx.insert(connectorApiActions).values(
-            config.apiActions.map(({ group, description, ...action }, position) => ({
-              connectorId: id,
-              position,
-              ...action,
-              groupName: group,
-              description: description ?? null,
-            }))
-          );
-        }
+        const apiActions = (config.apiActions ?? []).map(({ group, description, ...action }, position) => ({
+          connectorId: id,
+          position,
+          ...action,
+          groupName: group,
+          description: description ?? null,
+        }));
+        for (const batch of batches(apiActions)) await tx.insert(connectorApiActions).values(batch);
         // The selection becomes version 1, active from its creation (D4, D8).
         await tx.insert(connectorVersions).values({ connectorId: id, number: 1, createdAt: now, activeSince: now });
-        if (config.endpoints.length === 0) return;
-        await tx.insert(connectorActions).values(
-          config.endpoints.map((endpoint, position) => ({
-            connectorId: id,
-            version: 1,
-            position,
-            ...endpoint,
-            label: endpoint.label ?? endpoint.name,
-            // Older paths may carry a lowercase method; the column only takes uppercase.
-            method: endpoint.method.toUpperCase() as HttpMethod,
-          }))
-        );
+        const actions = config.endpoints.map((endpoint, position) => ({
+          connectorId: id,
+          version: 1,
+          position,
+          ...endpoint,
+          label: endpoint.label ?? endpoint.name,
+          // Older paths may carry a lowercase method; the column only takes uppercase.
+          method: endpoint.method.toUpperCase() as HttpMethod,
+        }));
+        for (const batch of batches(actions)) await tx.insert(connectorActions).values(batch);
       });
       return { id, createdAt: now.toISOString() };
     },
@@ -141,6 +136,20 @@ function upstreamAuthOf(connector: typeof connectors.$inferSelect): UpstreamAuth
   if (connector.upstreamTokenUrl !== null) auth.tokenUrl = connector.upstreamTokenUrl;
   if (connector.upstreamScopes !== null) auth.scopes = connector.upstreamScopes;
   return auth;
+}
+
+/**
+ * Rows per insert: PostgreSQL takes at most 65,535 values in one statement, and
+ * an action row holds 10 of them, so a large API is written in several inserts.
+ */
+const ROWS_PER_INSERT = 1_000;
+
+function batches<T>(rows: T[]): T[][] {
+  const result: T[][] = [];
+  for (let start = 0; start < rows.length; start += ROWS_PER_INSERT) {
+    result.push(rows.slice(start, start + ROWS_PER_INSERT));
+  }
+  return result;
 }
 
 /** 16 random bytes → 22 url-safe base64 chars (~128 bits of entropy). */
