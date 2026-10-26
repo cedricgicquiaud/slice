@@ -243,6 +243,7 @@ export class ParseError extends Error {
  * - 403 `FORBIDDEN` — a write sent from another site than SLICE's page (any `/api/*` route);
  *   also reserved, with 404 `NOT_FOUND`, for the account's own MCPs
  * - 400 `INVALID_SELECTION` — "Save" on "Edit actions" sent something else than a selection of the API's actions
+ * - 409 `CONFLICT` — "Save" started from a version that is no longer the active one
  */
 export type ApiErrorCode =
   | 'UNAUTHORIZED'
@@ -250,6 +251,7 @@ export type ApiErrorCode =
   | 'NOT_FOUND'
   | 'INVALID_SPEC'
   | 'INVALID_SELECTION'
+  | 'CONFLICT'
   | 'NO_ENDPOINT_SELECTED'
   | 'PAYLOAD_TOO_LARGE'
   | 'GENERATION_FAILED'
