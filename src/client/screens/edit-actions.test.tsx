@@ -82,4 +82,16 @@ describe('Edit actions', () => {
       counter: 'Selected2 / 3',
     });
   });
+
+  it("says the MCP is not found for an unknown id or another account's MCP, with no action to check (contract 19, D12)", async () => {
+    window.history.pushState({}, '', '/mcps/someone-elses-id/edit');
+
+    render(<App />);
+
+    expect({
+      notFound: (await screen.findByRole('heading', { name: 'MCP not found' })) !== null,
+      actions: screen.queryAllByRole('checkbox').length,
+      save: screen.queryByRole('button', { name: /save/i }),
+    }).toEqual({ notFound: true, actions: 0, save: null });
+  });
 });
