@@ -56,7 +56,7 @@ async function actionsTable(): Promise<string[][]> {
   const table = await screen.findByRole('table', { name: 'Actions' });
   return within(table)
     .getAllByRole('row')
-    .map((row) => within(row).getAllByRole(/^(columnheader|rowheader|cell)$/).map((cell) => cell.textContent ?? ''));
+    .map((row) => Array.from(row.children, (cell) => cell.textContent ?? ''));
 }
 
 /** The Notion MCP, its two actions never called in the last 30 days. */
