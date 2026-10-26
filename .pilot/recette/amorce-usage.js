@@ -5,7 +5,8 @@
 // éteinte hors production), puis l'appelle comme un agent, par de vrais `tools/call` :
 // « Read health » (GET /api/health, 200 sans session) est noté « Succeeded », « Read a missing
 // page » (GET /api/auth/no-such-page, que Better Auth refuse en 404) est noté « Failed (404) »,
-// « Create a note », hors de la version 1, est noté « Not available ».
+// « Create a note », hors de la version 1, est noté « Not available ». « List notes », cochée
+// dans la version 1 mais jamais appelée, s'affiche « Never called ».
 // Elle place enfin la page sur /mcps/<id>/usage. Une seule création de MCP par passage : le
 // serveur limite /api/* à 30 requêtes par minute.
 // L'outil de passe visuelle (--amorce) recharge ensuite la page : elle rouvre « Usage ».
@@ -29,6 +30,10 @@ paths:
       summary: Read a missing page
       responses: { '404': { description: not found } }
   /notes:
+    get:
+      operationId: listNotes
+      summary: List notes
+      responses: { '200': { description: ok } }
     post:
       operationId: createNote
       summary: Create a note
@@ -41,7 +46,7 @@ const host = await fetch('/api/host', {
   body: JSON.stringify({
     parsedSpec: {},
     rawSpec,
-    selectedIds: ['GET /health', 'GET /auth/no-such-page'],
+    selectedIds: ['GET /health', 'GET /auth/no-such-page', 'GET /notes'],
     config: {
       mcpName: 'recette-notes',
       baseUrl: api,
