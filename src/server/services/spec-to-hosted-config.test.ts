@@ -48,6 +48,12 @@ describe('specToHostedConfig', () => {
     expect(ep.params).toEqual([{ name: 'id', in: 'path', type: 'string', required: true }]);
   });
 
+  it('keeps the label of each selected action, as the selection screen shows it', () => {
+    const hosted = specToHostedConfig(SPEC, ['GET /things/{id}'], CONFIG);
+
+    expect(hosted.endpoints.map((e) => e.label)).toEqual(['Get a thing']);
+  });
+
   it("keeps the API's name as read in its description (D9)", () => {
     const hosted = specToHostedConfig(SPEC, ['GET /things'], CONFIG);
 
