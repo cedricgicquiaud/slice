@@ -1,9 +1,12 @@
 // WAT-112 — in production, Better Auth's origin check never switches off (D16, decision 26):
 // not even with TEST posed, which Better Auth reads as "under test, origin check off".
 // Vitest poses TEST=true: these tests run in exactly that situation.
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { createAuth, type SliceAuth } from './auth';
 import { createTestAccount, TEST_AUTH_SECRET, type TestAccount } from '../db/test-account';
+import { DATABASE_TEST_TIMEOUTS } from '../db/test-database';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 /** SLICE's own page. */
 const SLICE_PAGE = 'http://localhost:5173';

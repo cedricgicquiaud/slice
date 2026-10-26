@@ -1,7 +1,7 @@
 // WAT-65 — a real PostgreSQL outage, through a TCP relay the test cuts and restores.
 // PGlite never goes down on its own, so this runs against the server of
 // DATABASE_URL (CI storage step, or a local Docker PostgreSQL).
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createServer as createTcpServer, connect, type Server as TcpServer, type Socket } from 'node:net';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -9,8 +9,10 @@ import { createApp } from '../app';
 import { createHostedStore } from '../services/hosted-store';
 import { openDatabase } from './client';
 import { migrateDatabase } from './migrate';
-import { createTestDatabase } from './test-database';
+import { DATABASE_TEST_TIMEOUTS, createTestDatabase } from './test-database';
 import { createTestAccount } from './test-account';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 const SPEC = `openapi: 3.0.3
 info: { title: Demo, version: "1.0" }

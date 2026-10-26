@@ -7,6 +7,9 @@ import { createApp } from '../app';
 import { createAuth, type SendCode } from './auth';
 import { codeSenderFromEnv } from './email-code';
 import { createTestAccount, TEST_AUTH_SECRET, type TestAccount } from '../db/test-account';
+import { DATABASE_TEST_TIMEOUTS } from '../db/test-database';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 let account: TestAccount;
 let app: Express;

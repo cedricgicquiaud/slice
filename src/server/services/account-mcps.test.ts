@@ -1,12 +1,14 @@
 // WAT-103/104/105 — an account finds the MCPs of its workspace, and deletes one; never another account's.
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { createAccountMcps } from './account-mcps';
 import { createHostedStore, type HostedStore } from './hosted-store';
 import type { HostedEndpoint, HostedMcpConfig } from './hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
-import { createTestDatabase, type TestDatabase } from '../db/test-database';
+import { DATABASE_TEST_TIMEOUTS, createTestDatabase, type TestDatabase } from '../db/test-database';
 import { createTestAccount } from '../db/test-account';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 const MONDAY = new Date('2026-10-19T08:30:00.000Z');
 const TUESDAY = new Date('2026-10-20T14:00:00.000Z');

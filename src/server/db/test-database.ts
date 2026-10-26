@@ -11,6 +11,12 @@ import { join } from 'node:path';
 import pg from 'pg';
 import type { DatabaseConfig } from './client';
 
+/**
+ * Starting a database outgrows Vitest's 5 s default when the whole suite runs at once
+ * (WAT-113). Each test file that starts one calls `vi.setConfig(DATABASE_TEST_TIMEOUTS)`.
+ */
+export const DATABASE_TEST_TIMEOUTS = { testTimeout: 30_000, hookTimeout: 30_000 };
+
 export interface TestDatabase {
   config: DatabaseConfig;
   dispose(): Promise<void>;

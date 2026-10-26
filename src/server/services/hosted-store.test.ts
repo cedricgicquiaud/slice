@@ -5,8 +5,10 @@ import type { HttpMethod } from '@shared/types';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
-import { createTestDatabase, type TestDatabase } from '../db/test-database';
+import { DATABASE_TEST_TIMEOUTS, createTestDatabase, type TestDatabase } from '../db/test-database';
 import { createTestAccount } from '../db/test-account';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 const NOW = new Date('2026-10-24T09:00:00.000Z');
 

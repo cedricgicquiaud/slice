@@ -1,10 +1,13 @@
 // WAT-96 — nothing works without an account: the API refuses a call without a session.
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../app';
 import { createTestAccount, TEST_AUTH_SECRET, type TestAccount } from '../db/test-account';
 import { createAuth } from '../auth/auth';
 import { createHostedStore } from '../services/hosted-store';
+import { DATABASE_TEST_TIMEOUTS } from '../db/test-database';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 describe('session guard on the API', () => {
   let account: TestAccount;

@@ -1,9 +1,12 @@
 // WAT-111 — a session opened days ago deletes the account (decision 25, amends D11):
 // with no password to ask again, Better Auth's "fresh session" rule protects nothing.
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { createTestAccount, type TestAccount } from '../db/test-account';
 import { sessions, users } from '../db/schema';
+import { DATABASE_TEST_TIMEOUTS } from '../db/test-database';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 const SLICE_PAGE = 'http://localhost:5173';
 const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;

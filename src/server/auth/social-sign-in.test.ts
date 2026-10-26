@@ -6,6 +6,9 @@ import type { Express } from 'express';
 import { createApp } from '../app';
 import { createAuth } from './auth';
 import { createTestAccount, TEST_AUTH_SECRET, type TestAccount } from '../db/test-account';
+import { DATABASE_TEST_TIMEOUTS } from '../db/test-database';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 // `common` takes personal and work or school Microsoft accounts alike.

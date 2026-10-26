@@ -1,5 +1,5 @@
 // WAT-103/104/105 — `GET /api/mcps` and `DELETE /api/mcps/:id`: an account's own MCPs, never another's.
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createApp } from '../app';
@@ -8,8 +8,10 @@ import { createHostedStore, type HostedStore } from '../services/hosted-store';
 import type { HostedMcpConfig } from '../services/hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
-import { createTestDatabase, type TestDatabase } from '../db/test-database';
+import { DATABASE_TEST_TIMEOUTS, createTestDatabase, type TestDatabase } from '../db/test-database';
 import { createTestAccount, type TestAccount } from '../db/test-account';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 const CREATED = new Date('2026-10-21T10:15:00.000Z');
 

@@ -1,5 +1,5 @@
 // WAT-63 — migrations run before the server listens, once, even when two servers start together.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -7,7 +7,9 @@ import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { openDatabase } from './client';
 import { migrateDatabase } from './migrate';
-import { createTestDatabase } from './test-database';
+import { DATABASE_TEST_TIMEOUTS, createTestDatabase } from './test-database';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 const journal = JSON.parse(
   readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'migrations/meta/_journal.json'), 'utf-8')

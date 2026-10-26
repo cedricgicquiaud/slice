@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -12,6 +12,9 @@ import { openDatabase } from './db/client';
 import { migrateDatabase } from './db/migrate';
 import { createHostedStore } from './services/hosted-store';
 import { createTestAccount, TEST_AUTH_SECRET } from './db/test-account';
+import { DATABASE_TEST_TIMEOUTS } from './db/test-database';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 describe('Express app', () => {
   it('GET /api/health responds 200 with status ok', async () => {

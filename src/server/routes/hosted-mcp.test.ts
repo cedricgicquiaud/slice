@@ -10,10 +10,12 @@ import { createHostedStore, type HostedStore } from '../services/hosted-store';
 import type { HostedMcpConfig } from '../services/hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
-import { createTestDatabase, type TestDatabase } from '../db/test-database';
+import { DATABASE_TEST_TIMEOUTS, createTestDatabase, type TestDatabase } from '../db/test-database';
 import { createTestAccount, type TestAccount } from '../db/test-account';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 const SPEC = `openapi: 3.0.3
 info: { title: Demo, version: "1.0" }
