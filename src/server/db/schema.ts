@@ -1,6 +1,7 @@
 /**
  * The hosted connectors' tables (D3). A connector holds what the hosted runtime
- * needs to serve it; never an upstream key or token, never the API description.
+ * needs to serve it, its numbered versions and the full list of its API's
+ * actions (D1, D4); never an upstream key or token, never the API description.
  * Accounts, their sign-in methods and sessions follow Better Auth's model, minus
  * its password field: SLICE signs in without any password.
  * Migrations are generated from this file (see `drizzle.config.ts`).

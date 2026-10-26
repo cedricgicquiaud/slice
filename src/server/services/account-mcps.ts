@@ -20,7 +20,7 @@ export interface AccountMcps {
   /** The MCPs of `workspaceId`, newest first. */
   list(workspaceId: string): Promise<AccountMcp[]>;
   /**
-   * Delete the MCP `id` of `workspaceId`, with its actions, at once (D10).
+   * Delete the MCP `id` of `workspaceId`, with its versions and its list of actions, at once (D10).
    * `false` when `workspaceId` has no such MCP, whoever else owns it (contract 17).
    */
   delete(workspaceId: string, id: string): Promise<boolean>;
