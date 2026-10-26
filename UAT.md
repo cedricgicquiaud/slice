@@ -395,3 +395,97 @@ un MCP n'expire plus, son adresse ne répond jamais « expirée », et aucun net
 - [ ] Refus : chercher `SLICE_STORE_PATH` et `hosted.json` dans le dépôt (`git grep -n -e SLICE_STORE_PATH -e
   hosted.json`) : rien, hors l'historique `.workflow/` et le test qui vérifie
   que l'ancien fichier est ignoré (`src/server/index.test.ts`).
+
+## SLICE — Modifier un MCP, même adresse
+
+_Feature P-WAT-41. Une section par livraison, ajoutée par chaque PR._
+
+### Livraison 1 — Je vois l'historique de mon MCP
+
+**Préparer la recette**
+
+- Supprimer le dossier `data/` de la base de développement s'il existe : le schéma a changé (versions et liste complète
+  des actions), et la base est recréée au premier lancement.
+- Lancer `pnpm dev`, ouvrir http://localhost:5173 et se connecter avec une adresse A (code par e-mail ; sans clé
+  Resend, le code s'affiche dans le terminal de `pnpm dev`).
+- Créer un MCP hébergé (« Deploy to SLICE Cloud ») depuis le fichier `fixtures/uat-deprecated.yaml` du dépôt, en
+  cochant 2 actions et en laissant les autres décochées. Noter les libellés des 2 actions cochées et l'adresse affichée
+  à l'écran 4.
+- Raccourci : l'amorce `.pilot/recette/amorce-history.js`, collée dans la console du navigateur sur
+  http://localhost:5173, ouvre une session pour `recette@slice.local` et crée le MCP « Recette Notes » avec 2 actions
+  cochées sur 3 (« List notes », « Create a note » ; « Delete a note » reste décochée). Recharger ensuite la page :
+  elle s'ouvre sur l'historique de ce MCP.
+- La modification d'un MCP (« Edit actions », « Save ») arrive en livraison 2 : aujourd'hui, chaque MCP n'a que sa
+  version 1.
+
+**Un MCP créé garde toute la liste des actions de son API, et sa sélection devient sa version 1 (WAT-141)**
+
+- [ ] Sur « My MCPs » (http://localhost:5173/mcps), la ligne du MCP créé affiche « 2 actions » : le nombre d'actions
+  cochées, et non celui de toute l'API.
+- [ ] Brancher l'adresse du MCP dans un agent (Claude Desktop, snippet de l'écran 4), ou lister ses actions dans un
+  terminal :
+  `curl -s -X POST <adresse> -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'`
+  La réponse ne contient que les 2 actions cochées, jamais une action décochée.
+- [ ] Ouvrir « History » sur la ligne du MCP : une seule version, « Version 1 », avec « 2 actions », la date du jour
+  (« Created <date> ») et la marque « Active since <même date> ».
+- [ ] La liste complète des actions de l'API (cochées ou non, avec nom, libellé, groupe, description, mention
+  « deprecated », méthode, chemin et paramètres) est rangée sans se voir à l'écran : elle servira à « Edit actions »
+  en livraison 2. Preuve : le test automatique « keeps every action of the connector's API, in order, with what the
+  selection screen shows of it (D1) » (`src/server/services/hosted-store.test.ts`).
+- [ ] Une seule version est active par MCP : la base refuse une deuxième version active (test automatique « refuses a
+  second active version of a connector, never an inactive one (D4) », `src/server/db/schema.test.ts`). Quand une
+  autre version devient active, l'adresse ne sert plus que ses actions, et « My MCPs » ne compte plus que les siennes
+  (tests « serves the actions of its active version only (D4) », `src/server/routes/hosted-mcp.test.ts`, et « counts
+  the actions of the active version, not those of the others (D11) », `src/server/services/account-mcps.test.ts`).
+- [ ] Supprimer le MCP depuis « My MCPs » (« Delete », puis « Delete ») : il disparaît, avec ses versions et sa liste
+  d'actions (test « deletes the versions and the full list of actions of a deleted connector (contract 13) »). Supprimer
+  son compte (http://localhost:5173/account/delete) supprime aussi ses MCP, leurs versions et leurs listes (test
+  « deletes its workspace, its connectors, their versions and their lists of actions with it (D11, contract 13) »,
+  `src/server/db/schema.test.ts`).
+- [ ] Refus : aucune version, aucune liste d'actions ne garde de clé, de jeton ni le fichier de description d'API.
+  Preuve : le test « keeps no upstream key, no token and not the API description in the database, versions and lists
+  included (contract 24) » (`src/server/routes/hosted-mcp.test.ts`), qui crée un MCP avec un jeton et une clé, puis
+  fouille toutes les lignes rangées.
+- [ ] Le schéma tient toujours en une seule migration : le dossier `src/server/db/migrations/` ne contient que
+  `0000_init.sql` (et son dossier `meta/`).
+
+**J'ouvre « History » depuis « My MCPs », et recharger la page me le rend (WAT-142)**
+
+- [ ] Sur « My MCPs », chaque ligne montre un bouton « History » à côté de « Delete ».
+- [ ] Cliquer « History » : l'adresse devient http://localhost:5173/mcps/<identifiant>/history. L'écran montre en
+  haut le nom du MCP (le même que sur « My MCPs »), un lien « Back to My MCPs », et aucune étape 1-2-3.
+- [ ] Recharger la page (Cmd+R) : le même écran « History » revient, sur le même MCP.
+- [ ] Coller directement l'adresse http://localhost:5173/mcps/<identifiant>/history dans un nouvel onglet : l'écran
+  s'ouvre de même.
+- [ ] Chaque version montre son numéro (« Version 1 »), son nombre d'actions et sa date de création ; la version
+  active porte « Active since <date> », qui est sa date de création tant qu'aucune version n'a été restaurée.
+- [ ] Cliquer « Version 1 » : la liste des libellés de ses actions se déplie (par exemple « List notes » et « Create a
+  note » avec l'amorce). Recliquer la replie.
+- [ ] Les versions sont listées de la plus récente à la plus ancienne. Avec une seule version, cela ne se voit pas
+  encore à l'écran : preuve par les tests « lists its versions newest first, each with its actions, the active one
+  dated from its activation (D8) » (`src/server/services/mcp-versions.test.ts`) et « lists every version, newest
+  first, with its number, creation date and action count (contract 8) » (`src/client/screens/history.test.tsx`).
+- [ ] Cliquer « Back to My MCPs » : la page « My MCPs » revient.
+- [ ] Refus : ouvrir http://localhost:5173/mcps/nexistepas/history : l'écran affiche « MCP not found » et « There is
+  no MCP at this address in your account. », avec le lien « Back to My MCPs », et non un écran vide.
+
+**Refus : l'historique d'un autre compte reste introuvable, et rien sans connexion (WAT-143)**
+
+Préparer : se connecter avec une adresse B (en navigation privée) et copier la valeur du cookie
+`better-auth.session_token` (outils du navigateur, onglet Application ou Stockage, Cookies,
+`http://localhost:5173`). Prendre l'identifiant du MCP de l'adresse A : la fin de son adresse, après `/m/`.
+
+- [ ] Connecté avec l'adresse A, `curl -i http://localhost:3001/api/mcps/<identifiant>/versions -H 'Cookie:
+  better-auth.session_token=<valeur de A>'` affiche `HTTP/1.1 200` et les versions du MCP.
+- [ ] Refus : avec la session de B, `curl -i http://localhost:3001/api/mcps/<identifiant>/versions -H 'Cookie:
+  better-auth.session_token=<valeur de B>'` affiche `HTTP/1.1 404` et `{"code":"NOT_FOUND","message":"Unknown MCP
+  id."}`.
+- [ ] Refus : avec la session de B, la même commande sur un identifiant inventé (`.../api/mcps/nexistepas/versions`)
+  affiche exactement la même réponse : `HTTP/1.1 404` et `{"code":"NOT_FOUND","message":"Unknown MCP id."}`.
+- [ ] Refus : connecté avec l'adresse B, ouvrir http://localhost:5173/mcps/<identifiant de A>/history : l'écran
+  affiche « MCP not found », comme pour un MCP inconnu. Le MCP de A est toujours dans « My MCPs » de A.
+- [ ] Refus : sans session, `curl -i http://localhost:3001/api/mcps/<identifiant>/versions` affiche `HTTP/1.1 401` et
+  `{"code":"UNAUTHORIZED","message":"Sign in to continue."}`.
+- [ ] `docs/API.md` décrit `GET /api/mcps/:id/versions` (la réponse, ses champs, les refus 401, 404 et 503), la
+  configuration rangée par `POST /api/host` (liste complète et version 1) et le nombre d'actions de `GET /api/mcps`
+  (celui de la version active).
