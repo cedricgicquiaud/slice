@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import { readFileSync } from 'node:fs';
 import yauzl from 'yauzl';
@@ -15,6 +15,9 @@ afterAll(async () => {
   await account?.dispose();
 });
 import type { GenerateRequest, ParsedSpec, SliceConfig } from '@shared/types';
+import { DATABASE_TEST_TIMEOUTS } from '../db/test-database';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 /**
  * The route receives an already-parsed spec (the client uploaded + parsed

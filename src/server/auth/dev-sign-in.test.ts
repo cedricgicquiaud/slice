@@ -4,6 +4,9 @@ import { describe, it, expect, afterAll, afterEach, beforeAll, vi } from 'vitest
 import request from 'supertest';
 import { createApp } from '../app';
 import { createTestAccount, type TestAccount } from '../db/test-account';
+import { DATABASE_TEST_TIMEOUTS } from '../db/test-database';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 let account: TestAccount;
 

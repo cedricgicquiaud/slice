@@ -1,9 +1,12 @@
 // WAT-92 — only an unreachable database is an outage; any other storage error is a bug.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { sql } from 'drizzle-orm';
 import { isDatabaseUnreachable } from './errors';
+import { DATABASE_TEST_TIMEOUTS } from './test-database';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 function withCode(code: string, message = 'db error'): Error {
   return Object.assign(new Error(message), { code });

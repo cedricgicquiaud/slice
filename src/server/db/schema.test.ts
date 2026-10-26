@@ -1,9 +1,11 @@
 // WAT-62 — the two tables follow the feature's schema (D3).
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { sql, type SQL } from 'drizzle-orm';
 import { openDatabase, type Database } from './client';
 import { migrateDatabase } from './migrate';
-import { createTestDatabase, type TestDatabase } from './test-database';
+import { DATABASE_TEST_TIMEOUTS, createTestDatabase, type TestDatabase } from './test-database';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 let testDb: TestDatabase;
 let database: Database;

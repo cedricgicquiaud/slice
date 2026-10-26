@@ -5,6 +5,9 @@ import type { Express } from 'express';
 import { createApp } from '../app';
 import { openSession } from './open-session';
 import { createTestAccount, type TestAccount } from '../db/test-account';
+import { DATABASE_TEST_TIMEOUTS } from '../db/test-database';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 let account: TestAccount;
 let app: Express;

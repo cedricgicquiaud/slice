@@ -1,6 +1,6 @@
 // WAT-107 — once the account is deleted, nothing of it is left: its MCPs' addresses,
 // its sessions on every device, its MCPs at the next sign-in (contract 28, D11).
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
@@ -16,8 +16,10 @@ import { createAccountMcps } from './services/account-mcps';
 import { createHostedStore } from './services/hosted-store';
 import { openDatabase, type Database } from './db/client';
 import { migrateDatabase } from './db/migrate';
-import { createTestDatabase, type TestDatabase } from './db/test-database';
+import { DATABASE_TEST_TIMEOUTS, createTestDatabase, type TestDatabase } from './db/test-database';
 import { createTestAccount, TEST_AUTH_SECRET } from './db/test-account';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 const EMAIL = 'leaving@example.com';
 

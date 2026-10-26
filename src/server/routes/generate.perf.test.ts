@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import request from 'supertest';
@@ -16,6 +16,9 @@ afterAll(async () => {
   await account?.dispose();
 });
 import type { GenerateRequest, SliceConfig } from '@shared/types';
+import { DATABASE_TEST_TIMEOUTS } from '../db/test-database';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 const BASE_CONFIG: SliceConfig = {
   mcpName: 'perf-mcp',

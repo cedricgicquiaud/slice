@@ -250,9 +250,10 @@ _Leçons des audits, ajoutées par `sync` après validation. Chaque agent les ap
   origine étrangère avec `nodeEnv: 'production'` (`auth/origin-check.test.ts`). *(audit PR #65)*
 - **Un bouton qui déclenche une action définitive se grise pendant l'appel** (suppression,
   envoi) : un double clic ne doit envoyer qu'une demande. *(audit PR #65)*
-- **Un `beforeAll` qui monte une base PGlite et un serveur porte un délai explicite de
-  30 s** : sous charge, les 10 s par défaut sautent et emportent tout le fichier.
-  *(audit PR #65)*
+- **Un fichier de test qui démarre une base appelle `vi.setConfig(DATABASE_TEST_TIMEOUTS)`**
+  (30 s pour les tests et les hooks, `db/test-database.ts`) : sous charge, les 5 s par
+  défaut sautent au hasard. `db/test-timeouts.test.ts` refuse un fichier qui l'oublie.
+  *(audit PR #65, WAT-113)*
 
 ## Idiomes d'interface
 
