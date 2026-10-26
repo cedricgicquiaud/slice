@@ -178,4 +178,22 @@ describe('"Save"', () => {
       now: 1,
     });
   });
+
+  it('creates no version when the selection is the active version’s, whatever the order of its actions (contract 14, D5)', async () => {
+    const { workspaceId } = await createTestAccount({ database, email: 'unchanged@example.com' });
+    const { id } = await store.put(NOTES, workspaceId, MONDAY);
+
+    const outcome = await saveMcpSelection(
+      database,
+      workspaceId,
+      id,
+      { fromVersion: 1, selectedIds: ['POST /notes', 'GET /notes'] },
+      TUESDAY
+    );
+
+    expect({ outcome, now: (await readMcpSelection(database, workspaceId, id))?.version }).toEqual({
+      outcome: { refused: 'unchanged' },
+      now: 1,
+    });
+  });
 });
