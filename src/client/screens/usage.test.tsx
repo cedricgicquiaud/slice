@@ -204,6 +204,20 @@ describe('Usage by action', () => {
     }).toEqual({ marked: [false, false, true], figures: ['1', '0', '—', 'Oct 25, 2026, 09:30'] });
   });
 
+  it('keeps the average duration and the last call on one line, as the label may wrap (D11)', async () => {
+    server.usages['notes-id'] = NOTES_USED;
+
+    render(<UsageScreen mcpId="notes-id" />);
+
+    const table = await screen.findByRole('table', { name: 'Actions' });
+    const listNotes = within(table).getAllByRole('row')[1]!;
+    const [, , , averageDuration, lastCall] = Array.from(listNotes.children);
+    expect({
+      averageDuration: averageDuration?.classList.contains('whitespace-nowrap'),
+      lastCall: lastCall?.classList.contains('whitespace-nowrap'),
+    }).toEqual({ averageDuration: true, lastCall: true });
+  });
+
   it('says so under the title for a day on which 10,000 calls were noted (contract 19, D8)', async () => {
     server.usages['notes-id'] = { ...NOTES_USED, cappedDays: ['2026-10-24'] };
 
@@ -308,6 +322,32 @@ describe('Recent calls', () => {
 
     const [, ...calls] = await recentCallsTable();
     expect(calls.map((cells) => cells[3])).toEqual(['420 ms', '1.2 s']);
+  });
+
+  it("keeps a call's date and duration on one line, as its action may wrap (D11)", async () => {
+    server.usages['notes-id'] = {
+      ...NOTES_USED,
+      recentCalls: [
+        {
+          calledAt: '2026-10-26T13:02:00.000Z',
+          action: 'list_notes',
+          label: 'List notes',
+          result: { kind: 'succeeded' },
+          durationMs: 1_200,
+          version: 1,
+        },
+      ],
+    };
+
+    render(<UsageScreen mcpId="notes-id" />);
+
+    const table = await screen.findByRole('table', { name: 'Recent calls' });
+    const call = within(table).getAllByRole('row')[1]!;
+    const [date, , , duration] = Array.from(call.children);
+    expect({
+      date: date?.classList.contains('whitespace-nowrap'),
+      duration: duration?.classList.contains('whitespace-nowrap'),
+    }).toEqual({ date: true, duration: true });
   });
 
   it('says "No calls in the last 30 days." for an MCP without any call, every action "Never called" (contract 12, D10)', async () => {
