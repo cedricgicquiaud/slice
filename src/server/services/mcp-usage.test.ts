@@ -158,4 +158,15 @@ describe('the recent calls of an MCP', () => {
       },
     ]);
   });
+
+  it('are the 50 most recent, newest first: the 51st most recent is left out (contract 10, D10)', async () => {
+    const { id } = await store.put(NOTES, workspaceId, CREATED);
+    // Call n is made n hours ago and lasts n ms: written oldest first, as calls arrive.
+    const calls = Array.from({ length: 51 }, (_, n) => call('list_notes', n + 1, { kind: 'succeeded' }, n + 1));
+    await createMcpCalls(database).write(id, calls.reverse());
+
+    const usage = await readMcpUsage(database, workspaceId, id, NOW);
+
+    expect(usage?.recentCalls.map((recent) => recent.durationMs)).toEqual(Array.from({ length: 50 }, (_, n) => n + 1));
+  });
 });
