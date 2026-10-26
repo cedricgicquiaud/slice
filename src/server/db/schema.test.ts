@@ -38,8 +38,10 @@ describe('database schema (D3)', () => {
 
     expect(columns.map((c) => `${c.table_name}.${c.column_name} ${c.udt_name} ${c.is_nullable}`)).toEqual([
       'connector_actions.connector_id text NO',
+      'connector_actions.version int4 NO',
       'connector_actions.position int4 NO',
       'connector_actions.name text NO',
+      'connector_actions.label text NO',
       'connector_actions.description text NO',
       'connector_actions.method http_method NO',
       'connector_actions.path text NO',
@@ -58,6 +60,35 @@ describe('database schema (D3)', () => {
       'workspaces.owner_id text NO',
       'workspaces.created_at timestamptz NO',
     ]);
+  });
+
+  it("creates a connector's versions and the full list of its API's actions (D1, D4, D9)", async () => {
+    const columnsOf = async (table: string) =>
+      (
+        await rows<{ column_name: string; udt_name: string; is_nullable: string }>(
+          sql`select column_name, udt_name, is_nullable from information_schema.columns
+              where table_schema = 'public' and table_name = ${table} order by ordinal_position`
+        )
+      ).map((c) => `${c.column_name} ${c.udt_name} ${c.is_nullable}`);
+
+    expect({
+      versions: await columnsOf('connector_versions'),
+      apiActions: await columnsOf('connector_api_actions'),
+    }).toEqual({
+      versions: ['connector_id text NO', 'number int4 NO', 'created_at timestamptz NO', 'active_since timestamptz YES'],
+      apiActions: [
+        'connector_id text NO',
+        'position int4 NO',
+        'name text NO',
+        'label text NO',
+        'group_name text NO',
+        'description text YES',
+        'deprecated bool NO',
+        'method http_method NO',
+        'path text NO',
+        'params jsonb NO',
+      ],
+    });
   });
 
   function insertConnector(id: string, authType: string, headerName: string | null, tokenUrl: string | null) {
@@ -92,8 +123,8 @@ describe('database schema (D3)', () => {
 
   function insertAction(connectorId: string, position: number) {
     return rows(
-      sql`insert into connector_actions (connector_id, position, name, description, method, path, params)
-          values (${connectorId}, ${position}, 'ping', 'Ping', 'GET', '/ping', '[]'::jsonb)`
+      sql`insert into connector_actions (connector_id, version, position, name, label, description, method, path, params)
+          values (${connectorId}, 1, ${position}, 'ping', 'Ping', 'Ping', 'GET', '/ping', '[]'::jsonb)`
     );
   }
 
@@ -131,8 +162,8 @@ describe('deleting an account (WAT-101)', () => {
           values ('leaving-mcp', 'demo', 'https://api.example.com', 'none', now(), 'leaving-workspace')`
     );
     await rows(
-      sql`insert into connector_actions (connector_id, position, name, description, method, path, params)
-          values ('leaving-mcp', 0, 'ping', 'Ping', 'GET', '/ping', '[]'::jsonb)`
+      sql`insert into connector_actions (connector_id, version, position, name, label, description, method, path, params)
+          values ('leaving-mcp', 1, 0, 'ping', 'Ping', 'Ping', 'GET', '/ping', '[]'::jsonb)`
     );
 
     await rows(sql`delete from users where id = 'leaving'`);
