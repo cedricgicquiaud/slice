@@ -262,6 +262,14 @@ _Leçons des audits, ajoutées par `sync` après validation. Chaque agent les ap
 - **Une liste d'actions s'écrit en base par paquets de 1 000 lignes, ou en un seul
   `insert … select` quand les lignes viennent déjà de la base** : PostgreSQL refuse plus de
   65 535 paramètres par requête. *(audit PR #70 et #71)*
+- **Une course entre deux écritures se prouve sur PostgreSQL, et se joue plusieurs fois** : son
+  test va dans un fichier de l'étape « Storage tests (PostgreSQL) » de `ci.yml`. Sous PGlite
+  (une seule connexion), les deux écritures se suivent et le test passerait sans verrou.
+  *(audit PR #71 et #73)*
+- **Changer la version active d'un MCP se fait sous le verrou de son MCP** : une transaction
+  qui commence par `select … for update` sur `connectors`, comme « Save » (`mcp-selection.ts`)
+  et « Restore » (`mcp-versions.ts`). Sans lui, deux versions peuvent devenir actives.
+  *(audit PR #71 et #73)*
 
 ## Idiomes d'interface
 
@@ -272,3 +280,6 @@ _Remarques visuelles faites au merge, ajoutées par `sync` après validation._
 - **SLICE se conçoit pour l'ordinateur ; le téléphone n'est pas une cible.** Générer un MCP
   ne se fait pas au téléphone : la passe visuelle ne relève pas les défauts à 375 px.
   *(décision du 2026-10-26, merge PR #71)*
+- **Un message placé sous le titre d'une page** (confirmation ou refus) **a le même espacement
+  partout : `mt-4`**, comme « Version N restored » et « There is no MCP at this address ».
+  *(rétro P-WAT-41, WAT-153)*
