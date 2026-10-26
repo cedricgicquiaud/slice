@@ -140,7 +140,9 @@ export const connectors = pgTable(
 export const connectorVersions = pgTable(
   'connector_versions',
   {
-    connectorId: text('connector_id').notNull(),
+    connectorId: text('connector_id')
+      .notNull()
+      .references(() => connectors.id, { onDelete: 'cascade' }),
     number: integer('number').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     /** When the version last became the active one (D8, D9); null while it is not. */
@@ -172,7 +174,9 @@ export const connectorActions = pgTable(
 export const connectorApiActions = pgTable(
   'connector_api_actions',
   {
-    connectorId: text('connector_id').notNull(),
+    connectorId: text('connector_id')
+      .notNull()
+      .references(() => connectors.id, { onDelete: 'cascade' }),
     position: integer('position').notNull(),
     name: text('name').notNull(),
     label: text('label').notNull(),

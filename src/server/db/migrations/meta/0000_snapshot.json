@@ -1,5 +1,5 @@
 {
-  "id": "3e98560b-a5dd-4d36-9dfe-d1b5fdbc6244",
+  "id": "1aaf9eec-8523-4865-af26-af77479759e9",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -279,7 +279,21 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "connector_api_actions_connector_id_connectors_id_fk": {
+          "name": "connector_api_actions_connector_id_connectors_id_fk",
+          "tableFrom": "connector_api_actions",
+          "tableTo": "connectors",
+          "columnsFrom": [
+            "connector_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {
         "connector_api_actions_connector_id_position_pk": {
           "name": "connector_api_actions_connector_id_position_pk",
@@ -324,7 +338,21 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "connector_versions_connector_id_connectors_id_fk": {
+          "name": "connector_versions_connector_id_connectors_id_fk",
+          "tableFrom": "connector_versions",
+          "tableTo": "connectors",
+          "columnsFrom": [
+            "connector_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {
         "connector_versions_connector_id_number_pk": {
           "name": "connector_versions_connector_id_number_pk",
