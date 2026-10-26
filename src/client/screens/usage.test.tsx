@@ -52,4 +52,19 @@ describe('Usage', () => {
       steps: screen.queryByRole('navigation', { name: /steps/i }) !== null,
     }).toEqual({ name: true, back: '/mcps', steps: false });
   });
+
+  // The server answers another account's MCP exactly as an unknown one: one case for the page.
+  it("says the MCP is not found at the address of an unknown MCP or of another account's, spaced mt-4 under the title (contract 21)", async () => {
+    window.history.pushState({}, '', '/mcps/someone-elses-id/usage');
+
+    render(<App />);
+
+    const notFound = await screen.findByRole('heading', { name: 'MCP not found' });
+    const message = screen.getByText('There is no MCP at this address in your account.');
+    expect({
+      notFound: notFound !== null,
+      spaced: message.classList.contains('mt-4'),
+      back: screen.getByRole('link', { name: 'Back to My MCPs' }).getAttribute('href'),
+    }).toEqual({ notFound: true, spaced: true, back: '/mcps' });
+  });
 });
