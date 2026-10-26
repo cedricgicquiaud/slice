@@ -1,4 +1,4 @@
-import type { EndpointGroup } from '@shared/types';
+import type { EndpointGroup, McpSelectionChange } from '@shared/types';
 import { ApiError, type ApiErrorBody } from './api';
 import { refreshSession } from './auth-client';
 
@@ -65,6 +65,18 @@ export async function getMcpSelection(id: string): Promise<McpSelection> {
   const res = await fetch(`/api/mcps/${id}/selection`);
   if (!res.ok) await throwRefusal(res);
   return (await res.json()) as McpSelection;
+}
+
+/** Save a new selection of one of the account's MCPs as its next version (D4); returns its number. */
+export async function saveMcpSelection(id: string, change: McpSelectionChange): Promise<number> {
+  const res = await fetch(`/api/mcps/${id}/versions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(change),
+  });
+  if (!res.ok) await throwRefusal(res);
+  const { number } = (await res.json()) as { number: number };
+  return number;
 }
 
 /** Delete one of the account's MCPs, at once (D10). */
