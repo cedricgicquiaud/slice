@@ -1,5 +1,6 @@
 // WAT-159 — "Usage", at /mcps/<id>/usage: opened from My MCPs, reopened by a reload.
 // WAT-160 — by action, the calls, the successes, the average duration and the last call of the last 30 days.
+// WAT-161 — the 50 most recent calls, newest first.
 import { describe, it, expect, vi, afterEach, afterAll } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import App from '../App';
@@ -184,5 +185,47 @@ describe('Usage by action', () => {
       '10,000 calls reached on Oct 24, 2026: later calls that day are not counted.'
     );
     expect(message).toHaveClass('mt-4');
+  });
+});
+
+describe('Recent calls', () => {
+  /** The text of each cell of each row of the table of recent calls, its header row first. */
+  async function recentCallsTable(): Promise<string[][]> {
+    const table = await screen.findByRole('table', { name: 'Recent calls' });
+    return within(table)
+      .getAllByRole('row')
+      .map((row) => Array.from(row.children, (cell) => cell.textContent ?? ''));
+  }
+
+  it('shows each call with its date and time, its action, its result, its duration and its version, as the server lists them (contract 1, 10, D10)', async () => {
+    server.usages['notes-id'] = {
+      ...NOTES_USED,
+      recentCalls: [
+        {
+          calledAt: '2026-10-26T13:02:00.000Z',
+          action: 'list_notes',
+          label: 'List notes',
+          result: { kind: 'succeeded' },
+          durationMs: 420,
+          version: 2,
+        },
+        {
+          calledAt: '2026-10-26T09:45:00.000Z',
+          action: 'create_note',
+          label: 'Create a note',
+          result: { kind: 'failed', status: 404 },
+          durationMs: 87,
+          version: 1,
+        },
+      ],
+    };
+
+    render(<UsageScreen mcpId="notes-id" />);
+
+    expect(await recentCallsTable()).toEqual([
+      ['Date', 'Action', 'Result', 'Duration', 'Version'],
+      ['Oct 26, 2026, 14:02', 'List notes', 'Succeeded', '420 ms', '2'],
+      ['Oct 26, 2026, 10:45', 'Create a note', 'Failed (404)', '87 ms', '1'],
+    ]);
   });
 });
