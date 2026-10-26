@@ -77,8 +77,11 @@ function refusesValues(message: JSONRPCMessage): message is JSONRPCResultRespons
   return isError === true && typeof text === 'string' && text.startsWith(`MCP error ${ErrorCode.InvalidParams}:`);
 }
 
-/** The action calls of a request, single message or batch, each with what it is told once handled. */
-type NotedCalls = Map<string | number, (result: CallResult) => void>;
+/**
+ * Tells the action call at `position` among the request's action calls (single message or batch)
+ * what became of it. By position, never by JSON-RPC id: two calls of a batch may share one.
+ */
+type TellCall = (position: number, result: CallResult) => void;
 
 /**
  * Note each action call of the request once its result is known and the
@@ -92,19 +95,19 @@ function noteActionCalls(
   arrival: { calledAt: Date; startedAt: number },
   body: unknown,
   responded: Promise<number>
-): NotedCalls {
-  const noted: NotedCalls = new Map();
-  const notes = (Array.isArray(body) ? body : [body]).flatMap((message) => {
-    const call = actionCall(message);
-    if (!call) return [];
-    return new Promise<CallNote>((resolve) => {
-      noted.set(call.id, (result) => {
-        noted.delete(call.id);
-        const durationMs = Math.round(performance.now() - arrival.startedAt);
-        resolve({ action: call.name, version, calledAt: arrival.calledAt, result, durationMs });
-      });
-    });
-  });
+): TellCall {
+  const noted = new Map<number, (result: CallResult) => void>();
+  const actionCalls = (Array.isArray(body) ? body : [body]).flatMap((message) => actionCall(message) ?? []);
+  const notes = actionCalls.map(
+    (call, position) =>
+      new Promise<CallNote>((resolve) => {
+        noted.set(position, (result) => {
+          noted.delete(position);
+          const durationMs = Math.round(performance.now() - arrival.startedAt);
+          resolve({ action: call.name, version, calledAt: arrival.calledAt, result, durationMs });
+        });
+      })
+  );
   // A call still untold when the request ends on an error status never reached the engine:
   // the MCP protocol refused the request (4xx), or SLICE itself cut it short (5xx) (D4).
   void responded.then((status) => {
@@ -121,7 +124,7 @@ function noteActionCalls(
         console.error('[hosted-mcp] noting calls failed:', err instanceof Error ? err.message : String(err));
       });
   }
-  return noted;
+  return (position, result) => noted.get(position)?.(result);
 }
 
 export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
@@ -147,11 +150,10 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
       res.status(404).json({ error: 'Unknown MCP id.' });
       return;
     }
-    const noted =
+    const tellCall =
       options.calls && config.activeVersion !== undefined
         ? noteActionCalls(options.calls, req.params.id, config.activeVersion, arrival, req.body, responded)
         : undefined;
-    const onActionResult = (requestId: string | number, result: CallResult) => noted?.get(requestId)?.(result);
 
     const served = new Set(config.endpoints.map((endpoint) => endpoint.name));
     const server = buildHostedMcpServer(config, {
@@ -165,12 +167,19 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
 
     try {
       await server.connect(transport);
+      const authorization = req.headers.authorization ?? '';
       // An agent connected before a "Save" may still call an action the active version lacks (D7),
       // alone or in a batch: it is told to start over, and the API is never called.
       const deliver = transport.onmessage;
+      // The SDK hands over the request's messages one by one, in their order: the n-th action call is at position n.
+      let delivered = 0;
       transport.onmessage = (message, extra) => {
         const call = actionCall(message);
-        if (!call || served.has(call.name)) return deliver?.(message, extra);
+        if (!call) return deliver?.(message, extra);
+        const position = delivered++;
+        const onActionResult = (_requestId: string | number, result: CallResult) => tellCall?.(position, result);
+        // The engine, and the SDK's answer, tell this call's result through the context it runs in.
+        if (served.has(call.name)) return relayStore.run({ authorization, onActionResult }, () => deliver?.(message, extra));
         onActionResult(call.id, { kind: 'not_available' });
         transport
           .send({ jsonrpc: '2.0', id: call.id, result: { content: [{ type: 'text', text: ACTION_GONE }], isError: true } })
@@ -182,11 +191,12 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
       // A call whose values the SDK refuses never reaches the engine: only its response tells.
       const send = transport.send.bind(transport);
       transport.send = (message, sendOptions) => {
-        if (refusesValues(message) && message.id !== undefined) onActionResult(message.id, { kind: 'invalid_request' });
+        if (refusesValues(message) && message.id !== undefined) {
+          relayStore.getStore()?.onActionResult?.(message.id, { kind: 'invalid_request' });
+        }
         return send(message, sendOptions);
       };
-      const authorization = req.headers.authorization ?? '';
-      await relayStore.run({ authorization, onActionResult }, async () => {
+      await relayStore.run({ authorization }, async () => {
         await transport.handleRequest(req, res, req.body);
       });
     } catch (err) {
