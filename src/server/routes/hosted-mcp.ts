@@ -104,7 +104,13 @@ function noteActionCalls(
     });
   });
   if (notes.length > 0) {
-    void Promise.all([responded, ...notes]).then(([, ...written]) => calls.write(connectorId, written));
+    Promise.all([responded, ...notes])
+      .then(([, ...written]) => calls.write(connectorId, written))
+      .catch((err: unknown) => {
+        // Whatever the reason (outage, constraint, bug), never an error for the agent: the log only.
+        // eslint-disable-next-line no-console
+        console.error('[hosted-mcp] noting calls failed:', err instanceof Error ? err.message : String(err));
+      });
   }
   return noted;
 }
