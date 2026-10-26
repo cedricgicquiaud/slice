@@ -293,4 +293,20 @@ describe('POST /api/mcps/:id/versions', () => {
       tools: ['list_notes', 'create_note', 'empty_trash'],
     });
   });
+
+  it.each([
+    ['a name', { mcpName: 'notes-v2' }],
+    ["an API's address", { baseUrl: 'https://evil.example.com' }],
+    ['an upstream access', { upstreamAuth: { type: 'none' } }],
+  ])('refuses a change holding %s, and saves nothing, not even the selection (contract 17, D3)', async (_what, extra) => {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+
+    const res = await save(id, { fromVersion: 1, selectedIds: ['GET /notes'], ...extra });
+
+    expect({ status: res.status, body: await res.json(), served: (await store.get(id))?.endpoints.length }).toEqual({
+      status: 400,
+      body: { code: 'INVALID_SELECTION', message: 'Only the selection of actions can be changed.' },
+      served: 2,
+    });
+  });
 });
