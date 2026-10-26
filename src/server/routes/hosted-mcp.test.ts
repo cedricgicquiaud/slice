@@ -59,6 +59,11 @@ beforeAll(async () => {
   upstream = createServer(async (req, res) => {
     received.push({ url: req.url ?? '', auth: req.headers.authorization, apiKey: req.headers['x-api-key'] as string | undefined });
     await beforeAnswer();
+    if (req.url === '/things/garbled') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('{"ok": tru');
+      return;
+    }
     if (req.url === '/things/echo') {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ body: 'API-RESPONSE-BODY' }));
@@ -429,6 +434,21 @@ describe('the note of an action call that reaches the API', () => {
 
     await vi.waitFor(async () =>
       expect((await calls.of(id)).map((note) => note.result)).toEqual([{ kind: 'slice_error' }])
+    );
+  });
+
+  it('is "SLICE error" when the API answers a 2xx whose JSON body cannot be read, and the agent reads an error (D4)', async () => {
+    const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`, 'TOKEN');
+    const answer = await agent.callTool({ name: 'delete_thing', arguments: { id: 'garbled' } });
+    await agent.close();
+
+    await vi.waitFor(async () =>
+      expect({ agentError: answer.isError, results: (await calls.of(id)).map((note) => note.result) }).toEqual({
+        agentError: true,
+        results: [{ kind: 'slice_error' }],
+      })
     );
   });
 
