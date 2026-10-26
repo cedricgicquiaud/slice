@@ -94,7 +94,9 @@ function noteActionCalls(
   version: number,
   arrival: { calledAt: Date; startedAt: number },
   body: unknown,
-  responded: Promise<number>
+  responded: Promise<number>,
+  /** Once SLICE is done with the request: how many of its action calls the engine was handed. */
+  handled: Promise<number>
 ): TellCall {
   const noted = new Map<number, (result: CallResult) => void>();
   const actionCalls = (Array.isArray(body) ? body : [body]).flatMap((message) => actionCall(message) ?? []);
@@ -114,6 +116,11 @@ function noteActionCalls(
     if (status < 400) return;
     const result: CallResult = { kind: status >= 500 ? 'slice_error' : 'invalid_request' };
     for (const tell of [...noted.values()]) tell(result);
+  });
+  // A call SLICE never handed to its engine, on a request ending without an error status, met an
+  // error of SLICE (D4). A call the engine has is left to it: the agent may leave before its result.
+  void Promise.all([responded, handled]).then(([, delivered]) => {
+    for (const [position, tell] of [...noted]) if (position >= delivered) tell({ kind: 'slice_error' });
   });
   if (notes.length > 0) {
     Promise.all([responded, ...notes])
@@ -150,9 +157,13 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
       res.status(404).json({ error: 'Unknown MCP id.' });
       return;
     }
+    // The SDK hands over the request's messages one by one, in their order: the n-th action call is at position n.
+    let delivered = 0;
+    let settle: (delivered: number) => void = () => {};
+    const handled = new Promise<number>((resolve) => (settle = resolve));
     const tellCall =
       options.calls && config.activeVersion !== undefined
-        ? noteActionCalls(options.calls, req.params.id, config.activeVersion, arrival, req.body, responded)
+        ? noteActionCalls(options.calls, req.params.id, config.activeVersion, arrival, req.body, responded, handled)
         : undefined;
 
     const served = new Set(config.endpoints.map((endpoint) => endpoint.name));
@@ -171,8 +182,6 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
       // An agent connected before a "Save" may still call an action the active version lacks (D7),
       // alone or in a batch: it is told to start over, and the API is never called.
       const deliver = transport.onmessage;
-      // The SDK hands over the request's messages one by one, in their order: the n-th action call is at position n.
-      let delivered = 0;
       transport.onmessage = (message, extra) => {
         const call = actionCall(message);
         if (!call) return deliver?.(message, extra);
@@ -203,6 +212,8 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
       // eslint-disable-next-line no-console
       console.error('[hosted-mcp] request failed:', err instanceof Error ? err.stack : err);
       if (!res.headersSent) res.status(500).json({ error: 'Internal error.' });
+    } finally {
+      settle(delivered);
     }
   });
 
