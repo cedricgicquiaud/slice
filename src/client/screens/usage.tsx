@@ -130,10 +130,10 @@ function ActionsTable({ actions }: { actions: ActionUsage[] }) {
             <>
               <td className="px-4 py-2 text-right tabular-nums">{action.calls}</td>
               <td className="px-4 py-2 text-right tabular-nums">{action.succeeded}</td>
-              <td className="px-4 py-2 text-right tabular-nums">
+              <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums">
                 {action.averageDurationMs === null ? '—' : durationOf(action.averageDurationMs)}
               </td>
-              <td className="px-4 py-2 text-muted-foreground">
+              <td className="whitespace-nowrap px-4 py-2 text-muted-foreground">
                 {action.lastCalledAt && CALLED.format(new Date(action.lastCalledAt))}
               </td>
             </>
@@ -160,10 +160,10 @@ function RecentCallsTable({ calls }: { calls: RecentCall[] }) {
     >
       {calls.map((call, position) => (
         <tr key={position} className="border-t border-border">
-          <td className="px-4 py-2 text-muted-foreground">{CALLED.format(new Date(call.calledAt))}</td>
+          <td className="whitespace-nowrap px-4 py-2 text-muted-foreground">{CALLED.format(new Date(call.calledAt))}</td>
           <td className="px-4 py-2 text-foreground">{call.label}</td>
           <td className="px-4 py-2 text-foreground">{resultOf(call.result)}</td>
-          <td className="px-4 py-2 text-right tabular-nums">{durationOf(call.durationMs)}</td>
+          <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums">{durationOf(call.durationMs)}</td>
           <td className="px-4 py-2 text-right tabular-nums">{call.version}</td>
         </tr>
       ))}
