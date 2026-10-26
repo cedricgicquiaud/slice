@@ -16,13 +16,20 @@ export function EditActionsScreen({ mcpId }: { mcpId: string }) {
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAs, setSavedAs] = useState<number | null>(null);
+  // "Save" stays greyed during the call: a double click makes one version only.
+  const [saving, setSaving] = useState(false);
 
   async function handleSave(selectedIds: string[]) {
-    if (!selection) return;
-    const number = await saveMcpSelection(mcpId, { fromVersion: selection.version, selectedIds });
-    setSavedAs(number);
-    // The saved selection is the active version now: the next "Save" starts from it.
-    setSelection({ ...selection, version: number, selectedIds });
+    if (!selection || saving) return;
+    setSaving(true);
+    try {
+      const number = await saveMcpSelection(mcpId, { fromVersion: selection.version, selectedIds });
+      setSavedAs(number);
+      // The saved selection is the active version now: the next "Save" starts from it.
+      setSelection({ ...selection, version: number, selectedIds });
+    } finally {
+      setSaving(false);
+    }
   }
 
   const active = useMemo(() => new Set(selection?.selectedIds), [selection]);
@@ -70,7 +77,9 @@ export function EditActionsScreen({ mcpId }: { mcpId: string }) {
           initialSelectedIds={selection.selectedIds}
           continueLabel="Save"
           // Nothing to save while the selection is the active version's (D5).
-          continueDisabled={(selected) => selected.size === active.size && [...selected].every((id) => active.has(id))}
+          continueDisabled={(selected) =>
+            saving || (selected.size === active.size && [...selected].every((id) => active.has(id)))
+          }
           onContinue={(selectedIds) => void handleSave(selectedIds)}
         />
       )}
