@@ -10,7 +10,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { spawn, type ChildProcess } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { startTestProcess, stopTestProcess } from '../test-processes';
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import { generateMcp } from './mcp-generator';
 import type { GenerateRequest, GeneratedFile, ParsedSpec } from '@shared/types';
@@ -153,13 +154,13 @@ afterAll(async () => {
 
 interface RunningServer {
   port: number;
-  stop: () => void;
+  stop: () => Promise<void>;
 }
 
 async function startServer(extraEnv: Record<string, string> = {}): Promise<RunningServer> {
   const port = await freePort();
   const tsx = join(process.cwd(), 'node_modules', '.bin', 'tsx');
-  const child: ChildProcess = spawn(tsx, ['src/index.ts'], {
+  const child: ChildProcess = startTestProcess(tsx, ['src/index.ts'], {
     cwd: dir,
     env: {
       ...process.env,
@@ -182,8 +183,11 @@ async function startServer(extraEnv: Record<string, string> = {}): Promise<Runni
       }
     });
     child.on('exit', (code) => reject(new Error(`server exited early (${code})`)));
+  }).catch(async (err: unknown) => {
+    await stopTestProcess(child, 'SIGKILL');
+    throw err;
   });
-  return { port, stop: () => child.kill('SIGKILL') };
+  return { port, stop: () => stopTestProcess(child, 'SIGKILL') };
 }
 
 async function callTool(port: number, authHeader: string = `Bearer ${SERVER_TOKEN}`): Promise<void> {
@@ -227,7 +231,7 @@ describe('generated MCP — oauth2 client_credentials runtime (env / self-host)'
     try {
       await callTool(srv.port);
     } finally {
-      srv.stop();
+      await srv.stop();
     }
     expect(tokenHits.length).toBeGreaterThanOrEqual(1);
     const hit = tokenHits[0]!;
@@ -246,7 +250,7 @@ describe('generated MCP — oauth2 client_credentials runtime (env / self-host)'
     try {
       await callTool(srv.port);
     } finally {
-      srv.stop();
+      await srv.stop();
     }
     expect(upstreamAuthSeen.at(-1)).toBe(`Bearer ${ACCESS_TOKEN}`);
   }, 30_000);
@@ -258,7 +262,7 @@ describe('generated MCP — oauth2 client_credentials runtime (env / self-host)'
     try {
       await callToolTwice(srv.port);
     } finally {
-      srv.stop();
+      await srv.stop();
     }
     expect(tokenHits.length).toBe(1);
 
@@ -269,7 +273,7 @@ describe('generated MCP — oauth2 client_credentials runtime (env / self-host)'
     try {
       await callToolTwice(srv.port);
     } finally {
-      srv.stop();
+      await srv.stop();
     }
     expect(tokenHits.length).toBe(2);
 
@@ -280,7 +284,7 @@ describe('generated MCP — oauth2 client_credentials runtime (env / self-host)'
     try {
       await callToolTwice(srv.port);
     } finally {
-      srv.stop();
+      await srv.stop();
     }
     expect(tokenHits.length).toBe(1);
   }, 60_000);
@@ -292,7 +296,7 @@ describe('generated MCP — oauth2 client_credentials runtime (env / self-host)'
     try {
       await callTool(srv.port); // should succeed after one token refetch + replay
     } finally {
-      srv.stop();
+      await srv.stop();
     }
     // One fetch for the initial call + one after invalidation on the 401.
     expect(tokenHits.length).toBe(2);
@@ -313,7 +317,7 @@ describe('generated MCP — oauth2 client_credentials runtime (env / self-host)'
     try {
       await callTool(srv.port);
     } finally {
-      srv.stop();
+      await srv.stop();
     }
     expect(tokenHits.length).toBeGreaterThanOrEqual(1);
     expect(upstreamAuthSeen.length).toBe(0);
@@ -325,7 +329,7 @@ describe('generated MCP — oauth2 client_credentials runtime (env / self-host)'
     try {
       await callTool(srv.port);
     } finally {
-      srv.stop();
+      await srv.stop();
     }
     expect(upstreamAuthSeen.length).toBe(0);
   }, 30_000);
@@ -336,7 +340,7 @@ describe('generated MCP — oauth2 client_credentials runtime (env / self-host)'
     try {
       await callTool(srv.port, 'Bearer USER_PROVIDED_TOKEN');
     } finally {
-      srv.stop();
+      await srv.stop();
     }
     expect(upstreamAuthSeen.at(-1)).toBe('Bearer USER_PROVIDED_TOKEN');
     expect(tokenHits.length).toBe(0);

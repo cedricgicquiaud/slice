@@ -1,7 +1,6 @@
 // WAT-107 — once the account is deleted, nothing of it is left: its MCPs' addresses,
 // its sessions on every device, its MCPs at the next sign-in (contract 28, D11).
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -18,6 +17,7 @@ import { openDatabase, type Database } from './db/client';
 import { migrateDatabase } from './db/migrate';
 import { DATABASE_TEST_TIMEOUTS, createTestDatabase, type TestDatabase } from './db/test-database';
 import { createTestAccount, TEST_AUTH_SECRET } from './db/test-account';
+import { startTestProcess, stopTestProcess } from './test-processes';
 
 vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
@@ -241,7 +241,7 @@ async function startServer(cwd: string, env: Record<string, string>) {
   const port = await freePort();
   // Vitest's TEST=true would also tell Better Auth it runs under test, origin check off.
   const { DATABASE_URL: _database, TEST: _test, VITEST: _vitest, ...inherited } = process.env;
-  const child = spawn(
+  const child = startTestProcess(
     path.join(cwd, 'node_modules/.bin/tsx'),
     ['--tsconfig', path.join(cwd, 'tsconfig.server.json'), path.join(cwd, 'src/server/index.ts')],
     {
@@ -251,15 +251,10 @@ async function startServer(cwd: string, env: Record<string, string>) {
     }
   );
   let output = '';
-  child.stdout.on('data', (chunk) => (output += chunk));
-  child.stderr.on('data', (chunk) => (output += chunk));
+  child.stdout!.on('data', (chunk) => (output += chunk));
+  child.stderr!.on('data', (chunk) => (output += chunk));
   const baseUrl = `http://127.0.0.1:${port}`;
-  const stop = () =>
-    new Promise<void>((r) => {
-      if (child.exitCode !== null) return r();
-      child.once('exit', () => r());
-      child.kill('SIGTERM');
-    });
+  const stop = () => stopTestProcess(child);
   for (let attempt = 0; attempt < 150; attempt++) {
     if (child.exitCode !== null) throw new Error(`server exited (${child.exitCode}):\n${output}`);
     try {

@@ -7,7 +7,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { spawn, type ChildProcess } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { startTestProcess, stopTestProcess } from '../test-processes';
 import { createServer, type Server } from 'node:http';
 import { generateMcp } from './mcp-generator';
 import type { GenerateRequest, ParsedSpec } from '@shared/types';
@@ -108,10 +109,10 @@ afterAll(async () => {
 
 // The generated server uses a single shared transport (one session at a time),
 // so each scenario gets a fresh server process.
-async function startServer(): Promise<{ port: number; stop: () => void }> {
+async function startServer(): Promise<{ port: number; stop: () => Promise<void> }> {
   const port = await freePort();
   const tsx = join(process.cwd(), 'node_modules', '.bin', 'tsx');
-  const child: ChildProcess = spawn(tsx, ['src/index.ts'], {
+  const child: ChildProcess = startTestProcess(tsx, ['src/index.ts'], {
     cwd: dir,
     env: {
       ...process.env,
@@ -130,8 +131,11 @@ async function startServer(): Promise<{ port: number; stop: () => void }> {
       }
     });
     child.on('exit', (code) => reject(new Error(`server exited early (${code})`)));
+  }).catch(async (err: unknown) => {
+    await stopTestProcess(child, 'SIGKILL');
+    throw err;
   });
-  return { port, stop: () => child.kill('SIGKILL') };
+  return { port, stop: () => stopTestProcess(child, 'SIGKILL') };
 }
 
 async function callTool(port: number, authHeader?: string): Promise<void> {
@@ -161,7 +165,7 @@ describe('generated MCP — relay mode runtime (RC2.6)', () => {
     try {
       await callTool(srv.port, 'Bearer USERSECRET123');
     } finally {
-      srv.stop();
+      await srv.stop();
     }
     expect(received.at(-1)?.[UPSTREAM_HEADER]).toBe('USERSECRET123');
   }, 30_000);
@@ -172,7 +176,7 @@ describe('generated MCP — relay mode runtime (RC2.6)', () => {
     try {
       await callTool(srv.port, undefined);
     } finally {
-      srv.stop();
+      await srv.stop();
     }
     expect(received.at(-1)?.[UPSTREAM_HEADER]).toBeUndefined();
   }, 30_000);
@@ -183,7 +187,7 @@ describe('generated MCP — relay mode runtime (RC2.6)', () => {
     try {
       await callTool(srv.port, 'Token NOTBEARER');
     } finally {
-      srv.stop();
+      await srv.stop();
     }
     expect(received.at(-1)?.[UPSTREAM_HEADER]).toBeUndefined();
   }, 30_000);
@@ -194,7 +198,7 @@ describe('generated MCP — relay mode runtime (RC2.6)', () => {
     try {
       await callCreate(srv.port, 'Wool Hat');
     } finally {
-      srv.stop();
+      await srv.stop();
     }
     expect(bodies.at(-1)).toEqual({ title: 'Wool Hat' });
   }, 30_000);

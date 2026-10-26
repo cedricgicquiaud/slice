@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, type ChildProcess } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -10,6 +10,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { createApp } from './app';
 import { openDatabase } from './db/client';
 import { migrateDatabase } from './db/migrate';
+import { startTestProcess, stopTestProcess } from './test-processes';
 import { createHostedStore } from './services/hosted-store';
 import { createTestAccount, TEST_AUTH_SECRET } from './db/test-account';
 import { DATABASE_TEST_TIMEOUTS } from './db/test-database';
@@ -70,7 +71,7 @@ interface RunningServer {
 async function startServer(cwd: string, env: Record<string, string>): Promise<RunningServer> {
   const port = await freePort();
   const { DATABASE_URL: _ignored, ...inherited } = process.env;
-  const child: ChildProcess = spawn(TSX, ['--tsconfig', path.join(ROOT, 'tsconfig.server.json'), ENTRY], {
+  const child: ChildProcess = startTestProcess(TSX, ['--tsconfig', path.join(ROOT, 'tsconfig.server.json'), ENTRY], {
     cwd,
     env: { ...inherited, NODE_ENV: 'development', PORT: String(port), BETTER_AUTH_SECRET: TEST_AUTH_SECRET, ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -79,12 +80,7 @@ async function startServer(cwd: string, env: Record<string, string>): Promise<Ru
   child.stdout?.on('data', (chunk) => (output += chunk));
   child.stderr?.on('data', (chunk) => (output += chunk));
   const baseUrl = `http://127.0.0.1:${port}`;
-  const stop = () =>
-    new Promise<void>((r) => {
-      if (child.exitCode !== null) return r();
-      child.once('exit', () => r());
-      child.kill('SIGTERM');
-    });
+  const stop = () => stopTestProcess(child);
   for (let attempt = 0; attempt < 150; attempt++) {
     if (child.exitCode !== null) throw new Error(`server exited (${child.exitCode}):\n${output}`);
     try {
@@ -101,17 +97,18 @@ async function startServer(cwd: string, env: Record<string, string>): Promise<Ru
 /** Run the server in `cwd` until it exits on its own; return its exit code and output. */
 async function runUntilExit(cwd: string, env: Record<string, string>): Promise<{ code: number | null; output: string }> {
   const { DATABASE_URL: _ignored, ...inherited } = process.env;
-  const child = spawn(TSX, ['--tsconfig', path.join(ROOT, 'tsconfig.server.json'), ENTRY], {
+  const child = startTestProcess(TSX, ['--tsconfig', path.join(ROOT, 'tsconfig.server.json'), ENTRY], {
     cwd,
     env: { ...inherited, PORT: String(await freePort()), ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
-  child.stdout.on('data', (chunk) => (output += chunk));
-  child.stderr.on('data', (chunk) => (output += chunk));
-  const timer = setTimeout(() => child.kill('SIGKILL'), 20_000);
+  child.stdout!.on('data', (chunk) => (output += chunk));
+  child.stderr!.on('data', (chunk) => (output += chunk));
+  const timer = setTimeout(() => void stopTestProcess(child, 'SIGKILL'), 20_000);
   const code = await new Promise<number | null>((r) => child.once('exit', (c) => r(c)));
   clearTimeout(timer);
+  await stopTestProcess(child);
   return { code, output };
 }
 

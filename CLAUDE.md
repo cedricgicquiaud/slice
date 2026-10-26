@@ -254,6 +254,14 @@ _Leçons des audits, ajoutées par `sync` après validation. Chaque agent les ap
   (30 s pour les tests et les hooks, `db/test-database.ts`) : sous charge, les 5 s par
   défaut sautent au hasard. `db/test-timeouts.test.ts` refuse un fichier qui l'oublie.
   *(audit PR #65, WAT-113)*
+- **Un test qui démarre un programme (le serveur, un MCP généré) passe par
+  `startTestProcess` / `stopTestProcess`** (`test-processes.ts`), jamais par `spawn` : `tsx`
+  lance le vrai programme dans un enfant à lui, et l'arrêter seul laisse cet enfant tourner
+  sans parent (624 le 26/10, qui ralentissaient la machine et faisaient expirer les tests).
+  `test-spawn-guard.test.ts` refuse un fichier qui appelle `spawn`. *(WAT-152)*
+- **Une liste d'actions s'écrit en base par paquets de 1 000 lignes, ou en un seul
+  `insert … select` quand les lignes viennent déjà de la base** : PostgreSQL refuse plus de
+  65 535 paramètres par requête. *(audit PR #70 et #71)*
 
 ## Idiomes d'interface
 
@@ -261,3 +269,6 @@ _Remarques visuelles faites au merge, ajoutées par `sync` après validation._
 
 - **Une page hors du parcours en 3 étapes** (« My MCPs », suppression du compte)
   **n'affiche pas les étapes en haut** : `Topbar` reçoit `current={null}`. *(merge PR #64)*
+- **SLICE se conçoit pour l'ordinateur ; le téléphone n'est pas une cible.** Générer un MCP
+  ne se fait pas au téléphone : la passe visuelle ne relève pas les défauts à 375 px.
+  *(décision du 2026-10-26, merge PR #71)*
