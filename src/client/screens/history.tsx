@@ -46,6 +46,11 @@ function VersionRow({ version }: { version: McpVersion }) {
           {actionCount} {actionCount === 1 ? 'action' : 'actions'}
         </span>
         <span className="text-sm text-muted-foreground">Created {CREATED.format(new Date(version.createdAt))}</span>
+        {version.activeSince && (
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+            Active since {CREATED.format(new Date(version.activeSince))}
+          </span>
+        )}
       </div>
     </li>
   );
