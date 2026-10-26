@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { deleteMcp, getMcpHistory, getMcpSelection, listMcps, restoreMcpVersion, saveMcpSelection } from './mcps-api';
+import {
+  deleteMcp,
+  getMcpHistory,
+  getMcpSelection,
+  getMcpUsage,
+  listMcps,
+  restoreMcpVersion,
+  saveMcpSelection,
+} from './mcps-api';
 
 const NOTION = {
   id: 'Q2xhdWRlIGlzIG5vdCBoZXJl',
@@ -100,6 +108,58 @@ describe('getMcpHistory', () => {
     serverAnswers(404, { code: 'NOT_FOUND', message: 'Unknown MCP id.' });
 
     await expect(getMcpHistory('someone-elses-id')).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 404,
+      code: 'NOT_FOUND',
+    });
+  });
+});
+
+describe('getMcpUsage', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("returns the MCP's usage over the last 30 days read from GET /api/mcps/:id/usage", async () => {
+    const usage = {
+      apiName: 'Notion API',
+      actions: [
+        {
+          name: 'search',
+          label: 'Search',
+          available: true,
+          calls: 1,
+          succeeded: 1,
+          averageDurationMs: 420,
+          lastCalledAt: '2026-10-26T13:02:00.000Z',
+        },
+      ],
+      cappedDays: [],
+      recentCalls: [
+        {
+          calledAt: '2026-10-26T13:02:00.000Z',
+          action: 'search',
+          label: 'Search',
+          result: { kind: 'succeeded' },
+          durationMs: 420,
+          version: 1,
+        },
+      ],
+    };
+    const fetchMock = serverAnswers(200, usage);
+
+    expect({ usage: await getMcpUsage('notion-id'), asked: fetchMock.mock.calls }).toEqual({
+      usage,
+      asked: [['/api/mcps/notion-id/usage']],
+    });
+  });
+
+  it("throws the server's refusal when the usage is refused", async () => {
+    serverAnswers(404, { code: 'NOT_FOUND', message: 'Unknown MCP id.' });
+
+    await expect(getMcpUsage('someone-elses-id')).rejects.toMatchObject({
       name: 'ApiError',
       status: 404,
       code: 'NOT_FOUND',
