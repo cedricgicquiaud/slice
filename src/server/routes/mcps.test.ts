@@ -1,11 +1,13 @@
 // WAT-103/104/105 — `GET /api/mcps` and `DELETE /api/mcps/:id`: an account's own MCPs, never another's.
 // WAT-148/149 — `POST /api/mcps/:id/versions/:number/restore`: an existing version of one's own MCP, active again.
+// WAT-161/162 — `GET /api/mcps/:id/usage`: the calls agents made to one's own MCP, never another's.
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import type { Server } from 'node:http';
+import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createApp } from '../app';
 import { createAccountMcps } from '../services/account-mcps';
 import { createHostedStore, type HostedStore } from '../services/hosted-store';
+import { createMcpCalls } from '../services/mcp-calls';
 import type { HostedMcpConfig } from '../services/hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
@@ -78,6 +80,7 @@ async function startApp(): Promise<{ url: string; close(): Promise<void> }> {
   const server = createApp({
     nodeEnv: 'test',
     hostedStore: store,
+    mcpCalls: createMcpCalls(database),
     accountMcps: createAccountMcps(database),
     auth: account.auth,
   }).listen(0);
@@ -562,6 +565,76 @@ describe('POST /api/mcps/:id/versions/:number/restore', () => {
     expect({ status: res.status, served: (await store.get(id))?.endpoints.map((action) => action.name) }).toEqual({
       status: 403,
       served: ['list_notes'],
+    });
+  });
+});
+
+describe('GET /api/mcps/:id/usage', () => {
+  let usage: { url: string; close(): Promise<void> };
+  /** The Notes API itself: lists notes with a 200. */
+  let notesApi: Server;
+  let notesApiUrl: string;
+  beforeAll(async () => {
+    usage = await startApp();
+    notesApi = createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('{"notes":[]}');
+    }).listen(0);
+    await new Promise<void>((r) => notesApi.once('listening', r));
+    notesApiUrl = `http://127.0.0.1:${(notesApi.address() as AddressInfo).port}`;
+  });
+  afterAll(async () => {
+    await usage?.close();
+    await new Promise<void>((r) => (notesApi ? notesApi.close(() => r()) : r()));
+  });
+
+  it("shows the owner an agent's call of an action at the MCP's address, among the recent calls and in its action's line (contract 1, D13)", async () => {
+    const { id } = await store.put({ ...NOTES, baseUrl: notesApiUrl }, account.workspaceId, CREATED);
+    const asked = Date.now();
+    const agent = new Client({ name: 'agent', version: '0.0.0' });
+    await agent.connect(new StreamableHTTPClientTransport(new URL(`${usage.url}/m/${id}`)));
+    await agent.callTool({ name: 'list_notes', arguments: {} });
+    await agent.close();
+    const answered = Date.now();
+
+    // The note is written once the agent has its answer: it shows up a moment later.
+    const read = await vi.waitFor(async () => {
+      const res = await fetch(`${usage.url}/api/mcps/${id}/usage`, { headers: { cookie: account.cookie } });
+      const body = (await res.json()) as { recentCalls: Array<{ calledAt: string }> };
+      expect(body.recentCalls).toHaveLength(1);
+      return { status: res.status, body };
+    });
+
+    const calledAt = Date.parse(read.body.recentCalls[0]!.calledAt);
+    expect({ ...read, calledDuringTheCall: asked <= calledAt && calledAt <= answered }).toEqual({
+      status: 200,
+      body: {
+        apiName: 'Notes API',
+        actions: [
+          {
+            name: 'list_notes',
+            label: 'List notes',
+            available: true,
+            calls: 1,
+            succeeded: 1,
+            averageDurationMs: expect.any(Number),
+            lastCalledAt: read.body.recentCalls[0]!.calledAt,
+          },
+          { name: 'create_note', label: 'Create a note', available: true, calls: 0, succeeded: 0, averageDurationMs: null, lastCalledAt: null },
+        ],
+        cappedDays: [],
+        recentCalls: [
+          {
+            calledAt: read.body.recentCalls[0]!.calledAt,
+            action: 'list_notes',
+            label: 'List notes',
+            result: { kind: 'succeeded' },
+            durationMs: expect.any(Number),
+            version: 1,
+          },
+        ],
+      },
+      calledDuringTheCall: true,
     });
   });
 });
