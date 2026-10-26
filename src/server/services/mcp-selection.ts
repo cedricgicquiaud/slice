@@ -1,8 +1,8 @@
 /**
  * The selection of an MCP: read for "Edit actions" (D2), changed by "Save" into a new version (D4).
  */
-import { and, asc, eq, isNotNull } from 'drizzle-orm';
-import type { EndpointGroup } from '@shared/types';
+import { and, asc, eq, isNotNull, max, sql } from 'drizzle-orm';
+import type { EndpointGroup, McpSelectionChange } from '@shared/types';
 import type { Database } from '../db/client';
 import { connectorActions, connectorApiActions, connectorVersions, connectors } from '../db/schema';
 import { apiNameOf } from './mcp-versions';
@@ -71,6 +71,51 @@ export async function readMcpSelection(
     });
   }
   return { apiName: apiNameOf(first), version: first.version, groups, selectedIds: selected.map(actionId) };
+}
+
+/** How a "Save" ends: the new version's number, or why nothing was saved. */
+export type SaveOutcome = { version: number } | { refused: 'unknown-mcp' };
+
+/**
+ * Save `change` as the next version of the MCP `id` of `workspaceId`, active from `now` (D4, D9).
+ */
+export async function saveMcpSelection(
+  database: Database,
+  workspaceId: string,
+  id: string,
+  change: McpSelectionChange,
+  now: Date
+): Promise<SaveOutcome> {
+  return database.db.transaction(async (tx) => {
+    // Locked until the end: two "Save" of the same MCP run one after the other (D13).
+    const [connector] = await tx
+      .select({ id: connectors.id })
+      .from(connectors)
+      .where(and(eq(connectors.id, id), eq(connectors.workspaceId, workspaceId)))
+      .for('update');
+    if (!connector) return { refused: 'unknown-mcp' };
+    const [{ last }] = await tx
+      .select({ last: max(connectorVersions.number) })
+      .from(connectorVersions)
+      .where(eq(connectorVersions.connectorId, id));
+    const version = (last ?? 0) + 1;
+    // The address serves the active version only (D4): the new one takes over at once.
+    await tx
+      .update(connectorVersions)
+      .set({ activeSince: null })
+      .where(and(eq(connectorVersions.connectorId, id), isNotNull(connectorVersions.activeSince)));
+    await tx.insert(connectorVersions).values({ connectorId: id, number: version, createdAt: now, activeSince: now });
+    // Copied from the API's list in one statement, in its order, whatever the number of actions:
+    // the ids travel as a single JSON value, far from PostgreSQL's limit on parameters.
+    await tx.execute(sql`
+      insert into ${connectorActions} (connector_id, version, position, name, label, description, method, path, params)
+      select connector_id, ${version}, (row_number() over (order by position) - 1)::int, name, label,
+             split_part(coalesce(description, label), E'\n', 1), method, path, params
+      from ${connectorApiActions}
+      where connector_id = ${id}
+        and method::text || ' ' || path in (select jsonb_array_elements_text(${JSON.stringify(change.selectedIds)}::jsonb))`);
+    return { version };
+  });
 }
 
 /** An action's id, as the parser makes it: its method and path, unique in an API. */

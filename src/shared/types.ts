@@ -187,6 +187,17 @@ export type ParseErrorCode =
   | 'PARSE_TOO_COMPLEX';          // isolated parse OOM'd / died (e.g. $ref explosion) — anti-DoS (D004)
 
 /**
+ * A change of an MCP's selection, as "Save" on "Edit actions" posts it: only
+ * the selection changes (D3), starting from the version the screen showed (D13).
+ */
+export interface McpSelectionChange {
+  /** The active version when the screen opened: refused if another one is active since. */
+  fromVersion: number;
+  /** The ids of the checked actions (`<METHOD> <path>`, as `Endpoint.id`). */
+  selectedIds: string[];
+}
+
+/**
  * Payload posted by the client to `/api/generate` (phase 08). Held in shared
  * types because the same shape feeds the front-end submission, the back-end
  * Zod guard, and the unit tests for `mcp-generator` (phase 07).
