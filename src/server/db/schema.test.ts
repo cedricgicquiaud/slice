@@ -233,6 +233,14 @@ describe('database schema (D3)', () => {
 
     expect(indexes.some((i) => /\(created_at\)$/.test(i.indexdef))).toBe(true);
   });
+
+  it("indexes the notes of calls by MCP, then by date", async () => {
+    const indexes = await rows<{ indexdef: string }>(
+      sql`select indexdef from pg_indexes where schemaname = 'public' and tablename = 'connector_calls'`
+    );
+
+    expect(indexes.some((i) => /\(connector_id, called_at\)$/.test(i.indexdef))).toBe(true);
+  });
 });
 
 describe('deleting an account (WAT-101)', () => {
