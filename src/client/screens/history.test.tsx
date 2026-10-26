@@ -1,7 +1,8 @@
 // WAT-142/143 — "History", at /mcps/<id>/history: the versions of one of my MCPs, never another account's.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import App from '../App';
+import { HistoryScreen } from './history';
 
 const NOTION_HISTORY = {
   apiName: 'Notion API',
@@ -12,6 +13,20 @@ const NOTION_HISTORY = {
       activeSince: '2026-10-21T10:15:00.000Z',
       actionLabels: ['Search', 'Get a page'],
     },
+  ],
+};
+
+/** Version 2 (one action) is active; version 1 (two actions) is not any more. */
+const TWO_VERSIONS = {
+  apiName: 'Notion API',
+  versions: [
+    {
+      number: 2,
+      createdAt: '2026-10-22T09:00:00.000Z',
+      activeSince: '2026-10-22T09:00:00.000Z',
+      actionLabels: ['Get a page'],
+    },
+    { number: 1, createdAt: '2026-10-21T10:15:00.000Z', activeSince: null, actionLabels: ['Search', 'Get a page'] },
   ],
 };
 
@@ -52,5 +67,23 @@ describe('History', () => {
       back: screen.getByRole('link', { name: 'Back to My MCPs' }).getAttribute('href'),
       steps: screen.queryByRole('navigation', { name: /steps/i }) !== null,
     }).toEqual({ name: true, back: '/mcps', steps: false });
+  });
+
+  it('lists every version, newest first, with its number, creation date and action count (contract 8)', async () => {
+    server.histories['notion-id'] = TWO_VERSIONS;
+
+    render(<HistoryScreen mcpId="notion-id" />);
+
+    const versions = await screen.findAllByRole('listitem', { name: /^Version/ });
+    expect(
+      versions.map((version) => [
+        within(version).getByRole('heading').textContent,
+        within(version).queryByText(/^Created /)?.textContent,
+        within(version).queryByText(/^\d+ actions?$/)?.textContent,
+      ])
+    ).toEqual([
+      ['Version 2', 'Created Oct 22, 2026', '1 action'],
+      ['Version 1', 'Created Oct 21, 2026', '2 actions'],
+    ]);
   });
 });
