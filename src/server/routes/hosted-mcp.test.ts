@@ -8,6 +8,7 @@ import { sql } from 'drizzle-orm';
 import { createApp } from '../app';
 import { createHostedStore, type HostedStore } from '../services/hosted-store';
 import { createAccountMcps } from '../services/account-mcps';
+import { createMcpCalls, type McpCalls } from '../services/mcp-calls';
 import type { HostedMcpConfig } from '../services/hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
@@ -35,6 +36,7 @@ let received: Array<{ url: string; auth: string | undefined; apiKey: string | un
 let testDb: TestDatabase;
 let database: Database;
 let store: HostedStore;
+let calls: McpCalls;
 let account: TestAccount;
 let app: Server;
 let baseUrl: string;
@@ -62,11 +64,13 @@ beforeAll(async () => {
   database = openDatabase(testDb.config);
   await migrateDatabase(database);
   store = createHostedStore(database);
+  calls = createMcpCalls(database);
   account = await createTestAccount({ database });
 
   app = createApp({
     nodeEnv: 'test',
     hostedStore: store,
+    mcpCalls: calls,
     accountMcps: createAccountMcps(database),
     now,
     auth: account.auth,
@@ -257,6 +261,39 @@ describe('hosted connector served from the database', () => {
     );
     expect(new Set(everything.map((r) => r.kind))).toEqual(new Set(['connector', 'version', 'action', 'api action']));
     expect(everything.filter((r) => /feedface|AGENT-SECRET|openapi: 3\.0\.3|info: \{ title/.test(r.row))).toEqual([]);
+  });
+});
+
+/** `config`, whose API's actions are exactly its own: every call of them is noted (D2). */
+function withApiActions(config: HostedMcpConfig): HostedMcpConfig {
+  return {
+    ...config,
+    apiActions: config.endpoints.map(({ name, description, method, path, params }) => ({
+      name,
+      label: description,
+      group: 'Things',
+      deprecated: false,
+      method,
+      path,
+      params,
+    })),
+  };
+}
+
+// WAT-155 — a call that reaches the API is noted with what the API answered.
+describe('the note of an action call that reaches the API', () => {
+  it('is "Succeeded" when the API answers with a 2xx, on the active version, dated from its arrival (contract 2, D3, D6)', async () => {
+    const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`, 'TOKEN');
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    await vi.waitFor(async () =>
+      expect(await calls.of(id)).toEqual([
+        { action: 'list_things', version: 1, calledAt: CREATED, result: { kind: 'succeeded' }, durationMs: expect.any(Number) },
+      ])
+    );
   });
 });
 
