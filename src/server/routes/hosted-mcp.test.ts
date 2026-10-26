@@ -474,6 +474,7 @@ describe('hosted routes when storing or reading fails for another reason', () =>
     const buggy: HostedStore = {
       put: () => Promise.reject(new Error('Failed query: insert', { cause: constraintViolation })),
       get: () => Promise.reject(new TypeError("Cannot read properties of undefined (reading 'params')")),
+      apiActions: () => Promise.resolve([]),
       purgeExpired: () => Promise.resolve(),
       ping: () => Promise.resolve(),
     };

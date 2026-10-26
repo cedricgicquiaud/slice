@@ -6,9 +6,9 @@
 import { randomBytes } from 'node:crypto';
 import { asc, eq, lt, sql } from 'drizzle-orm';
 import type { HttpMethod, UpstreamAuth } from '@shared/types';
-import type { HostedMcpConfig } from './hosted-mcp-factory';
+import type { ApiAction, HostedMcpConfig } from './hosted-mcp-factory';
 import type { Database } from '../db/client';
-import { connectorActions, connectorVersions, connectors } from '../db/schema';
+import { connectorActions, connectorApiActions, connectorVersions, connectors } from '../db/schema';
 
 /** An expired connector stays this long, answering "expired", before the cleanup deletes it. */
 export const EXPIRED_RETENTION_DAYS = 30;
@@ -18,6 +18,8 @@ export interface HostedStore {
   put(config: HostedMcpConfig, workspaceId: string, now: Date): Promise<{ id: string; createdAt: string }>;
   /** Read a connector back (`createdAt` and `workspaceId` set), or `undefined` if unknown. */
   get(id: string): Promise<HostedMcpConfig | undefined>;
+  /** Every action of the connector's API, kept at its creation (D1), in order; none for an unknown id. */
+  apiActions(id: string): Promise<ApiAction[]>;
   /** Delete, with their actions, the connectors expired for more than the retention period at `now`. */
   purgeExpired(now: Date, ttlHours: number): Promise<void>;
   /** Resolve when the database answers, reject when it is out of reach. */
@@ -43,6 +45,17 @@ export function createHostedStore(database: Database): HostedStore {
           workspaceId,
           apiName: config.apiName ?? null,
         });
+        if (config.apiActions?.length) {
+          await tx.insert(connectorApiActions).values(
+            config.apiActions.map(({ group, description, ...action }, position) => ({
+              connectorId: id,
+              position,
+              ...action,
+              groupName: group,
+              description: description ?? null,
+            }))
+          );
+        }
         // The selection becomes version 1, active from its creation (D4, D8).
         await tx.insert(connectorVersions).values({ connectorId: id, number: 1, createdAt: now, activeSince: now });
         if (config.endpoints.length === 0) return;
@@ -83,6 +96,23 @@ export function createHostedStore(database: Database): HostedStore {
         createdAt: connector.createdAt.toISOString(),
         workspaceId: connector.workspaceId,
       };
+    },
+    async apiActions(id) {
+      const actions = await db
+        .select()
+        .from(connectorApiActions)
+        .where(eq(connectorApiActions.connectorId, id))
+        .orderBy(asc(connectorApiActions.position));
+      return actions.map(({ name, label, groupName, description, deprecated, method, path, params }) => ({
+        name,
+        label,
+        group: groupName,
+        ...(description !== null && { description }),
+        deprecated,
+        method,
+        path,
+        params,
+      }));
     },
     async purgeExpired(now, ttlHours) {
       if (ttlHours <= 0) return;
