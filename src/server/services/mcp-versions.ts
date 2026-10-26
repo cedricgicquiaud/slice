@@ -75,8 +75,11 @@ export async function readMcpHistory(
   return { apiName: apiNameOf(first), versions };
 }
 
-/** Why a "Restore" changed nothing: no such MCP in the workspace, whoever else owns it (D12). */
-export type RestoreRefusal = 'unknown-mcp';
+/**
+ * Why a "Restore" changed nothing: no such MCP in the workspace, whoever else
+ * owns it (D12), or no such version of it.
+ */
+export type RestoreRefusal = 'unknown-mcp' | 'unknown-version';
 
 /** How a "Restore" ends: the ISO date the version is active since, or why nothing changed. */
 export type RestoreOutcome = { activeSince: string } | { refused: RestoreRefusal };
@@ -100,6 +103,11 @@ export async function restoreMcpVersion(
       .where(and(eq(connectors.id, id), eq(connectors.workspaceId, workspaceId)))
       .for('update');
     if (!connector) return { refused: 'unknown-mcp' };
+    const [version] = await tx
+      .select({ number: connectorVersions.number })
+      .from(connectorVersions)
+      .where(and(eq(connectorVersions.connectorId, id), eq(connectorVersions.number, number)));
+    if (!version) return { refused: 'unknown-version' };
     // The address serves the active version only (D4): the restored one takes over at once.
     await tx
       .update(connectorVersions)
