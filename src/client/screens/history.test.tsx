@@ -36,7 +36,8 @@ const TWO_VERSIONS = {
  * SLICE's API as this page sees it: `GET /api/mcps/:id/versions` answers the
  * history kept in `histories` under that id, else 404 as for an unknown MCP or
  * another account's, or `refusal` when set; `POST /api/mcps/:id/versions/:number/restore`
- * is kept in `restores` and answers the version active since Oct 26, 2026;
+ * is kept in `restores` and answers, once `held` resolves when set, the version
+ * active since Oct 26, 2026;
  * any other call is "who is signed in?" (`session`).
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
@@ -46,7 +47,8 @@ const server = vi.hoisted(() => {
     histories: Record<string, unknown>;
     refusal: { status: number; code: string; message: string } | null;
     restores: string[];
-  } = { session: null, histories: {}, refusal: null, restores: [] };
+    held: Promise<void> | null;
+  } = { session: null, histories: {}, refusal: null, restores: [], held: null };
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -54,6 +56,7 @@ const server = vi.hoisted(() => {
     const restored = /^\/api\/mcps\/[^/]+\/versions\/(\d+)\/restore$/.exec(url);
     if (init?.method === 'POST' && restored) {
       state.restores.push(url);
+      await state.held;
       return json({ number: Number(restored[1]), activeSince: '2026-10-26T15:00:00.000Z' });
     }
     const asked = /^\/api\/mcps\/([^/]+)\/versions$/.exec(url);
@@ -69,6 +72,7 @@ afterEach(() => {
   server.histories = {};
   server.refusal = null;
   server.restores = [];
+  server.held = null;
   window.history.pushState({}, '', '/');
 });
 
@@ -183,5 +187,21 @@ describe('Restore', () => {
       marks: [null, 'Active since Oct 26, 2026'],
       restores: ['/api/mcps/notion-id/versions/1/restore'],
     });
+  });
+
+  it('greys "Restore" during the call: a double click restores once (contract 25)', async () => {
+    server.histories['notion-id'] = TWO_VERSIONS;
+    let answer = () => {};
+    server.held = new Promise<void>((resolve) => (answer = resolve));
+    const user = userEvent.setup();
+    render(<HistoryScreen mcpId="notion-id" />);
+    const restore = within(await screen.findByRole('listitem', { name: 'Version 1' })).getByRole('button', { name: 'Restore' });
+
+    await user.dblClick(restore);
+    const greyedDuringTheCall = restore.hasAttribute('disabled');
+    answer();
+    await screen.findByRole('status');
+
+    expect({ greyedDuringTheCall, restores: server.restores.length }).toEqual({ greyedDuringTheCall: true, restores: 1 });
   });
 });
