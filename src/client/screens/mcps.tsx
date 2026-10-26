@@ -133,6 +133,7 @@ function McpRow({ mcp, onDelete }: { mcp: Mcp; onDelete: () => Promise<void> }) 
   );
 }
 
-function messageOf(err: unknown): string {
+/** What to tell the account when SLICE refuses or cannot be reached. */
+export function messageOf(err: unknown): string {
   return err instanceof ApiError ? err.message : 'Could not reach the server. Try again in a moment.';
 }
