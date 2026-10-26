@@ -28,8 +28,8 @@ const NOTES_SELECTION = {
  * SLICE's API as this page sees it: `GET /api/mcps/:id/selection` answers the
  * selection kept in `selections` under that id, else 404 as for an unknown MCP
  * or another account's; `POST /api/mcps/:id/versions` is kept in `saves` and
- * answers version 2 once `held` resolves, when set; any other call is "who is
- * signed in?" (`session`).
+ * answers version 2 once `held` resolves, when set, or `saveRefusal` when set;
+ * any other call is "who is signed in?" (`session`).
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
 const server = vi.hoisted(() => {
@@ -38,7 +38,8 @@ const server = vi.hoisted(() => {
     selections: Record<string, unknown>;
     saves: Array<{ url: string; change: unknown }>;
     held: Promise<void> | null;
-  } = { session: null, selections: {}, saves: [], held: null };
+    saveRefusal: { status: number; code: string; message: string } | null;
+  } = { session: null, selections: {}, saves: [], held: null, saveRefusal: null };
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -46,6 +47,10 @@ const server = vi.hoisted(() => {
     if (init?.method === 'POST' && /^\/api\/mcps\/[^/]+\/versions$/.test(url)) {
       state.saves.push({ url, change: JSON.parse(String(init.body)) });
       await state.held;
+      if (state.saveRefusal) {
+        const { status, code, message } = state.saveRefusal;
+        return json({ code, message }, status);
+      }
       return json({ number: 2 }, 201);
     }
     const asked = /^\/api\/mcps\/([^/]+)\/selection$/.exec(url);
@@ -60,6 +65,7 @@ afterEach(() => {
   server.selections = {};
   server.saves = [];
   server.held = null;
+  server.saveRefusal = null;
   window.history.pushState({}, '', '/');
 });
 
@@ -182,5 +188,26 @@ describe('Edit actions', () => {
     await screen.findByRole('status');
 
     expect({ greyedDuringTheCall, saves: server.saves.length }).toEqual({ greyedDuringTheCall: true, saves: 1 });
+  });
+
+  it('shows the refusal of a change made meanwhile in another tab as it is, and claims no version (contract 23, D13)', async () => {
+    server.selections['notes-id'] = NOTES_SELECTION;
+    server.saveRefusal = {
+      status: 409,
+      code: 'CONFLICT',
+      message: 'This MCP changed in the meantime. Reload to see its current actions.',
+    };
+    window.history.pushState({}, '', '/mcps/notes-id/edit');
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Tag: All' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Empty the trash' }));
+
+    await user.click(screen.getByRole('button', { name: /save/i }));
+
+    expect({
+      refusal: (await screen.findByRole('alert')).textContent,
+      saved: screen.queryByRole('status'),
+    }).toEqual({ refusal: 'This MCP changed in the meantime. Reload to see its current actions.', saved: null });
   });
 });
