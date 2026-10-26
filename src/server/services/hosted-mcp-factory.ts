@@ -12,7 +12,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import type { EndpointParam, HttpMethod, UpstreamAuth } from '@shared/types';
 import { type ZodSchemaShape, schemaShapeForParam } from './zod-schema-builder';
-import { assertPublicUrl } from './ssrf-guard';
+import { SsrfError, assertPublicUrl } from './ssrf-guard';
 import type { CallResult } from './mcp-calls';
 
 /** Knobs for the hosted engine. `allowPrivateHosts` is for tests/dev only. */
@@ -193,7 +193,12 @@ async function callUpstream(
   // creation. The caller controls neither host nor protocol here (both are
   // fixed in the stored config), but DNS for a hostname could have changed.
   if (!allowPrivateHosts) {
-    await assertPublicUrl(config.baseUrl);
+    try {
+      await assertPublicUrl(config.baseUrl);
+    } catch (err) {
+      // A refused address is an API SLICE cannot reach, never a fault of SLICE (D4).
+      throw err instanceof SsrfError ? new UpstreamUnreachable(err) : err;
+    }
   }
   let path = endpoint.path;
   for (const p of endpoint.params.filter((x) => x.in === 'path')) {
