@@ -16,6 +16,7 @@ import { DATABASE_TEST_TIMEOUTS, createTestDatabase, type TestDatabase } from '.
 import { createTestAccount, type TestAccount } from '../db/test-account';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 
 vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
@@ -448,6 +449,37 @@ describe('the note of an action call that reaches the API', () => {
         expect((await calls.of(id)).map((note) => note.result)).toEqual([{ kind: 'slice_error' }])
       );
     } finally {
+      logged.mockRestore();
+    }
+  });
+
+  it('is "SLICE error" when SLICE fails after the answer has begun, the request ending without an error code (contract 7, D4)', async () => {
+    const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+    received = [];
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // The answer has started, then SLICE breaks before its engine ever sees the call.
+    const handling = vi
+      .spyOn(StreamableHTTPServerTransport.prototype, 'handleRequest')
+      .mockImplementationOnce(async (_req, res) => {
+        res.writeHead(200, { 'content-type': 'text/event-stream' }).end();
+        throw new Error('SLICE broke after the headers');
+      });
+    try {
+      const res = await fetch(`${baseUrl}/m/${id}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify(toolCall(1, 'list_things', {})),
+      });
+
+      expect(res.status).toBe(200);
+      await vi.waitFor(async () =>
+        expect({ upstreamCalls: received.length, results: (await calls.of(id)).map((note) => note.result) }).toEqual({
+          upstreamCalls: 0,
+          results: [{ kind: 'slice_error' }],
+        })
+      );
+    } finally {
+      handling.mockRestore();
       logged.mockRestore();
     }
   });
