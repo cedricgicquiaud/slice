@@ -1,5 +1,5 @@
 {
-  "id": "0baf46b5-b351-4475-a1aa-f9f8223325a8",
+  "id": "cf68ab63-6180-44f0-888a-b0da5612db0f",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -363,7 +363,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "connector_calls_status_iff_failed": {
+          "name": "connector_calls_status_iff_failed",
+          "value": "(\"connector_calls\".\"result\" = 'failed') = (\"connector_calls\".\"status\" is not null)"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.connector_versions": {

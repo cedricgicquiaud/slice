@@ -218,16 +218,22 @@ export const callResult = pgEnum('call_result', [
  * The note of each action call an agent made (D3): never the values it sent,
  * the API's response or error message, nor the token.
  */
-export const connectorCalls = pgTable('connector_calls', {
-  connectorId: text('connector_id').notNull(),
-  /** The version active when the call arrived. */
-  version: integer('version').notNull(),
-  action: text('action').notNull(),
-  /** When the call arrived at SLICE (D6). */
-  calledAt: timestamp('called_at', { withTimezone: true }).notNull(),
-  result: callResult('result').notNull(),
-  /** The API's status code, for a failure only. */
-  status: integer('status'),
-  /** From the call's arrival to the end of its handling by SLICE (D6). */
-  durationMs: integer('duration_ms').notNull(),
-});
+export const connectorCalls = pgTable(
+  'connector_calls',
+  {
+    connectorId: text('connector_id').notNull(),
+    /** The version active when the call arrived. */
+    version: integer('version').notNull(),
+    action: text('action').notNull(),
+    /** When the call arrived at SLICE (D6). */
+    calledAt: timestamp('called_at', { withTimezone: true }).notNull(),
+    result: callResult('result').notNull(),
+    /** The API's status code, for a failure only. */
+    status: integer('status'),
+    /** From the call's arrival to the end of its handling by SLICE (D6). */
+    durationMs: integer('duration_ms').notNull(),
+  },
+  (table) => [
+    check('connector_calls_status_iff_failed', sql`(${table.result} = 'failed') = (${table.status} is not null)`),
+  ]
+);

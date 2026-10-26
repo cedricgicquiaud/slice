@@ -50,7 +50,8 @@ CREATE TABLE "connector_calls" (
 	"called_at" timestamp with time zone NOT NULL,
 	"result" "call_result" NOT NULL,
 	"status" integer,
-	"duration_ms" integer NOT NULL
+	"duration_ms" integer NOT NULL,
+	CONSTRAINT "connector_calls_status_iff_failed" CHECK (("connector_calls"."result" = 'failed') = ("connector_calls"."status" is not null))
 );
 --> statement-breakpoint
 CREATE TABLE "connector_versions" (

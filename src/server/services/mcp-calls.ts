@@ -59,7 +59,8 @@ export function createMcpCalls(database: Database): McpCalls {
         action,
         version,
         calledAt,
-        result: result === 'failed' ? { kind: result, status: status ?? 0 } : { kind: result },
+        // The table keeps a status code for a failure, and for a failure only.
+        result: result === 'failed' ? { kind: result, status: status! } : { kind: result },
         durationMs,
       }));
     },
