@@ -220,6 +220,8 @@ Préparer : se connecter (le plus simple : code par e-mail, sans clé Resend).
   de la livraison 1.
 - [ ] Refus : la page ne propose aucune modification d'un MCP. Chaque ligne n'offre que deux boutons, la copie de
   l'adresse et « Delete » ; aucun champ ne se saisit, aucun bouton « Edit » ou « Rename ».
+  _Remplacée par « Modifier un MCP, même adresse », livraison 2 (WAT-144) : chaque ligne offre désormais « Edit
+  actions », qui ne change que la sélection ; toujours aucun champ, aucun bouton « Rename »._
 - [ ] Refus : connecté avec l'adresse B, « My MCPs » ne montre jamais les MCP de l'adresse A, et inversement.
 
 **Je supprime un MCP (WAT-104)**
@@ -489,3 +491,103 @@ Préparer : se connecter avec une adresse B (en navigation privée) et copier la
 - [ ] `docs/API.md` décrit `GET /api/mcps/:id/versions` (la réponse, ses champs, les refus 401, 404 et 503), la
   configuration rangée par `POST /api/host` (liste complète et version 1) et le nombre d'actions de `GET /api/mcps`
   (celui de la version active).
+
+### Livraison 2 — Je change la sélection, l'adresse reste la même
+
+**Préparer la recette**
+
+- Lancer `pnpm dev`, ouvrir http://localhost:5173 et se connecter avec une adresse A (code par e-mail ; sans clé
+  Resend, le code s'affiche dans le terminal de `pnpm dev`).
+- Raccourci : l'amorce `.pilot/recette/amorce-edit.js`, collée dans la console du navigateur sur
+  http://localhost:5173, ouvre une session pour `recette@slice.local`, reprend le MCP « Recette Notes » du compte (ou le
+  crée) avec 2 actions cochées sur 3 (« List notes », « Create a note » ; « Delete a note » décochée), puis place la
+  page sur son écran « Edit actions ». Recharger ensuite la page. Repasser l'amorce remet ces 2 actions cochées si un
+  passage précédent les a changées (une version de plus dans « History »).
+- Sans l'amorce : créer un MCP hébergé (« Deploy to SLICE Cloud ») depuis `fixtures/uat-deprecated.yaml` en cochant 2
+  actions. Noter son adresse (écran 4 ou « My MCPs »).
+- Pour les vérifications en terminal : copier la valeur du cookie `better-auth.session_token` (outils du navigateur,
+  onglet Application ou Stockage, Cookies, `http://localhost:5173`) et l'identifiant du MCP, la fin de son adresse
+  après `/m/`.
+
+**J'ouvre « Edit actions » : l'étape 2 revient, les actions de la version active cochées (WAT-144)**
+
+- [ ] Sur « My MCPs » (http://localhost:5173/mcps), chaque ligne montre un bouton « Edit actions », à côté de
+  « History » et « Delete ».
+- [ ] Cliquer « Edit actions » : l'adresse devient http://localhost:5173/mcps/<identifiant>/edit. Recharger la page
+  (Cmd+R), ou coller cette adresse dans un nouvel onglet : le même écran revient, sur la version active.
+- [ ] L'écran montre toutes les actions de l'API, cochées ou non, comme à l'étape 2 : les groupes à gauche (avec
+  « All »), les libellés, et le compteur « Selected 2 / 3 » en bas à gauche (avec l'amorce).
+- [ ] Les actions de la version active sont cochées (« List notes » et « Create a note » avec l'amorce), les autres non
+  (« Delete a note »). Cliquer « All » à gauche pour les voir toutes.
+- [ ] L'écran ne montre pas les étapes 1-2-3 en haut : il montre le nom du MCP (le même que sur « My MCPs ») et un
+  lien « Back to My MCPs », qui ramène à la liste.
+- [ ] Refus : ouvrir http://localhost:5173/mcps/nexistepas/edit : l'écran affiche « MCP not found » et « There is no
+  MCP at this address in your account. », sans aucune action ni bouton « Save ».
+- [ ] Refus : connecté avec une adresse B (en navigation privée), ouvrir http://localhost:5173/mcps/<identifiant de
+  A>/edit : l'écran affiche « MCP not found », comme pour un MCP inconnu.
+
+**J'enregistre : une nouvelle version, même adresse, que l'agent voit à sa prochaine conversation (WAT-145)**
+
+- [ ] Refus : à l'ouverture d'« Edit actions », « Save » (en bas à droite) est grisé : la sélection est celle de la
+  version active. Cocher puis décocher « Delete a note » : « Save » redevient grisé.
+- [ ] Refus : décocher toutes les actions : « Save » est grisé.
+- [ ] Cocher « Delete a note », puis cliquer « Save » : sous le nom du MCP s'affiche « Saved as version 2. Your agent
+  sees the new actions in its next conversation, with nothing to paste again. » « Save » redevient grisé.
+- [ ] Refus : double-cliquer « Save » après avoir changé une case : « Save » se grise dès le premier clic, et
+  « History » ne montre qu'une seule version de plus.
+- [ ] Ouvrir « History » : « Version 2 » est en tête, avec « 3 actions » et « Active since <date du jour> » ;
+  « Version 1 » n'a plus de marque « Active since ». La version suivante porte toujours le numéro qui suit le plus
+  grand (3 après 2, etc.).
+- [ ] Sur « My MCPs », la ligne du MCP affiche « 3 actions », et son adresse est identique à celle notée avant.
+- [ ] Lister les actions à l'adresse, dans un terminal :
+  `curl -s -X POST <adresse> -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'`
+  La réponse contient exactement les 3 actions de la version 2 (`list_notes`, `create_note`, `delete_a_note` avec
+  l'amorce). Dans Claude Desktop, une nouvelle conversation montre les nouvelles actions sans recoller l'adresse.
+- [ ] Revenir à la sélection de la version 1 (décocher « Delete a note »), puis « Save » : « Saved as version 3… »
+  s'affiche ; « History » montre une version 3 active, et non le retour de la version 1.
+
+**Refus : le serveur n'accepte que la sélection d'actions de mon MCP, à jour (WAT-146)**
+
+Dans les commandes ci-dessous, remplacer `<id>` par l'identifiant du MCP, `<A>` par la valeur du cookie de l'adresse A
+(propriétaire du MCP), `<B>` par celle d'une adresse B, et `<n>` par le numéro de la version active (« History »).
+Après chaque refus, « History » ne montre aucune version de plus.
+
+- [ ] Refus : une sélection vide.
+  `curl -i -X POST http://localhost:3001/api/mcps/<id>/versions -H 'content-type: application/json' -H 'Cookie: better-auth.session_token=<A>' -d '{"fromVersion":<n>,"selectedIds":[]}'`
+  affiche `HTTP/1.1 400` et `{"code":"INVALID_SELECTION","message":"Pick at least one action."}`.
+- [ ] Refus : une action étrangère à l'API, avec `-d '{"fromVersion":<n>,"selectedIds":["GET /notes","GET /admin/users"]}'`,
+  affiche `HTTP/1.1 400` et `{"code":"INVALID_SELECTION","message":"This MCP's API has no such action."}`.
+- [ ] Refus : un nom, une adresse d'API ou un accès amont dans la demande, avec par exemple
+  `-d '{"fromVersion":<n>,"selectedIds":["GET /notes"],"baseUrl":"https://evil.example.com"}'` (puis avec
+  `"mcpName":"autre-nom"`, puis avec `"upstreamAuth":{"type":"none"}`), affiche `HTTP/1.1 400` et
+  `{"code":"INVALID_SELECTION","message":"Only the selection of actions can be changed."}`. La sélection
+  `["GET /notes"]` n'est pas enregistrée non plus.
+- [ ] Refus : la sélection de la version active, renvoyée telle quelle, affiche `HTTP/1.1 400` et
+  `{"code":"INVALID_SELECTION","message":"This selection is already the active version."}`.
+- [ ] Refus : la même demande valide avec le cookie de B (`-H 'Cookie: better-auth.session_token=<B>'`) affiche
+  `HTTP/1.1 404` et `{"code":"NOT_FOUND","message":"Unknown MCP id."}`, exactement comme sur un identifiant inventé
+  (`.../api/mcps/nexistepas/versions`). Le MCP de A ne change pas.
+- [ ] Refus : la même demande sans cookie affiche `HTTP/1.1 401` et
+  `{"code":"UNAUTHORIZED","message":"Sign in to continue."}`.
+- [ ] Refus, deux onglets : ouvrir « Edit actions » du même MCP dans deux onglets. Dans le premier, changer une case et
+  « Save ». Dans le second, changer une case et « Save » : l'écran affiche « This MCP changed in the meantime. Reload
+  to see its current actions. », et « History » ne montre que la version du premier onglet. Recharger le second
+  onglet : « Edit actions » revient, avec les cases de la version enregistrée par le premier.
+
+**Un agent qui appelle une action retirée est invité à ouvrir une nouvelle conversation (WAT-147)**
+
+- [ ] Partir d'un MCP dont la version active contient « List notes » et « Create a note », puis enregistrer une
+  version qui ne garde que « List notes ». Appeler l'action retirée à l'adresse :
+  `curl -s -X POST <adresse> -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"create_note","arguments":{}}}'`
+  La réponse porte `"isError":true` et le texte « This action is no longer available in this MCP. Start a new
+  conversation to get the current list of actions. »
+- [ ] Le même message revient pour un nom qui n'a jamais existé (`"name":"drop_everything"`).
+- [ ] Refus : l'API d'origine n'est pas appelée pour cette action. Preuve : le test « asks an agent calling an action
+  the active version lacks to start a new conversation, without calling the API (contract 18, D7) »
+  (`src/server/routes/hosted-mcp.test.ts`), qui branche un vrai client MCP sur une API simulée et vérifie qu'elle ne
+  reçoit que l'appel de l'action gardée.
+- [ ] Un appel de « List notes » (`"name":"list_notes"`) part normalement vers l'API (avec l'amorce, l'API
+  `api.example.com` n'existe pas : l'erreur qui revient vient de l'appel réseau, pas du message ci-dessus).
+- [ ] `docs/API.md` décrit `GET /api/mcps/:id/selection`, `POST /api/mcps/:id/versions` (la demande, la réponse, les
+  refus 400, 401, 403, 404, 409 et 503) et le message d'une action retirée sous `ANY /m/:id` ; il ne dit plus
+  qu'aucune modification n'est possible.
