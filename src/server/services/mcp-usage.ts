@@ -3,10 +3,13 @@
  * agents made, read from their notes (D3). Never a value, a response or a token:
  * the notes keep none.
  */
-import { and, asc, count, eq, isNotNull, max, sql } from 'drizzle-orm';
+import { and, asc, count, eq, gte, isNotNull, max, sql } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { connectorActions, connectorCalls, connectorVersions, connectors } from '../db/schema';
 import { apiNameOf } from './mcp-versions';
+
+/** The page shows the last 30 days (D9). */
+const PERIOD_MS = 30 * 24 * 3_600_000;
 
 /** The calls of one action. */
 export interface ActionUsage {
@@ -37,7 +40,7 @@ export async function readMcpUsage(
   database: Database,
   workspaceId: string,
   id: string,
-  _now: Date
+  now: Date
 ): Promise<McpUsage | undefined> {
   const { db } = database;
   const active = await db
@@ -71,7 +74,7 @@ export async function readMcpUsage(
       lastCalledAt: max(connectorCalls.calledAt),
     })
     .from(connectorCalls)
-    .where(eq(connectorCalls.connectorId, id))
+    .where(and(eq(connectorCalls.connectorId, id), gte(connectorCalls.calledAt, new Date(now.getTime() - PERIOD_MS))))
     .groupBy(connectorCalls.action);
   const statsOf = new Map(stats.map((row) => [row.action, row]));
 
