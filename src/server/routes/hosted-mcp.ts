@@ -103,9 +103,12 @@ function noteActionCalls(
       });
     });
   });
-  // A call still untold when the request ends on a server error was cut short by SLICE itself (D4).
+  // A call still untold when the request ends on an error status never reached the engine:
+  // the MCP protocol refused the request (4xx), or SLICE itself cut it short (5xx) (D4).
   void responded.then((status) => {
-    if (status >= 500) for (const tell of [...noted.values()]) tell({ kind: 'slice_error' });
+    if (status < 400) return;
+    const result: CallResult = { kind: status >= 500 ? 'slice_error' : 'invalid_request' };
+    for (const tell of [...noted.values()]) tell(result);
   });
   if (notes.length > 0) {
     Promise.all([responded, ...notes])
