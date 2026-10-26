@@ -169,4 +169,16 @@ describe('the recent calls of an MCP', () => {
 
     expect(usage?.recentCalls.map((recent) => recent.durationMs)).toEqual(Array.from({ length: 50 }, (_, n) => n + 1));
   });
+
+  it('leave out a call made more than 30 days ago (contract 20, D9)', async () => {
+    const { id } = await store.put(NOTES, workspaceId, CREATED);
+    await createMcpCalls(database).write(id, [
+      call('list_notes', 31 * 24, { kind: 'succeeded' }, 5_000),
+      call('list_notes', 29 * 24, { kind: 'succeeded' }, 100),
+    ]);
+
+    const usage = await readMcpUsage(database, workspaceId, id, NOW);
+
+    expect(usage?.recentCalls.map((recent) => recent.calledAt)).toEqual(['2026-09-27T14:00:00.000Z']);
+  });
 });
