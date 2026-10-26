@@ -138,14 +138,7 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
         : undefined;
     const onActionResult = (requestId: string | number, result: CallResult) => noted?.get(requestId)?.(result);
 
-    // An agent connected before a "Save" may still call an action the active version lacks (D7):
-    // it is told to start over, and the API is never called.
-    const call = actionCall(req.body);
-    if (call && !config.endpoints.some((endpoint) => endpoint.name === call.name)) {
-      onActionResult(call.id, { kind: 'not_available' });
-      res.json({ jsonrpc: '2.0', id: call.id, result: { content: [{ type: 'text', text: ACTION_GONE }], isError: true } });
-      return;
-    }
+    const served = new Set(config.endpoints.map((endpoint) => endpoint.name));
     const server = buildHostedMcpServer(config, {
       allowPrivateHosts: options.allowPrivateHosts,
     });
@@ -157,6 +150,20 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
 
     try {
       await server.connect(transport);
+      // An agent connected before a "Save" may still call an action the active version lacks (D7),
+      // alone or in a batch: it is told to start over, and the API is never called.
+      const deliver = transport.onmessage;
+      transport.onmessage = (message, extra) => {
+        const call = actionCall(message);
+        if (!call || served.has(call.name)) return deliver?.(message, extra);
+        onActionResult(call.id, { kind: 'not_available' });
+        transport
+          .send({ jsonrpc: '2.0', id: call.id, result: { content: [{ type: 'text', text: ACTION_GONE }], isError: true } })
+          .catch((err: unknown) => {
+            // eslint-disable-next-line no-console
+            console.error('[hosted-mcp] answering a gone action failed:', err instanceof Error ? err.message : err);
+          });
+      };
       // A call whose values the SDK refuses never reaches the engine: only its response tells.
       const send = transport.send.bind(transport);
       transport.send = (message, sendOptions) => {
