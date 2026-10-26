@@ -21,9 +21,9 @@ const CALLED = new Intl.DateTimeFormat('en-US', {
 /** A day the cap was reached, e.g. "Oct 24, 2026": a day of UTC, as the server counts it (D8). */
 const CAPPED_DAY = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
 
-/** A duration (D11), e.g. "420 ms". */
+/** A duration (D11): in milliseconds under a second ("420 ms"), in seconds from a second on ("1.2 s"). */
 function durationOf(ms: number): string {
-  return `${ms} ms`;
+  return ms < 1_000 ? `${ms} ms` : `${(ms / 1_000).toFixed(1)} s`;
 }
 
 export function UsageScreen({ mcpId }: { mcpId: string }) {
