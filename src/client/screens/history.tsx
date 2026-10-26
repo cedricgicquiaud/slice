@@ -5,8 +5,7 @@
  */
 import { useEffect, useId, useState } from 'react';
 import { getMcpHistory, type McpHistory, type McpVersion } from '../lib/mcps-api';
-
-const CREATED = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+import { CREATED } from './mcps';
 
 export function HistoryScreen({ mcpId }: { mcpId: string }) {
   const [history, setHistory] = useState<McpHistory | null>(null);

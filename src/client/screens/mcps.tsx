@@ -20,7 +20,8 @@ import {
 import { ApiError } from '../lib/api';
 import { deleteMcp, listMcps, type Mcp } from '../lib/mcps-api';
 
-const CREATED = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+/** The day an MCP or one of its versions was created, e.g. "Oct 21, 2026". */
+export const CREATED = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 
 export function McpsScreen() {
   const [mcps, setMcps] = useState<Mcp[] | null>(null);
