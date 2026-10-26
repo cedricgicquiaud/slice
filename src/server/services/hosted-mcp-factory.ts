@@ -158,6 +158,17 @@ function assembleBody(
   return JSON.stringify(obj);
 }
 
+/** The API answered with a code other than 2xx, kept apart from the message the agent reads. */
+export class UpstreamFailure extends Error {
+  constructor(
+    readonly status: number,
+    message: string
+  ) {
+    super(message);
+    this.name = 'UpstreamFailure';
+  }
+}
+
 /** Issue the upstream call for one tool invocation, relaying the caller token. */
 async function callUpstream(
   config: HostedMcpConfig,
@@ -210,7 +221,7 @@ async function callUpstream(
 
   const res = await fetch(url, { method: endpoint.method, headers, body });
   if (!res.ok) {
-    throw new Error(`Upstream ${res.status} ${res.statusText}: ${await res.text()}`);
+    throw new UpstreamFailure(res.status, `Upstream ${res.status} ${res.statusText}: ${await res.text()}`);
   }
   const ct = res.headers.get('content-type') ?? '';
   return ct.includes('application/json') ? res.json() : res.text();
@@ -254,9 +265,15 @@ export function buildHostedMcpServer(
       shape,
       toolAnnotationsFor(endpoint.method),
       async (args: Record<string, unknown>, extra) => {
-        const result = await callUpstream(config, endpoint, args, allowPrivateHosts);
-        relayStore.getStore()?.onActionResult?.(extra.requestId, { kind: 'succeeded' });
-        return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        const tell = (result: CallResult) => relayStore.getStore()?.onActionResult?.(extra.requestId, result);
+        try {
+          const result = await callUpstream(config, endpoint, args, allowPrivateHosts);
+          tell({ kind: 'succeeded' });
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err) {
+          if (err instanceof UpstreamFailure) tell({ kind: 'failed', status: err.status });
+          throw err;
+        }
       }
     );
   }
