@@ -637,4 +637,31 @@ describe('GET /api/mcps/:id/usage', () => {
       calledDuringTheCall: true,
     });
   });
+
+  it("answers another account's MCP exactly as an unknown id (contract 21, D13)", async () => {
+    const other = await createTestAccount({ database, email: 'neighbour-usage@example.com' });
+    const { id } = await store.put(NOTES, other.workspaceId, CREATED);
+
+    const theirs = await fetch(`${usage.url}/api/mcps/${id}/usage`, { headers: { cookie: account.cookie } });
+    const unknown = await fetch(`${usage.url}/api/mcps/no-such-mcp-id/usage`, { headers: { cookie: account.cookie } });
+
+    expect({
+      theirs: { status: theirs.status, body: await theirs.text() },
+      unknown: { status: unknown.status, body: await unknown.text() },
+    }).toEqual({
+      theirs: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+      unknown: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+    });
+  });
+
+  it("answers 401 to an MCP's usage without a session (contract 22, D13)", async () => {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+
+    const res = await fetch(`${usage.url}/api/mcps/${id}/usage`);
+
+    expect({ status: res.status, body: await res.json() }).toEqual({
+      status: 401,
+      body: { code: 'UNAUTHORIZED', message: 'Sign in to continue.' },
+    });
+  });
 });
