@@ -33,6 +33,12 @@ export interface McpHistory {
   versions: McpVersion[];
 }
 
+/** An MCP's usage over the last 30 days, as `GET /api/mcps/:id/usage` reads it (D10). */
+export interface McpUsage {
+  /** The API's name as read in its description, else its domain. */
+  apiName: string;
+}
+
 /** What "Edit actions" shows, as `GET /api/mcps/:id/selection` reads it (D2). */
 export interface McpSelection {
   /** The API's name as read in its description, else its domain. */
@@ -58,6 +64,13 @@ export async function getMcpHistory(id: string): Promise<McpHistory> {
   const res = await fetch(`/api/mcps/${id}/versions`);
   if (!res.ok) await throwRefusal(res);
   return (await res.json()) as McpHistory;
+}
+
+/** The usage of one of the account's MCPs over the last 30 days (D10). */
+export async function getMcpUsage(id: string): Promise<McpUsage> {
+  const res = await fetch(`/api/mcps/${id}/usage`);
+  if (!res.ok) await throwRefusal(res);
+  return (await res.json()) as McpUsage;
 }
 
 /** The selection of one of the account's MCPs, for "Edit actions" (D2). */
