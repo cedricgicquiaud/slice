@@ -31,6 +31,22 @@ export interface HostedEndpoint {
   params: EndpointParam[];
 }
 
+/**
+ * One action of the API as the selection screen shows it, checked or not (D1):
+ * kept at creation so the selection can change later without the API description.
+ */
+export interface ApiAction {
+  name: string;
+  label: string;
+  /** The tag the action is grouped under. */
+  group: string;
+  description?: string;
+  deprecated: boolean;
+  method: HttpMethod;
+  path: string;
+  params: EndpointParam[];
+}
+
 /** The stored "fiche": everything the engine needs to serve one MCP. */
 export interface HostedMcpConfig {
   name: string;
@@ -39,6 +55,8 @@ export interface HostedMcpConfig {
   baseUrl: string;
   upstreamAuth: UpstreamAuth;
   endpoints: HostedEndpoint[];
+  /** Every action of the API, the selection's and the others (D1); the engine never serves them. */
+  apiActions?: ApiAction[];
   /** ISO creation date: set by the store, which stamps the connector on `put` and returns it on `get`. */
   createdAt?: string;
   /** The workspace the connector belongs to (D15): given to the store's `put`, returned by `get`. */

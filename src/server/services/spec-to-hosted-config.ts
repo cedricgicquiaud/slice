@@ -26,11 +26,25 @@ export function specToHostedConfig(
       params: e.params,
     }));
 
+  const apiActions = spec.groups.flatMap((g) =>
+    g.endpoints.map((e) => ({
+      name: toolNameFor(e),
+      label: e.label,
+      group: g.tag,
+      ...(e.description !== undefined && { description: e.description }),
+      deprecated: e.deprecated ?? false,
+      method: e.method,
+      path: e.path,
+      params: e.params,
+    }))
+  );
+
   return {
     name: config.mcpName,
     apiName: spec.apiName,
     baseUrl: config.baseUrl,
     upstreamAuth: config.upstreamAuth,
     endpoints,
+    apiActions,
   };
 }
