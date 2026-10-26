@@ -5,6 +5,7 @@
  */
 import { useEffect, useId, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
+import { Button } from '../components/ui/button';
 import { ApiError } from '../lib/api';
 import { getMcpHistory, type McpHistory, type McpVersion } from '../lib/mcps-api';
 import { CREATED, countOfActions, messageOf } from './mcps';
@@ -81,10 +82,15 @@ function VersionRow({ version }: { version: McpVersion }) {
           {countOfActions(version.actionLabels.length)}
         </span>
         <span className="text-sm text-muted-foreground">Created {CREATED.format(new Date(version.createdAt))}</span>
-        {version.activeSince && (
+        {version.activeSince ? (
           <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
             Active since {CREATED.format(new Date(version.activeSince))}
           </span>
+        ) : (
+          // The active version has nothing to restore (contract 22).
+          <Button type="button" variant="ghost" size="sm" className="ml-auto text-muted-foreground">
+            Restore
+          </Button>
         )}
       </div>
       {unfolded && (
