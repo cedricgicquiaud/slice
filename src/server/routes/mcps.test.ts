@@ -474,6 +474,33 @@ describe('POST /api/mcps/:id/versions/:number/restore', () => {
     });
   });
 
+  it('refuses a change started from version 2 once version 1 is restored, a tab left open, and saves nothing (contract 23, D13)', async () => {
+    const id = await notesAtVersion2();
+    await restore(id, 1);
+
+    const saved = await fetch(`${edit.url}/api/mcps/${id}/versions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: account.cookie },
+      body: JSON.stringify({ fromVersion: 2, selectedIds: ['GET /notes', 'DELETE /trash'] }),
+    });
+    const history = (await (
+      await fetch(`${edit.url}/api/mcps/${id}/versions`, { headers: { cookie: account.cookie } })
+    ).json()) as { versions: Array<{ number: number; activeSince: string | null }> };
+
+    expect({
+      saved: { status: saved.status, body: await saved.json() },
+      versions: history.versions.map((version) => version.number),
+      active: history.versions.filter((version) => version.activeSince !== null).map((version) => version.number),
+    }).toEqual({
+      saved: {
+        status: 409,
+        body: { code: 'CONFLICT', message: 'This MCP changed in the meantime. Reload to see its current actions.' },
+      },
+      versions: [2, 1],
+      active: [1],
+    });
+  });
+
   it.each([
     ['a number it does not have', '7'],
     ['a number past any version', '99999999999'],
