@@ -9,6 +9,7 @@ import { ConfigScreen } from './screens/config';
 import { SuccessScreen } from './screens/success';
 import { McpsScreen } from './screens/mcps';
 import { HistoryScreen } from './screens/history';
+import { EditActionsScreen } from './screens/edit-actions';
 import { DeleteAccountScreen } from './screens/delete-account';
 import { useTheme } from './hooks/use-theme';
 import { ApiError, apiGenerate, apiHost } from './lib/api';
@@ -17,6 +18,8 @@ type ScreenIndex = 1 | 2 | 3 | 4;
 
 /** An MCP's history (D10): `/mcps/<id>/history`. */
 const HISTORY_PATH = /^\/mcps\/([^/]+)\/history$/;
+/** An MCP's "Edit actions" (D10): `/mcps/<id>/edit`. */
+const EDIT_PATH = /^\/mcps\/([^/]+)\/edit$/;
 
 interface SuccessState {
   config: SliceConfig;
@@ -121,11 +124,14 @@ function AppInner() {
 
   // The pages outside the three steps: no steps at the top.
   const historyOf = HISTORY_PATH.exec(path)?.[1];
+  const editOf = EDIT_PATH.exec(path)?.[1];
   const offStepsPage =
     path === '/mcps' ? (
       <McpsScreen />
     ) : historyOf ? (
       <HistoryScreen mcpId={historyOf} />
+    ) : editOf ? (
+      <EditActionsScreen mcpId={editOf} />
     ) : path === '/account/delete' ? (
       <DeleteAccountScreen />
     ) : null;
