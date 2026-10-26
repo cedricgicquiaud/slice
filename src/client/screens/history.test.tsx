@@ -36,8 +36,8 @@ const TWO_VERSIONS = {
  * SLICE's API as this page sees it: `GET /api/mcps/:id/versions` answers the
  * history kept in `histories` under that id, else 404 as for an unknown MCP or
  * another account's, or `refusal` when set; `POST /api/mcps/:id/versions/:number/restore`
- * is kept in `restores` and answers, once `held` resolves when set, the version
- * active since Oct 26, 2026;
+ * is kept in `restores` and answers, once `held` resolves when set,
+ * `restoreRefusal` when set, else the version active since Oct 26, 2026;
  * any other call is "who is signed in?" (`session`).
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
@@ -48,7 +48,8 @@ const server = vi.hoisted(() => {
     refusal: { status: number; code: string; message: string } | null;
     restores: string[];
     held: Promise<void> | null;
-  } = { session: null, histories: {}, refusal: null, restores: [], held: null };
+    restoreRefusal: { status: number; code: string; message: string } | null;
+  } = { session: null, histories: {}, refusal: null, restores: [], held: null, restoreRefusal: null };
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -57,6 +58,10 @@ const server = vi.hoisted(() => {
     if (init?.method === 'POST' && restored) {
       state.restores.push(url);
       await state.held;
+      if (state.restoreRefusal) {
+        const { status, code, message } = state.restoreRefusal;
+        return json({ code, message }, status);
+      }
       return json({ number: Number(restored[1]), activeSince: '2026-10-26T15:00:00.000Z' });
     }
     const asked = /^\/api\/mcps\/([^/]+)\/versions$/.exec(url);
@@ -73,6 +78,7 @@ afterEach(() => {
   server.refusal = null;
   server.restores = [];
   server.held = null;
+  server.restoreRefusal = null;
   window.history.pushState({}, '', '/');
 });
 
@@ -203,5 +209,21 @@ describe('Restore', () => {
     await screen.findByRole('status');
 
     expect({ greyedDuringTheCall, restores: server.restores.length }).toEqual({ greyedDuringTheCall: true, restores: 1 });
+  });
+
+  it("shows a refused restoration as the server words it, claims nothing, and lets Restore be tried again (contract 21)", async () => {
+    server.histories['notion-id'] = TWO_VERSIONS;
+    server.restoreRefusal = { status: 404, code: 'NOT_FOUND', message: 'Unknown version of this MCP.' };
+    const user = userEvent.setup();
+    render(<HistoryScreen mcpId="notion-id" />);
+    const restore = within(await screen.findByRole('listitem', { name: 'Version 1' })).getByRole('button', { name: 'Restore' });
+
+    await user.click(restore);
+
+    expect({
+      alert: (await screen.findByRole('alert')).textContent,
+      status: screen.queryByRole('status'),
+      greyed: restore.hasAttribute('disabled'),
+    }).toEqual({ alert: 'Unknown version of this MCP.', status: null, greyed: false });
   });
 });
