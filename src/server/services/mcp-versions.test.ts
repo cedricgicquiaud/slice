@@ -1,7 +1,8 @@
 // WAT-141/142/143 — the history of an MCP: its versions, newest first, read by its own workspace only.
+// WAT-148/149 — "Restore": an existing version of one's own MCP becomes the active one again.
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { readMcpHistory } from './mcp-versions';
+import { readMcpHistory, restoreMcpVersion } from './mcp-versions';
 import { createHostedStore, type HostedStore } from './hosted-store';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
@@ -13,6 +14,7 @@ vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 const MONDAY = new Date('2026-10-19T08:30:00.000Z');
 const TUESDAY = new Date('2026-10-20T14:00:00.000Z');
+const WEDNESDAY = new Date('2026-10-21T16:45:00.000Z');
 
 const NOTION: HostedMcpConfig = {
   name: 'notion',
@@ -96,5 +98,31 @@ describe('the history of an MCP', () => {
         ],
       },
     ]).toContainEqual(history);
+  });
+});
+
+describe('"Restore"', () => {
+  it('makes version 1 the active one again, active from now, without creating a version (contract 10, D9)', async () => {
+    const { workspaceId } = await createTestAccount({ database, email: 'restore@example.com' });
+    const { id } = await store.put(NOTION, workspaceId, MONDAY);
+    await activateVersion2(id, TUESDAY);
+
+    const outcome = await restoreMcpVersion(database, workspaceId, id, 1, WEDNESDAY);
+
+    expect({ outcome, history: await readMcpHistory(database, workspaceId, id) }).toEqual({
+      outcome: { activeSince: '2026-10-21T16:45:00.000Z' },
+      history: {
+        apiName: 'Notion API',
+        versions: [
+          { number: 2, createdAt: '2026-10-20T14:00:00.000Z', activeSince: null, actionLabels: ['Get a page'] },
+          {
+            number: 1,
+            createdAt: '2026-10-19T08:30:00.000Z',
+            activeSince: '2026-10-21T16:45:00.000Z',
+            actionLabels: ['Search', 'Get a page'],
+          },
+        ],
+      },
+    });
   });
 });
