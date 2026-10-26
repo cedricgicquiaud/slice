@@ -337,6 +337,29 @@ describe('the note of an action call that reaches the API', () => {
       })
     );
   });
+
+  it('is "API unreachable" when the SSRF guard refuses the API\'s address at the time of the call (contract 4, D4)', async () => {
+    // A production-like instance: allowPrivateHosts off → the loopback API is refused at each call.
+    const guarded = createApp({ nodeEnv: 'test', allowPrivateHosts: false, hostedStore: store, mcpCalls: calls, now, auth: account.auth }).listen(0);
+    await new Promise<void>((r) => guarded.once('listening', r));
+    try {
+      const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+      received = [];
+
+      const agent = await connectAgent(`http://127.0.0.1:${(guarded.address() as AddressInfo).port}/m/${id}`, 'TOKEN');
+      await agent.callTool({ name: 'list_things', arguments: {} });
+      await agent.close();
+
+      await vi.waitFor(async () =>
+        expect({ upstreamCalls: received.length, results: (await calls.of(id)).map((note) => note.result) }).toEqual({
+          upstreamCalls: 0,
+          results: [{ kind: 'api_unreachable' }],
+        })
+      );
+    } finally {
+      await new Promise<void>((r) => guarded.close(() => r()));
+    }
+  });
 });
 
 /** An address where nothing listens: a port just released. */
