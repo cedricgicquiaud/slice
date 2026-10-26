@@ -74,7 +74,7 @@ export async function readMcpSelection(
 }
 
 /** How a "Save" ends: the new version's number, or why nothing was saved. */
-export type SaveOutcome = { version: number } | { refused: 'unknown-mcp' };
+export type SaveOutcome = { version: number } | { refused: 'unknown-mcp' | 'changed-meanwhile' };
 
 /**
  * Save `change` as the next version of the MCP `id` of `workspaceId`, active from `now` (D4, D9).
@@ -94,6 +94,11 @@ export async function saveMcpSelection(
       .where(and(eq(connectors.id, id), eq(connectors.workspaceId, workspaceId)))
       .for('update');
     if (!connector) return { refused: 'unknown-mcp' };
+    const [active] = await tx
+      .select({ number: connectorVersions.number })
+      .from(connectorVersions)
+      .where(and(eq(connectorVersions.connectorId, id), isNotNull(connectorVersions.activeSince)));
+    if (active?.number !== change.fromVersion) return { refused: 'changed-meanwhile' };
     const [{ last }] = await tx
       .select({ last: max(connectorVersions.number) })
       .from(connectorVersions)
