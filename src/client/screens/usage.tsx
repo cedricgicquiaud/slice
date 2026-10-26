@@ -6,10 +6,12 @@
 import { useEffect, useState } from 'react';
 import { ApiError } from '../lib/api';
 import { getMcpUsage, type McpUsage } from '../lib/mcps-api';
+import { messageOf } from './mcps';
 
 export function UsageScreen({ mcpId }: { mcpId: string }) {
   const [usage, setUsage] = useState<McpUsage | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getMcpUsage(mcpId)
@@ -17,6 +19,7 @@ export function UsageScreen({ mcpId }: { mcpId: string }) {
       .catch((err: unknown) => {
         // Another account's MCP answers as an unknown one (D13): one case here.
         if (err instanceof ApiError && err.status === 404) setNotFound(true);
+        else setError(messageOf(err));
       });
   }, [mcpId]);
 
@@ -25,6 +28,11 @@ export function UsageScreen({ mcpId }: { mcpId: string }) {
       <a href="/mcps" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
         Back to My MCPs
       </a>
+      {error && (
+        <p role="alert" className="mt-8 text-sm text-destructive">
+          {error}
+        </p>
+      )}
       {notFound && (
         <>
           <h1 className="mt-4 font-serif text-4xl italic">MCP not found</h1>
