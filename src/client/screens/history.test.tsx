@@ -1,4 +1,5 @@
 // WAT-142/143 — "History", at /mcps/<id>/history: the versions of one of my MCPs, never another account's.
+// WAT-148/149 — "Restore" on a version that is not the active one makes it active again.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -140,5 +141,19 @@ describe('History', () => {
     render(<HistoryScreen mcpId="notion-id" />);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('SLICE is unavailable for the moment.');
+  });
+});
+
+describe('Restore', () => {
+  it('offers "Restore" on every version but the active one (contract 22)', async () => {
+    server.histories['notion-id'] = TWO_VERSIONS;
+
+    render(<HistoryScreen mcpId="notion-id" />);
+
+    const versions = await screen.findAllByRole('listitem', { name: /^Version/ });
+    expect(versions.map((version) => within(version).queryByRole('button', { name: 'Restore' }) !== null)).toEqual([
+      false,
+      true,
+    ]);
   });
 });
