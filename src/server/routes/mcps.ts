@@ -52,7 +52,8 @@ export function createMcpsRouter(accountMcps: AccountMcps): Router {
     }
     const outcome = await accountMcps.saveSelection(res.locals.workspaceId, req.params.id, change.data);
     if ('refused' in outcome) {
-      res.status(404).json(UNKNOWN_MCP);
+      if (outcome.refused === 'unknown-action') res.status(400).json(invalidSelection("This MCP's API has no such action."));
+      else res.status(404).json(UNKNOWN_MCP);
       return;
     }
     res.status(201).json({ number: outcome.version });
