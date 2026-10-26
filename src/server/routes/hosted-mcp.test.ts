@@ -191,7 +191,7 @@ describe('hosted connector served from the database', () => {
     expect(received.map((r) => r.apiKey)).toEqual(['KEY-123']);
   });
 
-  it('keeps no upstream key or token in the database', async () => {
+  it('keeps no upstream key, no token and not the API description in the database, versions and lists included (contract 24)', async () => {
     const res = await fetch(`${baseUrl}/api/host`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: account.cookie },
@@ -217,12 +217,14 @@ describe('hosted connector served from the database', () => {
     await agent.callTool({ name: 'list_things', arguments: {} });
     await agent.close();
 
-    const everything = await database.rows<{ row: string }>(
-      sql`select row_to_json(c)::text as row from connectors c
-          union all select row_to_json(a)::text from connector_actions a`
+    const everything = await database.rows<{ kind: string; row: string }>(
+      sql`select 'connector' as kind, row_to_json(c)::text as row from connectors c
+          union all select 'version', row_to_json(v)::text from connector_versions v
+          union all select 'action', row_to_json(a)::text from connector_actions a
+          union all select 'api action', row_to_json(l)::text from connector_api_actions l`
     );
-    expect(everything.length).toBeGreaterThan(0);
-    expect(everything.filter((r) => /feedface|AGENT-SECRET/.test(r.row))).toEqual([]);
+    expect(new Set(everything.map((r) => r.kind))).toEqual(new Set(['connector', 'version', 'action', 'api action']));
+    expect(everything.filter((r) => /feedface|AGENT-SECRET|openapi: 3\.0\.3|info: \{ title/.test(r.row))).toEqual([]);
   });
 });
 
