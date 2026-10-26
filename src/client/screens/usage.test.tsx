@@ -160,4 +160,18 @@ describe('Usage by action', () => {
     const [, , createNote] = await actionsTable();
     expect(createNote).toEqual(['Create a note', 'Never called']);
   });
+
+  it('marks "Not available" the line of an action outside the active version, called in the last 30 days, and that line only (contract 6, D10)', async () => {
+    server.usages['notes-id'] = NOTES_USED;
+
+    render(<UsageScreen mcpId="notes-id" />);
+
+    const table = await screen.findByRole('table', { name: 'Actions' });
+    const lines = within(table).getAllByRole('row').slice(1);
+    const [, , emptyTrash] = await actionsTable();
+    expect({
+      marked: lines.map((line) => within(line).queryByText('Not available') !== null),
+      figures: emptyTrash?.slice(1),
+    }).toEqual({ marked: [false, false, true], figures: ['1', '0', '—', 'Oct 25, 2026, 09:30'] });
+  });
 });
