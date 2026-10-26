@@ -321,4 +321,21 @@ describe('POST /api/mcps/:id/versions', () => {
       served: 2,
     });
   });
+
+  it('refuses a change started from a version no longer active, two tabs open, and saves nothing (contract 23, D13)', async () => {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+    await save(id, { fromVersion: 1, selectedIds: ['GET /notes'] });
+
+    const res = await save(id, { fromVersion: 1, selectedIds: ['GET /notes', 'DELETE /trash'] });
+
+    expect({
+      status: res.status,
+      body: await res.json(),
+      served: (await store.get(id))?.endpoints.map((action) => action.name),
+    }).toEqual({
+      status: 409,
+      body: { code: 'CONFLICT', message: 'This MCP changed in the meantime. Reload to see its current actions.' },
+      served: ['list_notes'],
+    });
+  });
 });
