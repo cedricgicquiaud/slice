@@ -128,4 +128,24 @@ describe('Edit actions', () => {
       ],
     });
   });
+
+  it("greys Save while the selection is the active version's: as the screen opens, and again once saved (contract 14, D5)", async () => {
+    server.selections['notes-id'] = NOTES_SELECTION;
+    window.history.pushState({}, '', '/mcps/notes-id/edit');
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Tag: All' }));
+    const save = () => screen.getByRole('button', { name: /save/i });
+    const greyedAsItOpens = save().hasAttribute('disabled');
+
+    await user.click(screen.getByRole('checkbox', { name: 'Select Empty the trash' }));
+    await user.click(save());
+    await screen.findByRole('status');
+
+    expect({ greyedAsItOpens, greyedOnceSaved: save().hasAttribute('disabled'), saves: server.saves.length }).toEqual({
+      greyedAsItOpens: true,
+      greyedOnceSaved: true,
+      saves: 1,
+    });
+  });
 });
