@@ -125,4 +125,18 @@ describe('"Restore"', () => {
       },
     });
   });
+
+  it("refuses another account's MCP as an unknown one, and leaves its active version as it is (contract 19, D12)", async () => {
+    const owner = await createTestAccount({ database, email: 'restore-owner@example.com' });
+    const neighbour = await createTestAccount({ database, email: 'restore-neighbour@example.com' });
+    const { id } = await store.put(NOTION, owner.workspaceId, MONDAY);
+    await activateVersion2(id, TUESDAY);
+
+    const outcome = await restoreMcpVersion(database, neighbour.workspaceId, id, 1, WEDNESDAY);
+
+    expect({
+      outcome,
+      active: (await readMcpHistory(database, owner.workspaceId, id))?.versions.map((version) => version.activeSince),
+    }).toEqual({ outcome: { refused: 'unknown-mcp' }, active: ['2026-10-20T14:00:00.000Z', null] });
+  });
 });
