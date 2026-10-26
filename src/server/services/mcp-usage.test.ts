@@ -120,4 +120,22 @@ describe('the usage of an MCP', () => {
       },
     ]);
   });
+
+  it('names each day of the last 30 on which 10,000 calls were noted, and only those (contract 19, D8)', async () => {
+    const { id } = await store.put(NOTES, workspaceId, CREATED);
+    /** `count` calls on `day`, a second apart from its midnight (UTC). */
+    const callsOn = (day: string, count: number): CallNote[] =>
+      Array.from({ length: count }, (_, n) => ({
+        action: 'list_notes',
+        version: 1,
+        calledAt: new Date(Date.parse(`${day}T00:00:00.000Z`) + n * 1_000),
+        result: { kind: 'succeeded' },
+        durationMs: 50,
+      }));
+    await createMcpCalls(database).write(id, [...callsOn('2026-10-24', 10_000), ...callsOn('2026-10-25', 9_999)]);
+
+    const usage = await readMcpUsage(database, workspaceId, id, NOW);
+
+    expect(usage?.cappedDays).toEqual(['2026-10-24']);
+  });
 });
