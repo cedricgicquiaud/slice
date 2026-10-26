@@ -425,16 +425,20 @@ describe('POST /api/mcps/:id/versions/:number/restore', () => {
     const listed = (await (await fetch(`${edit.url}/api/mcps`, { headers: { cookie: account.cookie } })).json()) as {
       mcps: Array<{ id: string; actionCount: number }>;
     };
-    const history = (await (await fetch(`${edit.url}/api/mcps/${id}/versions`, { headers: { cookie: account.cookie } })).json()) as {
-      versions: Array<{ number: number }>;
-    };
+    const history = (await (
+      await fetch(`${edit.url}/api/mcps/${id}/versions`, { headers: { cookie: account.cookie } })
+    ).json()) as { versions: Array<{ number: number }> };
     const agent = new Client({ name: 'agent', version: '0.0.0' });
     await agent.connect(new StreamableHTTPClientTransport(new URL(`${edit.url}/m/${id}`)));
     const { tools } = await agent.listTools();
     await agent.close();
 
     expect({
-      restored: { status: restored.status, number, activeSinceNow: asked <= Date.parse(activeSince) && Date.parse(activeSince) <= answered },
+      restored: {
+        status: restored.status,
+        number,
+        activeSinceNow: asked <= Date.parse(activeSince) && Date.parse(activeSince) <= answered,
+      },
       actionCount: listed.mcps.find((mcp) => mcp.id === id)?.actionCount,
       versions: history.versions.map((version) => version.number),
       tools: tools.map((tool) => tool.name),
@@ -479,7 +483,11 @@ describe('POST /api/mcps/:id/versions/:number/restore', () => {
 
     const res = await restore(id, number);
 
-    expect({ status: res.status, body: await res.json(), served: (await store.get(id))?.endpoints.map((action) => action.name) }).toEqual({
+    expect({
+      status: res.status,
+      body: await res.json(),
+      served: (await store.get(id))?.endpoints.map((action) => action.name),
+    }).toEqual({
       status: 404,
       body: { code: 'NOT_FOUND', message: 'Unknown version of this MCP.' },
       served: ['list_notes'],
