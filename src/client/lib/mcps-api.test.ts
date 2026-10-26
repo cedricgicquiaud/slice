@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { deleteMcp, getMcpHistory, listMcps } from './mcps-api';
+import { deleteMcp, getMcpHistory, getMcpSelection, listMcps } from './mcps-api';
 
 const NOTION = {
   id: 'Q2xhdWRlIGlzIG5vdCBoZXJl',
@@ -103,6 +103,34 @@ describe('getMcpHistory', () => {
       name: 'ApiError',
       status: 404,
       code: 'NOT_FOUND',
+    });
+  });
+});
+
+describe('getMcpSelection', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("returns every action of the MCP's API and the active version's, read from GET /api/mcps/:id/selection", async () => {
+    const selection = {
+      apiName: 'Notion API',
+      version: 1,
+      groups: [
+        {
+          tag: 'Pages',
+          endpoints: [{ id: 'GET /pages/{id}', method: 'GET', path: '/pages/{id}', label: 'Get a page', params: [] }],
+        },
+      ],
+      selectedIds: ['GET /pages/{id}'],
+    };
+    const fetchMock = serverAnswers(200, selection);
+
+    expect({ selection: await getMcpSelection('notion-id'), asked: fetchMock.mock.calls }).toEqual({
+      selection,
+      asked: [['/api/mcps/notion-id/selection']],
     });
   });
 });
