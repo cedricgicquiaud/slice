@@ -309,4 +309,16 @@ describe('POST /api/mcps/:id/versions', () => {
       served: 2,
     });
   });
+
+  it("refuses an action that is not one of the API's, and saves nothing (contract 16)", async () => {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+
+    const res = await save(id, { fromVersion: 1, selectedIds: ['GET /notes', 'GET /admin/users'] });
+
+    expect({ status: res.status, body: await res.json(), served: (await store.get(id))?.endpoints.length }).toEqual({
+      status: 400,
+      body: { code: 'INVALID_SELECTION', message: "This MCP's API has no such action." },
+      served: 2,
+    });
+  });
 });
