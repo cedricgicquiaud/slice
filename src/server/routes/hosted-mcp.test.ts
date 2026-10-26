@@ -561,6 +561,54 @@ describe('noting a call', () => {
       await refusingDb.dispose();
     }
   });
+
+  it('gives the agent its answer while the database still takes its time to write the note (contract 18, D7)', async () => {
+    // The database is outside SLICE: this one starts every write and finishes none before the test says so.
+    let writesStarted = 0;
+    let finishWrites = () => {};
+    const slow: McpCalls = {
+      write: () => {
+        writesStarted += 1;
+        return new Promise<void>((resolve) => (finishWrites = resolve));
+      },
+      of: () => Promise.resolve([]),
+    };
+    const noting = await appNotingWith(slow);
+    try {
+      const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+
+      const agent = await connectAgent(`${noting.base}/m/${id}`, 'TOKEN');
+      const answer = await agent.callTool({ name: 'list_things', arguments: {} });
+      await agent.close();
+
+      expect(answer.isError ?? false).toBe(false);
+      await vi.waitFor(() => expect(writesStarted).toBe(1));
+    } finally {
+      finishWrites();
+      await noting.close();
+    }
+  });
+
+  it('notes the call with the result the agent would have read when the agent leaves before the answer (D7)', async () => {
+    const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+    received = [];
+    let answerTheApi = () => {};
+    beforeAnswer = () => new Promise<void>((resolve) => (answerTheApi = resolve));
+    const leaving = new AbortController();
+
+    const request = fetch(`${baseUrl}/m/${id}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+      body: JSON.stringify(toolCall(1, 'list_things', {})),
+      signal: leaving.signal,
+    }).then((res) => res.text());
+    await vi.waitFor(() => expect(received).toHaveLength(1));
+    leaving.abort();
+    await expect(request).rejects.toThrow();
+    answerTheApi();
+
+    await vi.waitFor(async () => expect((await calls.of(id)).map((note) => note.result)).toEqual([{ kind: 'succeeded' }]));
+  });
 });
 
 const ACTION_GONE_TEXT =
