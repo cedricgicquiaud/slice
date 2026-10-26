@@ -88,14 +88,22 @@ function ActionsTable({ actions }: { actions: ActionUsage[] }) {
                 <th scope="row" className="px-4 py-2 text-left font-normal text-foreground">
                   {action.label}
                 </th>
-                <td className="px-4 py-2 text-right tabular-nums">{action.calls}</td>
-                <td className="px-4 py-2 text-right tabular-nums">{action.succeeded}</td>
-                <td className="px-4 py-2 text-right tabular-nums">
-                  {action.averageDurationMs !== null && durationOf(action.averageDurationMs)}
-                </td>
-                <td className="px-4 py-2 text-muted-foreground">
-                  {action.lastCalledAt && CALLED.format(new Date(action.lastCalledAt))}
-                </td>
+                {action.calls === 0 ? (
+                  <td colSpan={4} className="px-4 py-2 text-muted-foreground">
+                    Never called
+                  </td>
+                ) : (
+                  <>
+                    <td className="px-4 py-2 text-right tabular-nums">{action.calls}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{action.succeeded}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      {action.averageDurationMs !== null && durationOf(action.averageDurationMs)}
+                    </td>
+                    <td className="px-4 py-2 text-muted-foreground">
+                      {action.lastCalledAt && CALLED.format(new Date(action.lastCalledAt))}
+                    </td>
+                  </>
+                )}
               </tr>
             ))}
           </tbody>
