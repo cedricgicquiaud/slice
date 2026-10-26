@@ -195,6 +195,17 @@ describe('Restore', () => {
     });
   });
 
+  it('spaces the message from the MCP\'s name as the page spaces its other text under the name', async () => {
+    server.histories['notion-id'] = TWO_VERSIONS;
+    const user = userEvent.setup();
+    render(<HistoryScreen mcpId="notion-id" />);
+    const version1 = within(await screen.findByRole('listitem', { name: 'Version 1' }));
+
+    await user.click(version1.getByRole('button', { name: 'Restore' }));
+
+    expect(await screen.findByRole('status')).toHaveClass('mt-4');
+  });
+
   it('greys "Restore" during the call: a double click restores once (contract 25)', async () => {
     server.histories['notion-id'] = TWO_VERSIONS;
     let answer = () => {};
