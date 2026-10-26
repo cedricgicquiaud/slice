@@ -169,6 +169,19 @@ export class UpstreamFailure extends Error {
   }
 }
 
+/** The API did not answer; the agent reads the same message as the error it stands for. */
+export class UpstreamUnreachable extends Error {
+  constructor(cause: Error) {
+    super(cause.message, { cause });
+    this.name = 'UpstreamUnreachable';
+  }
+}
+
+/** Undici's own error when no response came: refused connection, unknown host, reset socket. */
+function isNetworkFailure(err: unknown): err is TypeError {
+  return err instanceof TypeError && err.message === 'fetch failed';
+}
+
 /** Issue the upstream call for one tool invocation, relaying the caller token. */
 async function callUpstream(
   config: HostedMcpConfig,
@@ -219,7 +232,12 @@ async function callUpstream(
 
   const body = assembleBody(endpoint, args);
 
-  const res = await fetch(url, { method: endpoint.method, headers, body });
+  let res: Response;
+  try {
+    res = await fetch(url, { method: endpoint.method, headers, body });
+  } catch (err) {
+    throw isNetworkFailure(err) ? new UpstreamUnreachable(err) : err;
+  }
   if (!res.ok) {
     throw new UpstreamFailure(res.status, `Upstream ${res.status} ${res.statusText}: ${await res.text()}`);
   }
@@ -272,6 +290,7 @@ export function buildHostedMcpServer(
           return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
         } catch (err) {
           if (err instanceof UpstreamFailure) tell({ kind: 'failed', status: err.status });
+          if (err instanceof UpstreamUnreachable) tell({ kind: 'api_unreachable' });
           throw err;
         }
       }
