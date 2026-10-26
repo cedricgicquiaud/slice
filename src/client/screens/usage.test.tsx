@@ -174,4 +174,15 @@ describe('Usage by action', () => {
       figures: emptyTrash?.slice(1),
     }).toEqual({ marked: [false, false, true], figures: ['1', '0', '—', 'Oct 25, 2026, 09:30'] });
   });
+
+  it('says so under the title for a day on which 10,000 calls were noted (contract 19, D8)', async () => {
+    server.usages['notes-id'] = { ...NOTES_USED, cappedDays: ['2026-10-24'] };
+
+    render(<UsageScreen mcpId="notes-id" />);
+
+    const message = await screen.findByText(
+      '10,000 calls reached on Oct 24, 2026: later calls that day are not counted.'
+    );
+    expect(message).toHaveClass('mt-4');
+  });
 });
