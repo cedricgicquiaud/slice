@@ -4,7 +4,7 @@
 import { and, count, desc, eq } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { connectorActions, connectors } from '../db/schema';
-import { readMcpHistory, type McpHistory } from './mcp-versions';
+import { apiNameOf, readMcpHistory, type McpHistory } from './mcp-versions';
 
 /** One line of the list. */
 export interface AccountMcp {
@@ -47,7 +47,7 @@ export function createAccountMcps(database: Database): AccountMcps {
         .orderBy(desc(connectors.createdAt));
       return rows.map(({ id, apiName, baseUrl, actionCount, createdAt }) => ({
         id,
-        apiName: apiName ?? new URL(baseUrl).hostname,
+        apiName: apiNameOf({ apiName, baseUrl }),
         actionCount,
         createdAt: createdAt.toISOString(),
       }));

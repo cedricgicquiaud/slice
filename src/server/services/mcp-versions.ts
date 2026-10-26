@@ -22,6 +22,11 @@ export interface McpHistory {
   versions: McpVersion[];
 }
 
+/** The name an MCP goes by: its API's name as read in its description, else its API's domain (D9). */
+export function apiNameOf(connector: { apiName: string | null; baseUrl: string }): string {
+  return connector.apiName ?? new URL(connector.baseUrl).hostname;
+}
+
 /** The history of the MCP `id`, or `undefined` when there is no such MCP. */
 export async function readMcpHistory(database: Database, id: string): Promise<McpHistory | undefined> {
   const { db } = database;
@@ -37,7 +42,7 @@ export async function readMcpHistory(database: Database, id: string): Promise<Mc
     .where(eq(connectorActions.connectorId, id))
     .orderBy(asc(connectorActions.position));
   return {
-    apiName: connector.apiName ?? new URL(connector.baseUrl).hostname,
+    apiName: apiNameOf(connector),
     versions: versions.map((version) => ({
       number: version.number,
       createdAt: version.createdAt.toISOString(),
