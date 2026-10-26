@@ -54,6 +54,13 @@ beforeEach(() => {
 beforeAll(async () => {
   upstream = createServer((req, res) => {
     received.push({ url: req.url ?? '', auth: req.headers.authorization, apiKey: req.headers['x-api-key'] as string | undefined });
+    // `/things/404`, `/things/500`: the API answers that status code.
+    const failure = /^\/things\/([45]\d\d)$/.exec(req.url ?? '');
+    if (failure) {
+      res.writeHead(Number(failure[1]), { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'API-ERROR-MESSAGE' }));
+      return;
+    }
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ ok: true }));
   });
@@ -292,6 +299,22 @@ describe('the note of an action call that reaches the API', () => {
     await vi.waitFor(async () =>
       expect(await calls.of(id)).toEqual([
         { action: 'list_things', version: 1, calledAt: CREATED, result: { kind: 'succeeded' }, durationMs: expect.any(Number) },
+      ])
+    );
+  });
+
+  it('is "Failed" with the code kept when the API answers another code: 404, 500 (contract 3, D4)', async () => {
+    const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`, 'TOKEN');
+    await agent.callTool({ name: 'delete_thing', arguments: { id: '404' } });
+    await agent.callTool({ name: 'delete_thing', arguments: { id: '500' } });
+    await agent.close();
+
+    await vi.waitFor(async () =>
+      expect((await calls.of(id)).map((note) => note.result)).toEqual([
+        { kind: 'failed', status: 404 },
+        { kind: 'failed', status: 500 },
       ])
     );
   });
