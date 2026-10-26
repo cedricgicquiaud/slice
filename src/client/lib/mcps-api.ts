@@ -1,3 +1,4 @@
+import type { EndpointGroup, McpSelectionChange } from '@shared/types';
 import { ApiError, type ApiErrorBody } from './api';
 import { refreshSession } from './auth-client';
 
@@ -32,6 +33,18 @@ export interface McpHistory {
   versions: McpVersion[];
 }
 
+/** What "Edit actions" shows, as `GET /api/mcps/:id/selection` reads it (D2). */
+export interface McpSelection {
+  /** The API's name as read in its description, else its domain. */
+  apiName: string;
+  /** The active version's number: a "Save" starts from it (D13). */
+  version: number;
+  /** Every action of the API, by group. */
+  groups: EndpointGroup[];
+  /** The ids of the active version's actions. */
+  selectedIds: string[];
+}
+
 /** The MCPs of the signed-in account, newest first. */
 export async function listMcps(): Promise<Mcp[]> {
   const res = await fetch('/api/mcps');
@@ -45,6 +58,25 @@ export async function getMcpHistory(id: string): Promise<McpHistory> {
   const res = await fetch(`/api/mcps/${id}/versions`);
   if (!res.ok) await throwRefusal(res);
   return (await res.json()) as McpHistory;
+}
+
+/** The selection of one of the account's MCPs, for "Edit actions" (D2). */
+export async function getMcpSelection(id: string): Promise<McpSelection> {
+  const res = await fetch(`/api/mcps/${id}/selection`);
+  if (!res.ok) await throwRefusal(res);
+  return (await res.json()) as McpSelection;
+}
+
+/** Save a new selection of one of the account's MCPs as its next version (D4); returns its number. */
+export async function saveMcpSelection(id: string, change: McpSelectionChange): Promise<number> {
+  const res = await fetch(`/api/mcps/${id}/versions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(change),
+  });
+  if (!res.ok) await throwRefusal(res);
+  const { number } = (await res.json()) as { number: number };
+  return number;
 }
 
 /** Delete one of the account's MCPs, at once (D10). */

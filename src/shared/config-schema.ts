@@ -114,3 +114,18 @@ export const generateRequestSchema = z.object({
 });
 
 export type GenerateRequestInput = z.input<typeof generateRequestSchema>;
+
+/**
+ * Validator for "Save" on "Edit actions": only the selection of an MCP
+ * changes (D3). Any other field — a name, an API's address, an upstream
+ * access — refuses the whole change.
+ */
+export const mcpSelectionChangeSchema = z.strictObject(
+  {
+    fromVersion: z.number().int().positive(),
+    selectedIds: z.array(z.string().min(1)).min(1, 'Pick at least one action.'),
+  },
+  {
+    error: (issue) => (issue.code === 'unrecognized_keys' ? 'Only the selection of actions can be changed.' : undefined),
+  }
+);

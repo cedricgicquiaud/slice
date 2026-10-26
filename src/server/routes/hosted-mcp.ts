@@ -37,6 +37,19 @@ export function isExpired(createdAt: string | undefined, ttlHours: number, now =
   return now - created > ttlHours * 3_600_000;
 }
 
+/** What an agent reads when it calls an action the MCP's active version lacks (D7). */
+export const ACTION_GONE =
+  'This action is no longer available in this MCP. Start a new conversation to get the current list of actions.';
+
+/** The JSON-RPC id and the action's name of a `tools/call` request, else `undefined`. */
+function actionCall(body: unknown): { id: string | number; name: string } | undefined {
+  if (typeof body !== 'object' || body === null) return undefined;
+  const { method, id, params } = body as { method?: unknown; id?: unknown; params?: { name?: unknown } };
+  if (method !== 'tools/call' || typeof params?.name !== 'string') return undefined;
+  if (typeof id !== 'string' && typeof id !== 'number') return undefined;
+  return { id, name: params.name };
+}
+
 export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
   const router = Router();
 
@@ -55,6 +68,13 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
     }
     if (!config) {
       res.status(404).json({ error: 'Unknown MCP id.' });
+      return;
+    }
+    // An agent connected before a "Save" may still call an action the active version lacks (D7):
+    // it is told to start over, and the API is never called.
+    const call = actionCall(req.body);
+    if (call && !config.endpoints.some((endpoint) => endpoint.name === call.name)) {
+      res.json({ jsonrpc: '2.0', id: call.id, result: { content: [{ type: 'text', text: ACTION_GONE }], isError: true } });
       return;
     }
     const server = buildHostedMcpServer(config, {

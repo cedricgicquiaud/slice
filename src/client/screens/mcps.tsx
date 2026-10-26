@@ -1,8 +1,8 @@
 /**
  * "My MCPs", at `/mcps` (D9): the signed-in account's MCPs, newest first, each
  * with its API's name, action count, creation date and address, and a way to
- * its history (D10). Deleting one asks for confirmation, then takes effect at
- * once (D10). No way to change one.
+ * its actions and its history (D10). Deleting one asks for confirmation, then
+ * takes effect at once (D10). Only its selection of actions can change (D3).
  */
 import { useEffect, useId, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
@@ -99,7 +99,10 @@ function McpRow({ mcp, onDelete }: { mcp: Mcp; onDelete: () => Promise<void> }) 
           {copied ? <Check size={14} /> : <Copy size={14} />}
         </button>
       </div>
-      <div className="flex justify-end gap-1">
+      <div className="flex flex-wrap justify-end gap-1">
+        <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
+          <a href={`/mcps/${mcp.id}/edit`}>Edit actions</a>
+        </Button>
         <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
           <a href={`/mcps/${mcp.id}/history`}>History</a>
         </Button>

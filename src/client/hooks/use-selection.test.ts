@@ -56,6 +56,12 @@ describe('useSelection', () => {
     expect(result.current.isSelected('PUT /other')).toBe(false);
   });
 
+  it('starts from the given selection instead, as "Edit actions" does with the active version (D2)', () => {
+    const { result } = renderHook(() => useSelection(SPEC, ['POST /things', 'PUT /other']));
+
+    expect(result.current.selectedIds().sort()).toEqual(['POST /things', 'PUT /other']);
+  });
+
   it('toggle() adds an unselected id and removes a selected one', () => {
     const { result } = renderHook(() => useSelection(SPEC));
     act(() => result.current.toggle('POST /things'));

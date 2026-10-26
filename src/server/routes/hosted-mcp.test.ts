@@ -124,6 +124,20 @@ function threeActions(): HostedMcpConfig {
   };
 }
 
+/** Version 2, holding only the deletion, made active an hour after the creation. */
+async function activateDeletionOnly(id: string): Promise<void> {
+  await database.rows(sql`update connector_versions set active_since = null where connector_id = ${id}`);
+  await database.rows(
+    sql`insert into connector_versions (connector_id, number, created_at, active_since)
+        values (${id}, 2, ${hoursAfterCreation(1)}, ${hoursAfterCreation(1)})`
+  );
+  await database.rows(
+    sql`insert into connector_actions (connector_id, version, position, name, label, description, method, path, params)
+        values (${id}, 2, 0, 'delete_thing', 'Delete a thing', 'Delete a thing', 'DELETE', '/things/{id}',
+                ${JSON.stringify([{ name: 'id', in: 'path', type: 'string', required: true }])}::jsonb)`
+  );
+}
+
 describe('hosted connector served from the database', () => {
   it('serves its actions in order, with their parameters and read/write labels', async () => {
     const { id } = await store.put(threeActions(), account.workspaceId, new Date());
@@ -143,23 +157,41 @@ describe('hosted connector served from the database', () => {
 
   it('serves the actions of its active version only (D4)', async () => {
     const { id } = await store.put(threeActions(), account.workspaceId, CREATED);
-    // "Save" comes with the next delivery: version 2, holding only the deletion, is made active here.
-    await database.rows(sql`update connector_versions set active_since = null where connector_id = ${id}`);
-    await database.rows(
-      sql`insert into connector_versions (connector_id, number, created_at, active_since)
-          values (${id}, 2, ${hoursAfterCreation(1)}, ${hoursAfterCreation(1)})`
-    );
-    await database.rows(
-      sql`insert into connector_actions (connector_id, version, position, name, label, description, method, path, params)
-          values (${id}, 2, 0, 'delete_thing', 'Delete a thing', 'Delete a thing', 'DELETE', '/things/{id}',
-                  ${JSON.stringify([{ name: 'id', in: 'path', type: 'string', required: true }])}::jsonb)`
-    );
+    await activateDeletionOnly(id);
 
     const agent = await connectAgent(`${baseUrl}/m/${id}`, 'TOKEN');
     const { tools } = await agent.listTools();
     await agent.close();
 
     expect(tools.map((t) => t.name)).toEqual(['delete_thing']);
+  });
+
+  it('asks an agent calling an action the active version lacks to start a new conversation, without calling the API (contract 18, D7)', async () => {
+    const { id } = await store.put(threeActions(), account.workspaceId, CREATED);
+    await activateDeletionOnly(id);
+    received = [];
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`, 'TOKEN');
+    const retired = await agent.callTool({ name: 'create_thing', arguments: { title: 'Groceries' } });
+    const neverExisted = await agent.callTool({ name: 'drop_everything', arguments: {} });
+    const kept = await agent.callTool({ name: 'delete_thing', arguments: { id: '42' } });
+    await agent.close();
+
+    const gone = {
+      isError: true,
+      content: [
+        {
+          type: 'text',
+          text: 'This action is no longer available in this MCP. Start a new conversation to get the current list of actions.',
+        },
+      ],
+    };
+    expect({ retired, neverExisted, kept: kept.isError ?? false, upstreamCalls: received.map((call) => call.url) }).toEqual({
+      retired: gone,
+      neverExisted: gone,
+      kept: false,
+      upstreamCalls: ['/things/42'],
+    });
   });
 
   it('gives a connector created from screen 4 a 22-character address kept in the database', async () => {

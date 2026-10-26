@@ -72,4 +72,29 @@ describe('the history of an MCP', () => {
       ],
     });
   });
+
+  it('reads the MCP as it stands at one moment: while it is deleted, either its whole history or no MCP at all', async () => {
+    const { workspaceId } = await createTestAccount({ database, email: 'history-race@example.com' });
+    const { id } = await store.put(NOTION, workspaceId, MONDAY);
+
+    const [history] = await Promise.all([
+      readMcpHistory(database, workspaceId, id),
+      database.rows(sql`delete from connectors where id = ${id}`),
+    ]);
+
+    expect([
+      undefined,
+      {
+        apiName: 'Notion API',
+        versions: [
+          {
+            number: 1,
+            createdAt: '2026-10-19T08:30:00.000Z',
+            activeSince: '2026-10-19T08:30:00.000Z',
+            actionLabels: ['Search', 'Get a page'],
+          },
+        ],
+      },
+    ]).toContainEqual(history);
+  });
 });

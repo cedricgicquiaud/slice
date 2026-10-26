@@ -109,6 +109,18 @@ describe('My MCPs', () => {
     }).toEqual({ truncated: false, wraps: true });
   });
 
+  // At 375 px "Edit actions", "History" and "Delete" are wider than the row: they wrap
+  // instead of spilling out of it on the left. Same as above, the class is what jsdom checks.
+  it("wraps the row's buttons instead of letting them spill out of it", async () => {
+    server.mcps = [NOTION];
+
+    renderPage();
+
+    const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
+    const buttons = row.getByRole('link', { name: 'Edit actions' }).parentElement;
+    expect(buttons?.classList.contains('flex-wrap')).toBe(true);
+  });
+
   it('counts a single action in the singular', async () => {
     server.mcps = [{ ...NOTION, actionCount: 1 }];
 
@@ -138,16 +150,17 @@ describe('My MCPs', () => {
     expect(row.getByRole('link', { name: 'History' })).toHaveAttribute('href', '/mcps/notion-id/history');
   });
 
-  it('offers no way to change an MCP (D9)', async () => {
+  it('offers "Edit actions" on each row, at /mcps/<id>/edit, as the only way to change an MCP (contract 2, D3, D10)', async () => {
     server.mcps = [NOTION];
 
     renderPage();
 
     const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
     expect({
-      changeButtons: row.queryAllByRole('button', { name: /edit|rename|modify|change|settings/i }).length,
+      editActions: row.queryByRole('link', { name: 'Edit actions' })?.getAttribute('href'),
+      otherChanges: row.queryAllByRole('button', { name: /edit|rename|modify|change|settings/i }).length,
       fields: row.queryAllByRole('textbox').length,
-    }).toEqual({ changeButtons: 0, fields: 0 });
+    }).toEqual({ editActions: '/mcps/notion-id/edit', otherChanges: 0, fields: 0 });
   });
 
   it('deletes an MCP once the deletion is confirmed: it leaves the list and the account (D10)', async () => {

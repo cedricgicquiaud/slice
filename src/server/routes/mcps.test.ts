@@ -10,6 +10,8 @@ import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
 import { DATABASE_TEST_TIMEOUTS, createTestDatabase, type TestDatabase } from '../db/test-database';
 import { createTestAccount, type TestAccount } from '../db/test-account';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
@@ -23,6 +25,23 @@ const NOTION: HostedMcpConfig = {
   endpoints: [
     { name: 'search', description: 'Search', method: 'POST', path: '/search', params: [] },
     { name: 'get_page', description: 'Get a page', method: 'GET', path: '/pages/{id}', params: [] },
+  ],
+};
+
+/** The Notes API: three actions in two groups; version 1 holds the reading and the creation of notes. */
+const NOTES: HostedMcpConfig = {
+  name: 'notes',
+  apiName: 'Notes API',
+  baseUrl: 'https://notes.example.com/v1',
+  upstreamAuth: { type: 'bearer' },
+  endpoints: [
+    { name: 'list_notes', label: 'List notes', description: 'List notes', method: 'GET', path: '/notes', params: [] },
+    { name: 'create_note', label: 'Create a note', description: 'Create a note', method: 'POST', path: '/notes', params: [] },
+  ],
+  apiActions: [
+    { name: 'list_notes', label: 'List notes', group: 'Notes', deprecated: false, method: 'GET', path: '/notes', params: [] },
+    { name: 'create_note', label: 'Create a note', group: 'Notes', deprecated: false, method: 'POST', path: '/notes', params: [] },
+    { name: 'empty_trash', label: 'Empty the trash', group: 'Trash', deprecated: false, method: 'DELETE', path: '/trash', params: [] },
   ],
 };
 
@@ -49,6 +68,24 @@ beforeAll(async () => {
   await new Promise<void>((r) => app.once('listening', r));
   baseUrl = `http://127.0.0.1:${(app.address() as AddressInfo).port}`;
 });
+
+/**
+ * Another server on the same database, for a block of tests: each keeps its own
+ * count of requests, so the files' tests stay under the rate limit of `/api/*`.
+ */
+async function startApp(): Promise<{ url: string; close(): Promise<void> }> {
+  const server = createApp({
+    nodeEnv: 'test',
+    hostedStore: store,
+    accountMcps: createAccountMcps(database),
+    auth: account.auth,
+  }).listen(0);
+  await new Promise<void>((r) => server.once('listening', r));
+  return {
+    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    close: () => new Promise<void>((r) => server.close(() => r())),
+  };
+}
 
 afterAll(async () => {
   await new Promise<void>((r) => (app ? app.close(() => r()) : r()));
@@ -157,5 +194,198 @@ describe('/api/mcps refusals inherited from the guards', () => {
     });
 
     expect({ status: res.status, kept: (await store.get(id)) !== undefined }).toEqual({ status: 403, kept: true });
+  });
+});
+
+describe('GET /api/mcps/:id/selection', () => {
+  let edit: { url: string; close(): Promise<void> };
+  beforeAll(async () => {
+    edit = await startApp();
+  });
+  afterAll(async () => {
+    await edit?.close();
+  });
+
+  it("answers every action of my MCP's API by group, and those of its active version (contract 3, D2)", async () => {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+
+    const res = await fetch(`${edit.url}/api/mcps/${id}/selection`, { headers: { cookie: account.cookie } });
+
+    expect({ status: res.status, body: await res.json() }).toEqual({
+      status: 200,
+      body: {
+        apiName: 'Notes API',
+        version: 1,
+        groups: [
+          {
+            tag: 'Notes',
+            endpoints: [
+              { id: 'GET /notes', method: 'GET', path: '/notes', label: 'List notes', deprecated: false, params: [] },
+              { id: 'POST /notes', method: 'POST', path: '/notes', label: 'Create a note', deprecated: false, params: [] },
+            ],
+          },
+          {
+            tag: 'Trash',
+            endpoints: [
+              { id: 'DELETE /trash', method: 'DELETE', path: '/trash', label: 'Empty the trash', deprecated: false, params: [] },
+            ],
+          },
+        ],
+        selectedIds: ['GET /notes', 'POST /notes'],
+      },
+    });
+  });
+
+  it("answers another account's MCP exactly as an unknown id (contract 19, D12)", async () => {
+    const other = await createTestAccount({ database, email: 'neighbour-selection@example.com' });
+    const { id } = await store.put(NOTES, other.workspaceId, CREATED);
+
+    const theirs = await fetch(`${edit.url}/api/mcps/${id}/selection`, { headers: { cookie: account.cookie } });
+    const unknown = await fetch(`${edit.url}/api/mcps/no-such-mcp-id/selection`, { headers: { cookie: account.cookie } });
+
+    expect({
+      theirs: { status: theirs.status, body: await theirs.text() },
+      unknown: { status: unknown.status, body: await unknown.text() },
+    }).toEqual({
+      theirs: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+      unknown: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+    });
+  });
+});
+
+describe('POST /api/mcps/:id/versions', () => {
+  let edit: { url: string; close(): Promise<void> };
+  beforeAll(async () => {
+    edit = await startApp();
+  });
+  afterAll(async () => {
+    await edit?.close();
+  });
+
+  /** "Save" on "Edit actions", as the signed-in account; without a session when `cookie` is `null`. */
+  function save(id: string, change: unknown, cookie: string | null = account.cookie) {
+    return fetch(`${edit.url}/api/mcps/${id}/versions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(cookie && { cookie }) },
+      body: JSON.stringify(change),
+    });
+  }
+
+  it('makes the new selection version 2 at the same address: the agent lists its actions, My MCPs counts them (contract 5, 6)', async () => {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+
+    const saved = await save(id, { fromVersion: 1, selectedIds: ['GET /notes', 'POST /notes', 'DELETE /trash'] });
+    const listed = (await (await fetch(`${edit.url}/api/mcps`, { headers: { cookie: account.cookie } })).json()) as {
+      mcps: Array<{ id: string; actionCount: number; url: string }>;
+    };
+    const agent = new Client({ name: 'agent', version: '0.0.0' });
+    await agent.connect(new StreamableHTTPClientTransport(new URL(`${edit.url}/m/${id}`)));
+    const { tools } = await agent.listTools();
+    await agent.close();
+
+    expect({
+      saved: { status: saved.status, body: await saved.json() },
+      listed: listed.mcps.find((mcp) => mcp.id === id),
+      tools: tools.map((tool) => tool.name),
+    }).toEqual({
+      saved: { status: 201, body: { number: 2 } },
+      listed: { id, apiName: 'Notes API', actionCount: 3, createdAt: CREATED.toISOString(), url: `${edit.url}/m/${id}` },
+      tools: ['list_notes', 'create_note', 'empty_trash'],
+    });
+  });
+
+  it.each([
+    ['a name', { mcpName: 'notes-v2' }],
+    ["an API's address", { baseUrl: 'https://evil.example.com' }],
+    ['an upstream access', { upstreamAuth: { type: 'none' } }],
+  ])('refuses a change holding %s, and saves nothing, not even the selection (contract 17, D3)', async (_what, extra) => {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+
+    const res = await save(id, { fromVersion: 1, selectedIds: ['GET /notes'], ...extra });
+
+    expect({ status: res.status, body: await res.json(), served: (await store.get(id))?.endpoints.length }).toEqual({
+      status: 400,
+      body: { code: 'INVALID_SELECTION', message: 'Only the selection of actions can be changed.' },
+      served: 2,
+    });
+  });
+
+  it("refuses an action that is not one of the API's, and saves nothing (contract 16)", async () => {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+
+    const res = await save(id, { fromVersion: 1, selectedIds: ['GET /notes', 'GET /admin/users'] });
+
+    expect({ status: res.status, body: await res.json(), served: (await store.get(id))?.endpoints.length }).toEqual({
+      status: 400,
+      body: { code: 'INVALID_SELECTION', message: "This MCP's API has no such action." },
+      served: 2,
+    });
+  });
+
+  it('refuses a change started from a version no longer active, two tabs open, and saves nothing (contract 23, D13)', async () => {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+    await save(id, { fromVersion: 1, selectedIds: ['GET /notes'] });
+
+    const res = await save(id, { fromVersion: 1, selectedIds: ['GET /notes', 'DELETE /trash'] });
+
+    expect({
+      status: res.status,
+      body: await res.json(),
+      served: (await store.get(id))?.endpoints.map((action) => action.name),
+    }).toEqual({
+      status: 409,
+      body: { code: 'CONFLICT', message: 'This MCP changed in the meantime. Reload to see its current actions.' },
+      served: ['list_notes'],
+    });
+  });
+
+  it("creates no version for the active version's selection (contract 14, D5)", async () => {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+
+    const res = await save(id, { fromVersion: 1, selectedIds: ['POST /notes', 'GET /notes'] });
+
+    expect({ status: res.status, body: await res.json() }).toEqual({
+      status: 400,
+      body: { code: 'INVALID_SELECTION', message: 'This selection is already the active version.' },
+    });
+  });
+
+  it('refuses a change without any action (contract 15)', async () => {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+
+    const res = await save(id, { fromVersion: 1, selectedIds: [] });
+
+    expect({ status: res.status, body: await res.json(), served: (await store.get(id))?.endpoints.length }).toEqual({
+      status: 400,
+      body: { code: 'INVALID_SELECTION', message: 'Pick at least one action.' },
+      served: 2,
+    });
+  });
+
+  it("answers a change of another account's MCP exactly as an unknown id, and changes nothing (contract 19, D12)", async () => {
+    const other = await createTestAccount({ database, email: 'neighbour-save@example.com' });
+    const { id } = await store.put(NOTES, other.workspaceId, CREATED);
+    const change = { fromVersion: 1, selectedIds: ['GET /notes'] };
+
+    const theirs = await save(id, change);
+    const unknown = await save('no-such-mcp-id', change);
+
+    expect({
+      theirs: { status: theirs.status, body: await theirs.text() },
+      unknown: { status: unknown.status, body: await unknown.text() },
+      served: (await store.get(id))?.endpoints.length,
+    }).toEqual({
+      theirs: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+      unknown: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+      served: 2,
+    });
+  });
+
+  it('answers 401 to a change without a session, and changes nothing (contract 20)', async () => {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+
+    const res = await save(id, { fromVersion: 1, selectedIds: ['GET /notes'] }, null);
+
+    expect({ status: res.status, served: (await store.get(id))?.endpoints.length }).toEqual({ status: 401, served: 2 });
   });
 });

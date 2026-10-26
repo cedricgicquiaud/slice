@@ -3,15 +3,21 @@ import { cn } from '@/lib/utils';
 export interface StickyFooterProps {
   selectedCount: number;
   onContinue: () => void;
+  /** The button's label: "Continue" on step 2, "Save" on "Edit actions". */
+  label?: string;
+  /** Greys the button for a reason of the caller's, on top of an empty selection. */
+  disabled?: boolean;
   className?: string;
 }
 
 export function StickyFooter({
   selectedCount,
   onContinue,
+  label = 'Continue',
+  disabled: disabledByCaller = false,
   className,
 }: StickyFooterProps) {
-  const disabled = selectedCount === 0;
+  const disabled = selectedCount === 0 || disabledByCaller;
 
   return (
     <footer
@@ -29,7 +35,7 @@ export function StickyFooter({
           disabled ? 'cursor-not-allowed opacity-40' : 'hover:opacity-90'
         )}
       >
-        Continue
+        {label}
         <kbd className="font-mono inline-flex h-5 items-center rounded border border-primary-foreground/30 px-1 text-[10px]">
           ↵
         </kbd>

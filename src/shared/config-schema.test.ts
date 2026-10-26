@@ -155,3 +155,25 @@ describe('generateRequestSchema', () => {
     expect(generateRequestSchema.safeParse(bad).success).toBe(false);
   });
 });
+
+describe('mcpSelectionChangeSchema', () => {
+  it.each([
+    ['a name', { mcpName: 'notes-v2' }],
+    ["an API's address", { baseUrl: 'https://evil.example.com' }],
+    ['an upstream access', { upstreamAuth: { type: 'none' } }],
+  ])('refuses a change that holds %s: only the selection changes (contract 17, D3)', async (_what, extra) => {
+    const { mcpSelectionChangeSchema } = await import('./config-schema');
+
+    const parsed = mcpSelectionChangeSchema.safeParse({ fromVersion: 1, selectedIds: ['GET /notes'], ...extra });
+
+    expect(parsed.error?.issues.map((issue) => issue.message)).toEqual(['Only the selection of actions can be changed.']);
+  });
+
+  it('refuses a change without any action (contract 15)', async () => {
+    const { mcpSelectionChangeSchema } = await import('./config-schema');
+
+    const parsed = mcpSelectionChangeSchema.safeParse({ fromVersion: 1, selectedIds: [] });
+
+    expect(parsed.error?.issues.map((issue) => issue.message)).toEqual(['Pick at least one action.']);
+  });
+});

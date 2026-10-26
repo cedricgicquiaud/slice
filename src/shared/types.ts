@@ -187,6 +187,17 @@ export type ParseErrorCode =
   | 'PARSE_TOO_COMPLEX';          // isolated parse OOM'd / died (e.g. $ref explosion) — anti-DoS (D004)
 
 /**
+ * A change of an MCP's selection, as "Save" on "Edit actions" posts it: only
+ * the selection changes (D3), starting from the version the screen showed (D13).
+ */
+export interface McpSelectionChange {
+  /** The active version when the screen opened: refused if another one is active since. */
+  fromVersion: number;
+  /** The ids of the checked actions (`<METHOD> <path>`, as `Endpoint.id`). */
+  selectedIds: string[];
+}
+
+/**
  * Payload posted by the client to `/api/generate` (phase 08). Held in shared
  * types because the same shape feeds the front-end submission, the back-end
  * Zod guard, and the unit tests for `mcp-generator` (phase 07).
@@ -231,12 +242,16 @@ export class ParseError extends Error {
  * - 401 `UNAUTHORIZED` — no live session (any `/api/*` route but health and sign-in)
  * - 403 `FORBIDDEN` — a write sent from another site than SLICE's page (any `/api/*` route);
  *   also reserved, with 404 `NOT_FOUND`, for the account's own MCPs
+ * - 400 `INVALID_SELECTION` — "Save" on "Edit actions" sent something else than a selection of the API's actions
+ * - 409 `CONFLICT` — "Save" started from a version that is no longer the active one
  */
 export type ApiErrorCode =
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'
   | 'NOT_FOUND'
   | 'INVALID_SPEC'
+  | 'INVALID_SELECTION'
+  | 'CONFLICT'
   | 'NO_ENDPOINT_SELECTED'
   | 'PAYLOAD_TOO_LARGE'
   | 'GENERATION_FAILED'

@@ -21,5 +21,8 @@ describe('<StickyFooter>', () => {
     expect(onContinue).toHaveBeenCalledOnce();
   });
 
-
+  it('shows another label, greyed for a reason of its caller, as "Save" on Edit actions', () => {
+    render(<StickyFooter selectedCount={3} onContinue={() => {}} label="Save" disabled />);
+    expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+  });
 });
