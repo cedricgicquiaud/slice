@@ -58,6 +58,11 @@ beforeAll(async () => {
   upstream = createServer(async (req, res) => {
     received.push({ url: req.url ?? '', auth: req.headers.authorization, apiKey: req.headers['x-api-key'] as string | undefined });
     await beforeAnswer();
+    if (req.url === '/things/echo') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ body: 'API-RESPONSE-BODY' }));
+      return;
+    }
     // `/things/404`, `/things/500`: the API answers that status code.
     const failure = /^\/things\/([45]\d\d)$/.exec(req.url ?? '');
     if (failure) {
@@ -537,6 +542,62 @@ describe('what is never noted', () => {
 
     await vi.waitFor(async () => expect(await calls.of(id)).not.toEqual([]));
     expect((await calls.of(id)).map((note) => note.action)).toEqual(['list_things']);
+  });
+
+  it('is the opening of a conversation, its notifications and the request for the list of actions (contract 15, D1)', async () => {
+    const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`, 'TOKEN');
+    await agent.listTools();
+    // A real call afterwards: once its note is there, any note of the messages before it would be too.
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    await vi.waitFor(async () => expect(await calls.of(id)).not.toEqual([]));
+    expect((await calls.of(id)).map((note) => note.action)).toEqual(['list_things']);
+  });
+
+  it('is a call at the address of an unknown MCP (contract 23)', async () => {
+    const real = createMcpCalls(database);
+    const notedFor: string[] = [];
+    const recording: McpCalls = {
+      write: (connectorId, notes) => {
+        notedFor.push(connectorId);
+        return real.write(connectorId, notes);
+      },
+      of: real.of,
+    };
+    const noting = createApp({ nodeEnv: 'test', hostedStore: store, mcpCalls: recording, now, auth: account.auth }).listen(0);
+    await new Promise<void>((r) => noting.once('listening', r));
+    const notingBase = `http://127.0.0.1:${(noting.address() as AddressInfo).port}`;
+    try {
+      const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+
+      const unknown = await postBatch(`${notingBase}/m/nope-unknown-id`, [toolCall(1, 'list_things', {})]);
+      // A real call afterwards: once it is noted, a note for the unknown address would have been written too.
+      await postBatch(`${notingBase}/m/${id}`, [toolCall(1, 'list_things', {})]);
+
+      await vi.waitFor(() => expect(notedFor).not.toEqual([]));
+      expect({ unknown, notedFor }).toEqual({ unknown: '{"error":"Unknown MCP id."}', notedFor: [id] });
+    } finally {
+      await new Promise<void>((r) => noting.close(() => r()));
+    }
+  });
+
+  it("is any of the values the agent sent, the API's response or error message, or the token (contract 17, D3)", async () => {
+    const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`, 'AGENT-TOKEN-0158');
+    await agent.callTool({ name: 'create_thing', arguments: { title: 'AGENT-VALUE-0158' } });
+    await agent.callTool({ name: 'delete_thing', arguments: { id: 'echo' } });
+    await agent.callTool({ name: 'delete_thing', arguments: { id: '404' } });
+    await agent.close();
+
+    await vi.waitFor(async () => expect(await calls.of(id)).toHaveLength(3));
+    const noted = await database.rows<{ row: string }>(
+      sql`select row_to_json(c)::text as row from connector_calls c where connector_id = ${id}`
+    );
+    expect(noted.filter(({ row }) => /AGENT-TOKEN|AGENT-VALUE|API-RESPONSE-BODY|API-ERROR-MESSAGE|echo/.test(row))).toEqual([]);
   });
 });
 
