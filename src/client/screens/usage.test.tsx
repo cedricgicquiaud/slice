@@ -228,4 +228,38 @@ describe('Recent calls', () => {
       ['Oct 26, 2026, 10:45', 'Create a note', 'Failed (404)', '87 ms', '1'],
     ]);
   });
+
+  it('words each of the six results as decided (D4)', async () => {
+    const results = [
+      { kind: 'succeeded' },
+      { kind: 'failed', status: 500 },
+      { kind: 'api_unreachable' },
+      { kind: 'invalid_request' },
+      { kind: 'not_available' },
+      { kind: 'slice_error' },
+    ];
+    server.usages['notes-id'] = {
+      ...NOTES_USED,
+      recentCalls: results.map((result) => ({
+        calledAt: '2026-10-26T13:02:00.000Z',
+        action: 'list_notes',
+        label: 'List notes',
+        result,
+        durationMs: 10,
+        version: 1,
+      })),
+    };
+
+    render(<UsageScreen mcpId="notes-id" />);
+
+    const [, ...calls] = await recentCallsTable();
+    expect(calls.map((cells) => cells[2])).toEqual([
+      'Succeeded',
+      'Failed (500)',
+      'API unreachable',
+      'Invalid request',
+      'Not available',
+      'SLICE error',
+    ]);
+  });
 });
