@@ -74,7 +74,7 @@ export async function readMcpSelection(
 }
 
 /** How a "Save" ends: the new version's number, or why nothing was saved. */
-export type SaveOutcome = { version: number } | { refused: 'unknown-mcp' | 'changed-meanwhile' | 'unknown-action' };
+export type SaveOutcome = { version: number } | { refused: 'unknown-mcp' | 'changed-meanwhile' | 'unknown-action' | 'unchanged' };
 
 /**
  * Save `change` as the next version of the MCP `id` of `workspaceId`, active from `now` (D4, D9).
@@ -105,6 +105,14 @@ export async function saveMcpSelection(
       .where(eq(connectorApiActions.connectorId, id));
     const known = new Set(apiActions.map(actionId));
     if (!change.selectedIds.every((selected) => known.has(selected))) return { refused: 'unknown-action' };
+    const activeActions = await tx
+      .select({ method: connectorActions.method, path: connectorActions.path })
+      .from(connectorActions)
+      .where(and(eq(connectorActions.connectorId, id), eq(connectorActions.version, active.number)));
+    const selected = new Set(change.selectedIds);
+    if (selected.size === activeActions.length && activeActions.every((action) => selected.has(actionId(action)))) {
+      return { refused: 'unchanged' };
+    }
     const [{ last }] = await tx
       .select({ last: max(connectorVersions.number) })
       .from(connectorVersions)
