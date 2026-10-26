@@ -262,8 +262,8 @@ describe('POST /api/mcps/:id/versions', () => {
     await edit?.close();
   });
 
-  /** "Save" on "Edit actions", as the signed-in account unless `cookie` says otherwise. */
-  function save(id: string, change: unknown, cookie: string | undefined = account.cookie) {
+  /** "Save" on "Edit actions", as the signed-in account; without a session when `cookie` is `null`. */
+  function save(id: string, change: unknown, cookie: string | null = account.cookie) {
     return fetch(`${edit.url}/api/mcps/${id}/versions`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...(cookie && { cookie }) },
@@ -348,5 +348,44 @@ describe('POST /api/mcps/:id/versions', () => {
       status: 400,
       body: { code: 'INVALID_SELECTION', message: 'This selection is already the active version.' },
     });
+  });
+
+  it('refuses a change without any action (contract 15)', async () => {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+
+    const res = await save(id, { fromVersion: 1, selectedIds: [] });
+
+    expect({ status: res.status, body: await res.json(), served: (await store.get(id))?.endpoints.length }).toEqual({
+      status: 400,
+      body: { code: 'INVALID_SELECTION', message: 'Pick at least one action.' },
+      served: 2,
+    });
+  });
+
+  it("answers a change of another account's MCP exactly as an unknown id, and changes nothing (contract 19, D12)", async () => {
+    const other = await createTestAccount({ database, email: 'neighbour-save@example.com' });
+    const { id } = await store.put(NOTES, other.workspaceId, CREATED);
+    const change = { fromVersion: 1, selectedIds: ['GET /notes'] };
+
+    const theirs = await save(id, change);
+    const unknown = await save('no-such-mcp-id', change);
+
+    expect({
+      theirs: { status: theirs.status, body: await theirs.text() },
+      unknown: { status: unknown.status, body: await unknown.text() },
+      served: (await store.get(id))?.endpoints.length,
+    }).toEqual({
+      theirs: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+      unknown: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+      served: 2,
+    });
+  });
+
+  it('answers 401 to a change without a session, and changes nothing (contract 20)', async () => {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+
+    const res = await save(id, { fromVersion: 1, selectedIds: ['GET /notes'] }, null);
+
+    expect({ status: res.status, served: (await store.get(id))?.endpoints.length }).toEqual({ status: 401, served: 2 });
   });
 });
