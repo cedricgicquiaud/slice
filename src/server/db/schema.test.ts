@@ -114,6 +114,38 @@ describe('database schema (D3)', () => {
     });
   });
 
+  it("keeps of an action call its action, the active version, the date, the result and the duration, its order of writing and nothing else (WAT-154, D3, contract 17)", async () => {
+    const columns = await rows<{ column_name: string; udt_name: string; is_nullable: string }>(
+      sql`select column_name, udt_name, is_nullable from information_schema.columns
+          where table_schema = 'public' and table_name = 'connector_calls' order by ordinal_position`
+    );
+
+    expect(columns.map((c) => `${c.column_name} ${c.udt_name} ${c.is_nullable}`)).toEqual([
+      'id int8 NO',
+      'connector_id text NO',
+      'version int4 NO',
+      'action text NO',
+      'called_at timestamptz NO',
+      'result call_result NO',
+      'status int4 YES',
+      'duration_ms int4 NO',
+    ]);
+  });
+
+  it("keeps the API's status code of a failed call, and of a failed call only (D4)", async () => {
+    await insertConnector('noted', 'none', null, null);
+    await insertVersion('noted', 1, true);
+    const insertCall = (result: string, status: number | null) =>
+      rows(
+        sql`insert into connector_calls (connector_id, version, action, called_at, result, status, duration_ms)
+            values ('noted', 1, 'ping', now(), ${result}, ${status}, 12)`
+      );
+
+    await expect(insertCall('failed', null)).rejects.toThrow();
+    await expect(insertCall('succeeded', 200)).rejects.toThrow();
+    await expect(insertCall('failed', 404)).resolves.toBeDefined();
+  });
+
   function insertConnector(id: string, authType: string, headerName: string | null, tokenUrl: string | null) {
     return rows(
       sql`insert into connectors (id, name, base_url, upstream_auth_type, upstream_header_name, upstream_token_url, created_at, workspace_id)
@@ -201,6 +233,14 @@ describe('database schema (D3)', () => {
     );
 
     expect(indexes.some((i) => /\(created_at\)$/.test(i.indexdef))).toBe(true);
+  });
+
+  it("indexes the notes of calls by MCP, then by date", async () => {
+    const indexes = await rows<{ indexdef: string }>(
+      sql`select indexdef from pg_indexes where schemaname = 'public' and tablename = 'connector_calls'`
+    );
+
+    expect(indexes.some((i) => /\(connector_id, called_at\)$/.test(i.indexdef))).toBe(true);
   });
 });
 

@@ -1,3 +1,4 @@
+CREATE TYPE "public"."call_result" AS ENUM('succeeded', 'failed', 'api_unreachable', 'invalid_request', 'not_available', 'slice_error');--> statement-breakpoint
 CREATE TYPE "public"."http_method" AS ENUM('GET', 'POST', 'PUT', 'PATCH', 'DELETE');--> statement-breakpoint
 CREATE TYPE "public"."upstream_auth_type" AS ENUM('none', 'apiKey', 'bearer', 'oauth2');--> statement-breakpoint
 CREATE TABLE "accounts" (
@@ -40,6 +41,18 @@ CREATE TABLE "connector_api_actions" (
 	"path" text NOT NULL,
 	"params" jsonb NOT NULL,
 	CONSTRAINT "connector_api_actions_connector_id_position_pk" PRIMARY KEY("connector_id","position")
+);
+--> statement-breakpoint
+CREATE TABLE "connector_calls" (
+	"id" bigint GENERATED ALWAYS AS IDENTITY (sequence name "connector_calls_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854775807 START WITH 1 CACHE 1),
+	"connector_id" text NOT NULL,
+	"version" integer NOT NULL,
+	"action" text NOT NULL,
+	"called_at" timestamp with time zone NOT NULL,
+	"result" "call_result" NOT NULL,
+	"status" integer,
+	"duration_ms" integer NOT NULL,
+	CONSTRAINT "connector_calls_status_iff_failed" CHECK (("connector_calls"."result" = 'failed') = ("connector_calls"."status" is not null))
 );
 --> statement-breakpoint
 CREATE TABLE "connector_versions" (
@@ -107,11 +120,13 @@ CREATE TABLE "workspaces" (
 ALTER TABLE "accounts" ADD CONSTRAINT "accounts_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connector_actions" ADD CONSTRAINT "connector_actions_version_fk" FOREIGN KEY ("connector_id","version") REFERENCES "public"."connector_versions"("connector_id","number") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connector_api_actions" ADD CONSTRAINT "connector_api_actions_connector_id_connectors_id_fk" FOREIGN KEY ("connector_id") REFERENCES "public"."connectors"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "connector_calls" ADD CONSTRAINT "connector_calls_version_fk" FOREIGN KEY ("connector_id","version") REFERENCES "public"."connector_versions"("connector_id","number") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connector_versions" ADD CONSTRAINT "connector_versions_connector_id_connectors_id_fk" FOREIGN KEY ("connector_id") REFERENCES "public"."connectors"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connectors" ADD CONSTRAINT "connectors_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "sessions" ADD CONSTRAINT "sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workspaces" ADD CONSTRAINT "workspaces_owner_id_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "accounts_user_id_idx" ON "accounts" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX "connector_calls_connector_called_at_idx" ON "connector_calls" USING btree ("connector_id","called_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "connector_versions_one_active_idx" ON "connector_versions" USING btree ("connector_id") WHERE "connector_versions"."active_since" is not null;--> statement-breakpoint
 CREATE INDEX "connectors_created_at_idx" ON "connectors" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "sessions_user_id_idx" ON "sessions" USING btree ("user_id");--> statement-breakpoint

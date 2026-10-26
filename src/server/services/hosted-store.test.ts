@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { createHostedStore, startHostedCleanup } from './hosted-store';
+import { saveMcpSelection } from './mcp-selection';
+import { restoreMcpVersion } from './mcp-versions';
 import type { HttpMethod } from '@shared/types';
 import type { ApiAction, HostedMcpConfig } from './hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
@@ -134,7 +136,12 @@ describe('hosted store in the database', () => {
     const { id } = await store.put(threeActions, workspaceId, NOW);
 
     expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect(await store.get(id)).toEqual({ ...threeActions, createdAt: '2026-10-24T09:00:00.000Z', workspaceId });
+    expect(await store.get(id)).toEqual({
+      ...threeActions,
+      createdAt: '2026-10-24T09:00:00.000Z',
+      workspaceId,
+      activeVersion: 1,
+    });
   });
 
   it("keeps every action of the connector's API, in order, with what the selection screen shows of it (D1)", async () => {
@@ -169,6 +176,19 @@ describe('hosted store in the database', () => {
 
     expect(await store.apiActions(id)).toEqual(many);
     expect((await store.get(id))?.endpoints.map(({ name }) => name)).toEqual(many.map(({ name }) => name));
+  });
+
+  it('serves the number of the active version: 1 at creation, the new one after a "Save", the restored one after a "Restore" (WAT-154)', async () => {
+    const store = createHostedStore(database);
+    const { id } = await store.put({ ...threeActions, apiActions: fourApiActions }, workspaceId, NOW);
+    const atCreation = (await store.get(id))?.activeVersion;
+
+    await saveMcpSelection(database, workspaceId, id, { fromVersion: 1, selectedIds: ['GET /contacts'] }, NOW);
+    const afterSave = (await store.get(id))?.activeVersion;
+    await restoreMcpVersion(database, workspaceId, id, 1, NOW);
+    const afterRestore = (await store.get(id))?.activeVersion;
+
+    expect({ atCreation, afterSave, afterRestore }).toEqual({ atCreation: 1, afterSave: 2, afterRestore: 1 });
   });
 
   it('stores a lowercase method in uppercase', async () => {
@@ -313,6 +333,7 @@ describe('hosted store across a restart', () => {
           ...threeActions,
           createdAt: '2026-10-24T09:00:00.000Z',
           workspaceId,
+          activeVersion: 1,
         });
       } finally {
         await reopened.close();

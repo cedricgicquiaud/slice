@@ -1,5 +1,5 @@
 {
-  "id": "e3aa9683-6ee4-42e8-b671-bd096ad879de",
+  "id": "f4818c79-0729-450b-860d-ee0d55f7fb0e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -308,6 +308,122 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.connector_calls": {
+      "name": "connector_calls",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "connector_calls_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "connector_id": {
+          "name": "connector_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "called_at": {
+          "name": "called_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "result": {
+          "name": "result",
+          "type": "call_result",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "duration_ms": {
+          "name": "duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "connector_calls_connector_called_at_idx": {
+          "name": "connector_calls_connector_called_at_idx",
+          "columns": [
+            {
+              "expression": "connector_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "called_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "connector_calls_version_fk": {
+          "name": "connector_calls_version_fk",
+          "tableFrom": "connector_calls",
+          "tableTo": "connector_versions",
+          "columnsFrom": [
+            "connector_id",
+            "version"
+          ],
+          "columnsTo": [
+            "connector_id",
+            "number"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "connector_calls_status_iff_failed": {
+          "name": "connector_calls_status_iff_failed",
+          "value": "(\"connector_calls\".\"result\" = 'failed') = (\"connector_calls\".\"status\" is not null)"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.connector_versions": {
@@ -788,6 +904,18 @@
     }
   },
   "enums": {
+    "public.call_result": {
+      "name": "call_result",
+      "schema": "public",
+      "values": [
+        "succeeded",
+        "failed",
+        "api_unreachable",
+        "invalid_request",
+        "not_available",
+        "slice_error"
+      ]
+    },
     "public.http_method": {
       "name": "http_method",
       "schema": "public",

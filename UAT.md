@@ -666,3 +666,157 @@ Dans les commandes ci-dessous, remplacer `<id>` par l'identifiant du MCP, `<A>` 
   `{"code":"FORBIDDEN","message":"SLICE takes orders from its own page only."}`.
 - [ ] `docs/API.md` décrit `POST /api/mcps/:id/versions/:number/restore` : l'absence de corps, la réponse et ses
   champs, la restauration de la version active qui ne change rien, et les refus 401, 403, 404 et 503.
+
+## SLICE — L'utilisation de ses MCP
+
+_Feature P-WAT-42. Une section par livraison, ajoutée par chaque PR._
+
+### Livraison 1 — Chaque appel d'action est noté
+
+Cette livraison n'a pas d'écran : les appels se font avec `scripts/try-hosted.ts` (ou `curl`), et leurs notes se lisent
+dans la table `connector_calls` de la base de développement. La page « Usage » arrive en livraison 2.
+
+**Préparer la recette**
+
+- Supprimer le dossier `data/` de la base de développement s'il existe : le schéma a changé (table des appels), et la
+  base est recréée au premier lancement.
+- Lancer `pnpm dev`, ouvrir http://localhost:5173, puis coller dans la console du navigateur le code ci-dessous. Il
+  ouvre une session pour `recette@slice.local` et crée le MCP « Recette Usage » sur l'API publique `httpbin.org`, avec
+  2 actions cochées sur 3 : « Read echo » (`read_echo`, répond 200) et « Read status » (`read_status`, répond le code
+  demandé) ; « Post anything » (`post_anything`) reste décochée. Il affiche l'adresse du MCP : la noter.
+
+  ```js
+  await fetch('/api/dev/sign-in', { method: 'POST' });
+  const api = 'https://httpbin.org';
+  const rawSpec = `openapi: 3.0.3
+  info: { title: Recette Usage, version: "1.0" }
+  servers: [{ url: ${api} }]
+  paths:
+    /get:
+      get: { operationId: readEcho, summary: Read echo, responses: { '200': { description: ok } } }
+    /status/{code}:
+      get:
+        operationId: readStatus
+        summary: Read status
+        parameters: [{ name: code, in: path, required: true, schema: { type: integer } }]
+        responses: { '200': { description: ok } }
+    /anything:
+      post: { operationId: postAnything, summary: Post anything, responses: { '200': { description: ok } } }
+  `;
+  const created = await fetch('/api/host', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      parsedSpec: {}, rawSpec, selectedIds: ['GET /get', 'GET /status/{code}'],
+      config: { mcpName: 'recette-usage', baseUrl: api, upstreamAuth: { type: 'none' },
+        hosting: 'cloud', mode: 'remote', includeParamDescriptions: false, retryOnServerError: false },
+    }),
+  });
+  console.log((await created.json()).url);
+  ```
+
+- Pour une API qui ne répond pas : recoller le même code en remplaçant `https://httpbin.org` par
+  `http://127.0.0.1:9` (aucun programme n'écoute sur ce port) ; il affiche l'adresse d'un second MCP, à noter aussi.
+- Dans un terminal, à la racine du dépôt, les appels se font par
+  `pnpm exec tsx scripts/try-hosted.ts <adresse> <action> '<valeurs>'` ; sans action, la commande ne fait que lister
+  les actions du MCP.
+- Lire les notes : arrêter `pnpm dev` (Ctrl+C : la base de développement n'accepte qu'un programme à la fois), puis
+  lancer
+  `node --import tsx --input-type=module -e "const { openDatabase } = await import('./src/server/db/client.ts'); const { sql } = await import('drizzle-orm'); const db = openDatabase({ driver: 'pglite', dataDir: 'data/pglite' }); console.table(await db.rows(sql\`select * from connector_calls order by called_at, id\`)); await db.close();"`
+  Le tableau affiché a exactement les colonnes `id` (l'ordre d'écriture), `connector_id`, `version`, `action`,
+  `called_at`, `result`, `status`, `duration_ms`. Relancer `pnpm dev` pour la suite.
+
+Pour aller vite, enchaîner les appels ci-dessous, puis lire les notes une seule fois : chaque appel laisse au plus une
+ligne. La suppression du compte se joue en dernier.
+
+**Un MCP garde la note de chaque appel d'action, et rien d'autre (WAT-154)**
+
+- [ ] Appeler `read_echo` (valeurs `'{}'`) : une ligne apparaît avec `action` = `read_echo`, `version` = `1`,
+  `called_at` = l'heure de l'appel, `result` = `succeeded`, `status` vide et `duration_ms` = un nombre de
+  millisecondes (quelques centaines pour `httpbin.org`).
+- [ ] Le résultat est toujours l'un des six : `succeeded`, `failed` (avec son code dans `status`), `api_unreachable`,
+  `invalid_request`, `not_available`, `slice_error`. Seul `failed` remplit `status`. Preuve aussi par les tests « reads
+  back each written note, whatever its result among the six » (`src/server/services/mcp-calls.test.ts`) et « keeps the
+  API's status code of a failed call, and of a failed call only » (`src/server/db/schema.test.ts`).
+- [ ] Sur « Recette Usage », ouvrir « Edit actions », cocher aussi « Post anything » et « Save » (« Saved as version
+  2… ») ; appeler `read_echo` : la nouvelle ligne porte `version` = `2`. Après « Restore » de la version 1 dans
+  « History », appeler `read_echo` : la ligne porte `version` = `1`.
+- [ ] Supprimer « Recette Usage » sur « My MCPs » : ses lignes disparaissent de la table (relire les notes). Recréer le
+  MCP avec le code de la console pour la suite.
+- [ ] En dernier : supprimer le compte de recette sur `/account/delete` (taper `delete`) ; la table ne garde aucune
+  ligne de ses MCP. Preuve aussi par le test « are deleted with the account that owns their MCP »
+  (`src/server/services/mcp-calls.test.ts`).
+- [ ] Refus : la table n'a aucune colonne pour les valeurs envoyées par l'agent, la réponse de l'API, son message
+  d'erreur ou le jeton (les sept colonnes ci-dessus, et rien d'autre).
+- [ ] Le schéma tient toujours en une seule migration : le dossier `src/server/db/migrations/` ne contient que
+  `0000_init.sql` et `meta/`.
+- [ ] `.github/workflows/ci.yml` lance `src/server/services/mcp-calls.test.ts` dans l'étape « Storage tests
+  (PostgreSQL) ».
+
+**Un appel qui atteint l'API est noté « Succeeded », « Failed (<code>) » ou « API unreachable » ; une panne de SLICE est notée « SLICE error » (WAT-155)**
+
+- [ ] Appeler `read_status` avec `'{"code":404}'` : l'agent reçoit une erreur qui commence par `Upstream 404`, et la
+  ligne porte `result` = `failed`, `status` = `404`. Avec `'{"code":500}'` : `failed` et `500`.
+- [ ] Appeler `read_status` avec `'{"code":204}'` : la ligne porte `succeeded` (tout code 2xx réussit).
+- [ ] Appeler `read_echo` sur l'adresse du second MCP (API `127.0.0.1:9`) : l'agent reçoit une erreur, et la ligne
+  porte `api_unreachable`. L'adresse refusée par la garde SSRF au moment de l'appel (production seulement) donne le
+  même résultat : preuve par le test « is "API unreachable" when the SSRF guard refuses the API's address at the time
+  of the call » (`src/server/routes/hosted-mcp.test.ts`).
+- [ ] Une erreur de SLICE lui-même est notée `slice_error`, jamais `api_unreachable` : preuve par les tests « is "SLICE
+  error", never "API unreachable", when SLICE itself fails during the call » et « … when SLICE fails before its engine
+  runs » (`src/server/routes/hosted-mcp.test.ts`) ; on ne peut pas la provoquer depuis l'interface.
+- [ ] `called_at` est l'heure d'arrivée de l'appel, et `duration_ms` va jusqu'à la fin de son traitement : il est
+  du même ordre que le temps que met la commande à rendre la main. Preuve aussi par le test « is dated from the arrival
+  of the call, and lasts until SLICE is done with it ».
+- [ ] Ce que l'agent reçoit ne change pas : `read_echo` rend le JSON de `httpbin.org`, `read_status` en 404 rend une
+  erreur `Upstream 404 …`, comme avant cette livraison.
+- [ ] Refus : aucune ligne ne contient le corps de la réponse de `httpbin.org` ni son message d'erreur.
+
+**Un appel refusé avant l'API est noté « Invalid request » ou « Not available », même dans un lot de plusieurs appels (WAT-156)**
+
+- [ ] Appeler `read_status` avec `'{"code":"abc"}'` (un texte là où un nombre est attendu) : l'agent reçoit une erreur
+  qui commence par `MCP error -32602: Input validation error`, et la ligne porte `invalid_request`.
+- [ ] Appeler `post_anything` (`'{}'`), action de l'API jamais choisie : l'agent reçoit « This action is no longer
+  available in this MCP. Start a new conversation to get the current list of actions. », et la ligne porte
+  `not_available`. Même chose pour une action retirée par « Edit actions ».
+- [ ] Deux appels dans une seule requête en laissent deux :
+  `curl -s -X POST <adresse> -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -d '[{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read_echo","arguments":{}}},{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"post_anything","arguments":{}}}]'`
+  La réponse porte le JSON de `httpbin.org` pour l'`id` 1 et le message « This action is no longer available… » pour
+  l'`id` 2 ; deux lignes apparaissent, `read_echo` `succeeded` et `post_anything` `not_available`.
+- [ ] Refus : un appel refusé `invalid_request` ou `not_available` n'appelle pas l'API. Preuve par les tests « is
+  "Invalid request" when the agent sends values the action refuses, and the API is not called » et « serves the active
+  version's action, asks to start over for the retired one without calling the API, and notes both »
+  (`src/server/routes/hosted-mcp.test.ts`), qui comptent les appels reçus par une API simulée.
+
+**Noter un appel ne ralentit jamais l'agent : la réponse part d'abord (WAT-157)**
+
+- [ ] Si la base refuse d'écrire la note, l'agent reçoit quand même la réponse de l'API, sans erreur ajoutée, et le
+  terminal du serveur affiche `[hosted-mcp] noting calls failed:` suivi de la raison. Preuve par le test « gives the
+  agent the API's answer, without any error added, when the database refuses the note, and logs it »
+  (`src/server/routes/hosted-mcp.test.ts`).
+- [ ] Quand la base met du temps à écrire, la réponse part sans l'attendre : preuve par le test « gives the agent its
+  answer while the database still takes its time to write the note », où la base ne finit aucune écriture avant que
+  l'agent ait sa réponse.
+- [ ] Un agent qui coupe avant la réponse : l'appel est noté avec le résultat qu'il aurait reçu. Preuve par le test
+  « notes the call with the result the agent would have read when the agent leaves before the answer ».
+- [ ] Refus : aucune erreur d'écriture de note n'arrive à l'agent, ni en 500 ni en 503 (même test que la première
+  case : la réponse est celle de l'API).
+- [ ] Une note encore à écrire quand le serveur s'arrête est perdue, et c'est accepté : aucun test ne l'exige.
+
+**Ni la liste des actions, ni un nom inconnu, ni un MCP inconnu ne sont notés ; aucune note ne garde de contenu (WAT-158)**
+
+- [ ] Lancer `pnpm exec tsx scripts/try-hosted.ts <adresse>` sans action (la commande ouvre une conversation et liste
+  les actions) : aucune ligne n'apparaît.
+- [ ] Appeler une action inventée, `drop_everything` (`'{}'`) : l'agent reçoit le message « This action is no longer
+  available… », et aucune ligne n'apparaît.
+- [ ] Appeler `read_echo` sur une adresse inventée (`http://localhost:3001/m/nexistepas`) : la commande échoue (MCP
+  inconnu), et aucune ligne n'apparaît.
+- [ ] Refus : aucune note ne contient les valeurs envoyées, la réponse, le message d'erreur ni le jeton. Lancer
+  `API_TOKEN=JETON-RECETTE-0158 pnpm exec tsx scripts/try-hosted.ts <adresse> read_status '{"code":418}'`, puis relire
+  les notes : ni `JETON-RECETTE-0158`, ni le texte de la réponse de `httpbin.org` n'apparaissent ; `418` n'est que dans
+  la colonne `status`. Preuve aussi par le test « is any of the values the agent sent, the API's response or error
+  message, or the token » (`src/server/routes/hosted-mcp.test.ts`).
+- [ ] Le kit à héberger soi-même ne note rien : générer le kit d'un MCP (l'option pour l'héberger soi-même) et le
+  décompresser ; `grep -ri connector_calls <dossier du kit>` ne trouve rien, et le kit n'a aucune base de données.
+- [ ] `docs/API.md`, section `ANY /m/:id`, décrit la note des appels : ce qu'elle garde, ce qu'elle ne garde jamais,
+  les six résultats et ce qui n'est pas noté.

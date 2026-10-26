@@ -12,7 +12,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import type { EndpointParam, HttpMethod, UpstreamAuth } from '@shared/types';
 import { type ZodSchemaShape, schemaShapeForParam } from './zod-schema-builder';
-import { assertPublicUrl } from './ssrf-guard';
+import { SsrfError, assertPublicUrl } from './ssrf-guard';
+import type { CallResult } from './mcp-calls';
 
 /** Knobs for the hosted engine. `allowPrivateHosts` is for tests/dev only. */
 export interface HostedMcpOptions {
@@ -61,6 +62,15 @@ export interface HostedMcpConfig {
   createdAt?: string;
   /** The workspace the connector belongs to (D15): given to the store's `put`, returned by `get`. */
   workspaceId?: string;
+  /** The number of the version `endpoints` come from, the active one: returned by the store's `get`. */
+  activeVersion?: number;
+}
+
+/** What one request tells the engine, and how the engine tells what became of its action calls. */
+export interface RelayContext {
+  authorization: string;
+  /** Told the result of each action call the engine handled, by its JSON-RPC id (WAT-155). */
+  onActionResult?: (requestId: string | number, result: CallResult) => void;
 }
 
 /**
@@ -68,7 +78,7 @@ export interface HostedMcpConfig {
  * `relayStore.run({ authorization }, …)`; tool handlers read the caller's
  * token from here, per request, without storing anything.
  */
-export const relayStore = new AsyncLocalStorage<{ authorization: string }>();
+export const relayStore = new AsyncLocalStorage<RelayContext>();
 
 /**
  * The bearer token the caller relayed, or `undefined` for a missing/malformed
@@ -148,6 +158,37 @@ function assembleBody(
   return JSON.stringify(obj);
 }
 
+/** The API answered with a code other than 2xx, kept apart from the message the agent reads. */
+export class UpstreamFailure extends Error {
+  constructor(
+    readonly status: number,
+    message: string
+  ) {
+    super(message);
+    this.name = 'UpstreamFailure';
+  }
+}
+
+/** The API did not answer; the agent reads the same message as the error it stands for. */
+export class UpstreamUnreachable extends Error {
+  constructor(cause: Error) {
+    super(cause.message, { cause });
+    this.name = 'UpstreamUnreachable';
+  }
+}
+
+/** Undici's own error when no response came: refused connection, unknown host, reset socket. */
+function isNetworkFailure(err: unknown): err is TypeError {
+  return err instanceof TypeError && err.message === 'fetch failed';
+}
+
+/** What became of a call that threw: anything but the API's answer or silence is SLICE's own error (D4). */
+function resultOfFailedCall(err: unknown): CallResult {
+  if (err instanceof UpstreamFailure) return { kind: 'failed', status: err.status };
+  if (err instanceof UpstreamUnreachable) return { kind: 'api_unreachable' };
+  return { kind: 'slice_error' };
+}
+
 /** Issue the upstream call for one tool invocation, relaying the caller token. */
 async function callUpstream(
   config: HostedMcpConfig,
@@ -159,7 +200,12 @@ async function callUpstream(
   // creation. The caller controls neither host nor protocol here (both are
   // fixed in the stored config), but DNS for a hostname could have changed.
   if (!allowPrivateHosts) {
-    await assertPublicUrl(config.baseUrl);
+    try {
+      await assertPublicUrl(config.baseUrl);
+    } catch (err) {
+      // A refused address is an API SLICE cannot reach, never a fault of SLICE (D4).
+      throw err instanceof SsrfError ? new UpstreamUnreachable(err) : err;
+    }
   }
   let path = endpoint.path;
   for (const p of endpoint.params.filter((x) => x.in === 'path')) {
@@ -198,9 +244,14 @@ async function callUpstream(
 
   const body = assembleBody(endpoint, args);
 
-  const res = await fetch(url, { method: endpoint.method, headers, body });
+  let res: Response;
+  try {
+    res = await fetch(url, { method: endpoint.method, headers, body });
+  } catch (err) {
+    throw isNetworkFailure(err) ? new UpstreamUnreachable(err) : err;
+  }
   if (!res.ok) {
-    throw new Error(`Upstream ${res.status} ${res.statusText}: ${await res.text()}`);
+    throw new UpstreamFailure(res.status, `Upstream ${res.status} ${res.statusText}: ${await res.text()}`);
   }
   const ct = res.headers.get('content-type') ?? '';
   return ct.includes('application/json') ? res.json() : res.text();
@@ -243,9 +294,16 @@ export function buildHostedMcpServer(
       endpoint.description,
       shape,
       toolAnnotationsFor(endpoint.method),
-      async (args: Record<string, unknown>) => {
-        const result = await callUpstream(config, endpoint, args, allowPrivateHosts);
-        return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+      async (args: Record<string, unknown>, extra) => {
+        const tell = (result: CallResult) => relayStore.getStore()?.onActionResult?.(extra.requestId, result);
+        try {
+          const result = await callUpstream(config, endpoint, args, allowPrivateHosts);
+          tell({ kind: 'succeeded' });
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+        } catch (err) {
+          tell(resultOfFailedCall(err));
+          throw err;
+        }
       }
     );
   }
