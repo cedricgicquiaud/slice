@@ -81,7 +81,7 @@ export function HistoryScreen({ mcpId }: { mcpId: string }) {
             </p>
           )}
           {restoreError && (
-            <p role="alert" className="mt-2 text-sm text-destructive">
+            <p role="alert" className="mt-4 text-sm text-destructive">
               {restoreError}
             </p>
           )}
