@@ -75,12 +75,13 @@ export function createMcpsRouter(accountMcps: AccountMcps): Router {
   });
 
   router.post('/:id/versions/:number/restore', async (req, res) => {
-    const outcome = await accountMcps.restore(res.locals.workspaceId, req.params.id, Number(req.params.number));
+    const number = Number(req.params.number);
+    const outcome = await accountMcps.restore(res.locals.workspaceId, req.params.id, number);
     if ('refused' in outcome) {
       res.status(404).json(UNKNOWN_MCP);
       return;
     }
-    res.json({ number: Number(req.params.number), activeSince: outcome.activeSince });
+    res.json({ number, activeSince: outcome.activeSince });
   });
 
   router.delete('/:id', async (req, res) => {
