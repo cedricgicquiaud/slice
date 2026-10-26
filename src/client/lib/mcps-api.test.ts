@@ -95,4 +95,14 @@ describe('getMcpHistory', () => {
       asked: [['/api/mcps/notion-id/versions']],
     });
   });
+
+  it("throws the server's refusal when the history is refused", async () => {
+    serverAnswers(404, { code: 'NOT_FOUND', message: 'Unknown MCP id.' });
+
+    await expect(getMcpHistory('someone-elses-id')).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 404,
+      code: 'NOT_FOUND',
+    });
+  });
 });
