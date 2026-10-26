@@ -360,6 +360,19 @@ describe('the note of an action call that reaches the API', () => {
       await new Promise<void>((r) => guarded.close(() => r()));
     }
   });
+
+  it('is "SLICE error", never "API unreachable", when SLICE itself fails during the call (contract 7, D4)', async () => {
+    // SLICE builds the API's address from what it stored: here, no address at all.
+    const { id } = await store.put(withApiActions({ ...threeActions(), baseUrl: 'not-an-address' }), account.workspaceId, CREATED);
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`, 'TOKEN');
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    await vi.waitFor(async () =>
+      expect((await calls.of(id)).map((note) => note.result)).toEqual([{ kind: 'slice_error' }])
+    );
+  });
 });
 
 /** An address where nothing listens: a port just released. */
