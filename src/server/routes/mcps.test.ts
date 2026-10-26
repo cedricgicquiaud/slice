@@ -469,4 +469,20 @@ describe('POST /api/mcps/:id/versions/:number/restore', () => {
       served: ['list_notes', 'create_note', 'empty_trash'],
     });
   });
+
+  it.each([
+    ['a number it does not have', '7'],
+    ['a number past any version', '99999999999'],
+    ['no number at all', 'latest'],
+  ])('answers 404 to a version of my MCP given as %s, and changes nothing (contract 21)', async (_what, number) => {
+    const id = await notesAtVersion2();
+
+    const res = await restore(id, number);
+
+    expect({ status: res.status, body: await res.json(), served: (await store.get(id))?.endpoints.map((action) => action.name) }).toEqual({
+      status: 404,
+      body: { code: 'NOT_FOUND', message: 'Unknown version of this MCP.' },
+      served: ['list_notes'],
+    });
+  });
 });
