@@ -4,7 +4,7 @@
  * (D2). Outside the three steps (D15): the MCP's name at the top and a way back
  * to "My MCPs".
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ParsedSpec } from '@shared/types';
 import { ApiError } from '../lib/api';
 import { getMcpSelection, saveMcpSelection, type McpSelection } from '../lib/mcps-api';
@@ -21,7 +21,11 @@ export function EditActionsScreen({ mcpId }: { mcpId: string }) {
     if (!selection) return;
     const number = await saveMcpSelection(mcpId, { fromVersion: selection.version, selectedIds });
     setSavedAs(number);
+    // The saved selection is the active version now: the next "Save" starts from it.
+    setSelection({ ...selection, version: number, selectedIds });
   }
+
+  const active = useMemo(() => new Set(selection?.selectedIds), [selection]);
 
   useEffect(() => {
     getMcpSelection(mcpId)
@@ -63,6 +67,8 @@ export function EditActionsScreen({ mcpId }: { mcpId: string }) {
           spec={specOf(selection)}
           initialSelectedIds={selection.selectedIds}
           continueLabel="Save"
+          // Nothing to save while the selection is the active version's (D5).
+          continueDisabled={(selected) => selected.size === active.size && [...selected].every((id) => active.has(id))}
           onContinue={(selectedIds) => void handleSave(selectedIds)}
         />
       )}
