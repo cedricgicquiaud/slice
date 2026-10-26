@@ -57,11 +57,6 @@ export function EditActionsScreen({ mcpId }: { mcpId: string }) {
         <a href="/mcps" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
           Back to My MCPs
         </a>
-        {error && (
-          <p role="alert" className="mt-4 text-sm text-destructive">
-            {error}
-          </p>
-        )}
         {notFound && (
           <>
             <h1 className="mt-2 font-serif text-3xl italic">MCP not found</h1>
@@ -73,6 +68,11 @@ export function EditActionsScreen({ mcpId }: { mcpId: string }) {
           <p role="status" className="mt-2 text-sm text-foreground">
             Saved as version {savedAs}. Your agent sees the new actions in its next conversation, with nothing to
             paste again.
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="mt-2 text-sm text-destructive">
+            {error}
           </p>
         )}
       </header>
