@@ -1,19 +1,36 @@
 /**
  * "History", at `/mcps/<id>/history` (D10): the versions of one of the
- * account's MCPs, newest first (D8). Outside the three steps (D15): the MCP's
- * name at the top and a way back to "My MCPs".
+ * account's MCPs, newest first (D8), each but the active one with "Restore"
+ * (D9). Outside the three steps (D15): the MCP's name at the top and a way
+ * back to "My MCPs".
  */
 import { useEffect, useId, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { ApiError } from '../lib/api';
-import { getMcpHistory, type McpHistory, type McpVersion } from '../lib/mcps-api';
+import { getMcpHistory, restoreMcpVersion, type McpHistory, type McpVersion } from '../lib/mcps-api';
 import { CREATED, countOfActions, messageOf } from './mcps';
 
 export function HistoryScreen({ mcpId }: { mcpId: string }) {
   const [history, setHistory] = useState<McpHistory | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [restored, setRestored] = useState<number | null>(null);
+
+  async function handleRestore(number: number) {
+    const activeSince = await restoreMcpVersion(mcpId, number);
+    // One active version at a time (D4): the restored one, from the date the server gives.
+    setHistory((current) =>
+      current && {
+        ...current,
+        versions: current.versions.map((version) => ({
+          ...version,
+          activeSince: version.number === number ? activeSince : null,
+        })),
+      }
+    );
+    setRestored(number);
+  }
 
   useEffect(() => {
     getMcpHistory(mcpId)
@@ -44,9 +61,15 @@ export function HistoryScreen({ mcpId }: { mcpId: string }) {
       {history && (
         <>
           <h1 className="mt-4 font-serif text-4xl italic">{history.apiName}</h1>
+          {restored !== null && (
+            <p role="status" className="mt-2 text-sm text-foreground">
+              Version {restored} restored. Your agent sees these actions in its next conversation, with nothing to
+              paste again.
+            </p>
+          )}
           <ul className="mt-8 flex flex-col gap-3">
             {history.versions.map((version) => (
-              <VersionRow key={version.number} version={version} />
+              <VersionRow key={version.number} version={version} onRestore={() => void handleRestore(version.number)} />
             ))}
           </ul>
         </>
@@ -55,7 +78,7 @@ export function HistoryScreen({ mcpId }: { mcpId: string }) {
   );
 }
 
-function VersionRow({ version }: { version: McpVersion }) {
+function VersionRow({ version, onRestore }: { version: McpVersion; onRestore: () => void }) {
   const nameId = useId();
   const actionsId = useId();
   const [unfolded, setUnfolded] = useState(false);
@@ -88,7 +111,7 @@ function VersionRow({ version }: { version: McpVersion }) {
           </span>
         ) : (
           // The active version has nothing to restore (contract 22).
-          <Button type="button" variant="ghost" size="sm" className="ml-auto text-muted-foreground">
+          <Button type="button" variant="ghost" size="sm" onClick={onRestore} className="ml-auto text-muted-foreground">
             Restore
           </Button>
         )}
