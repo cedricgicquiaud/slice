@@ -260,4 +260,23 @@ describe('Recent calls', () => {
       'SLICE error',
     ]);
   });
+
+  it('shows a duration in milliseconds under a second, in seconds from a second on (contract 10, D11)', async () => {
+    server.usages['notes-id'] = {
+      ...NOTES_USED,
+      recentCalls: [420, 1_200].map((durationMs) => ({
+        calledAt: '2026-10-26T13:02:00.000Z',
+        action: 'list_notes',
+        label: 'List notes',
+        result: { kind: 'succeeded' },
+        durationMs,
+        version: 1,
+      })),
+    };
+
+    render(<UsageScreen mcpId="notes-id" />);
+
+    const [, ...calls] = await recentCallsTable();
+    expect(calls.map((cells) => cells[3])).toEqual(['420 ms', '1.2 s']);
+  });
 });
