@@ -180,4 +180,15 @@ describe('restoreMcpVersion', () => {
       asked: [['/api/mcps/notion-id/versions/1/restore', { method: 'POST' }]],
     });
   });
+
+  it("throws the server's refusal when the restoration is refused", async () => {
+    serverAnswers(404, { code: 'NOT_FOUND', message: 'Unknown version of this MCP.' });
+
+    await expect(restoreMcpVersion('notion-id', 7)).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 404,
+      code: 'NOT_FOUND',
+      message: 'Unknown version of this MCP.',
+    });
+  });
 });
