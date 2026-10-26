@@ -101,4 +101,23 @@ describe('the usage of an MCP', () => {
       lastCalledAt: '2026-09-27T14:00:00.000Z',
     });
   });
+
+  it("adds a line, not available, for an API's action outside the active version called in the last 30 days (contract 6, D10)", async () => {
+    const { id } = await store.put(NOTES, workspaceId, CREATED);
+    await createMcpCalls(database).write(id, [call('empty_trash', 5, { kind: 'not_available' }, 3)]);
+
+    const usage = await readMcpUsage(database, workspaceId, id, NOW);
+
+    expect(usage?.actions.filter((action) => !action.available)).toEqual([
+      {
+        name: 'empty_trash',
+        label: 'Empty the trash',
+        available: false,
+        calls: 1,
+        succeeded: 0,
+        averageDurationMs: null,
+        lastCalledAt: '2026-10-26T09:00:00.000Z',
+      },
+    ]);
+  });
 });
