@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { createMcpCalls, type CallNote } from './mcp-calls';
 import { createHostedStore } from './hosted-store';
+import { createAccountMcps } from './account-mcps';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
@@ -59,5 +60,15 @@ describe('the notes of action calls', () => {
     await calls.write(id, notes);
 
     expect(await calls.of(id)).toEqual(notes);
+  });
+
+  it('are deleted with their MCP (contract 14, D14)', async () => {
+    const { id } = await createHostedStore(database).put(contacts, workspaceId, NOW);
+    const calls = createMcpCalls(database);
+    await calls.write(id, [callAt(0, { kind: 'succeeded' })]);
+
+    await createAccountMcps(database).delete(workspaceId, id);
+
+    expect(await calls.of(id)).toEqual([]);
   });
 });
