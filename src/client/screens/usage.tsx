@@ -86,7 +86,15 @@ function ActionsTable({ actions }: { actions: ActionUsage[] }) {
             {actions.map((action) => (
               <tr key={action.name} className="border-t border-border">
                 <th scope="row" className="px-4 py-2 text-left font-normal text-foreground">
-                  {action.label}
+                  <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    {action.label}
+                    {/* Called, but no longer one of the active version's actions (D10). */}
+                    {!action.available && (
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                        Not available
+                      </span>
+                    )}
+                  </span>
                 </th>
                 {action.calls === 0 ? (
                   <td colSpan={4} className="px-4 py-2 text-muted-foreground">
@@ -97,7 +105,7 @@ function ActionsTable({ actions }: { actions: ActionUsage[] }) {
                     <td className="px-4 py-2 text-right tabular-nums">{action.calls}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{action.succeeded}</td>
                     <td className="px-4 py-2 text-right tabular-nums">
-                      {action.averageDurationMs !== null && durationOf(action.averageDurationMs)}
+                      {action.averageDurationMs === null ? '—' : durationOf(action.averageDurationMs)}
                     </td>
                     <td className="px-4 py-2 text-muted-foreground">
                       {action.lastCalledAt && CALLED.format(new Date(action.lastCalledAt))}
