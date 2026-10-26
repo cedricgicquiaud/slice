@@ -74,13 +74,13 @@ Account deletion (Better Auth's delete user): `POST /api/auth/delete-user` with 
 the signed-in account at once and answers `{ "success": true, "message": "User deleted" }`. Its sessions go with it on
 every device, and so do its personal workspace and every MCP in it: their URLs answer
 `404 { "error": "Unknown MCP id." }` from then on (see [`ANY /m/:id`](#any-mid)). There is no undo and no grace
-period. Signing in again with the same address opens a new, empty account. The page `/account/delete` sends this call
+period. Any live session deletes, however long ago it was opened (Better Auth's `freshAge` is 0: with no password
+to retype, a "fresh session" rule would guard nothing). Signing in again with the same address opens a new, empty account. The page `/account/delete` sends this call
 once `delete` is typed.
 
 | Status | `code` | When |
 |---|---|---|
 | 401 | `UNAUTHORIZED` | No live session; nothing is deleted |
-| 400 | `SESSION_EXPIRED` | The session was opened more than a day ago; nothing is deleted. Signing out and in again opens a session that can delete |
 | 403 | `INVALID_ORIGIN` | Sent from another site than SLICE's page (`BETTER_AUTH_URL`); nothing is deleted |
 | 403 | `MISSING_OR_NULL_ORIGIN` | The session cookie without any `Origin` header (a script, `curl`): send `Origin: <BETTER_AUTH_URL>` |
 

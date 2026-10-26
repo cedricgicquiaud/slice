@@ -120,26 +120,17 @@ describe('Delete account', () => {
     }).toEqual({ signIn: true, deletions: 1, path: '/' });
   });
 
-  // Without a password, Better Auth deletes only from a session opened less than a day ago.
-  it('asks to sign in again when the session is too old to delete the account, and stays on the page', async () => {
-    window.history.pushState({}, '', '/account/delete');
-    server.deletionRefusal = {
-      status: 400,
-      code: 'SESSION_EXPIRED',
-      message: 'Session expired. Re-authenticate to perform this action.',
-    };
+  it('sends one deletion only when the button is clicked twice, the button greyed meanwhile', async () => {
     const user = userEvent.setup();
     render(<DeleteAccountScreen />);
 
     await user.type(screen.getByLabelText('Type delete to confirm'), 'delete');
-    await user.click(screen.getByRole('button', { name: 'Delete my account' }));
+    const button = screen.getByRole('button', { name: 'Delete my account' });
+    await user.dblClick(button);
 
-    expect({
-      message: (await screen.findByRole('alert')).textContent,
-      path: window.location.pathname,
-    }).toEqual({
-      message: 'For your safety, sign out and sign in again, then delete your account.',
-      path: '/account/delete',
+    expect({ deletions: server.deletions, disabled: (button as HTMLButtonElement).disabled }).toEqual({
+      deletions: 1,
+      disabled: true,
     });
   });
 

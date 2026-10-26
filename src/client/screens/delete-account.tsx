@@ -5,8 +5,6 @@ import { authClient } from '../lib/auth-client';
 /** The word that confirms the deletion, typed exactly: `Delete` or `delet` keep the button inactive (contract 27). */
 const CONFIRMATION = 'delete';
 
-/** Better Auth's refusal of a session opened more than a day ago (`SESSION_EXPIRED`): a fresh one deletes. */
-const SESSION_TOO_OLD = 'For your safety, sign out and sign in again, then delete your account.';
 const NOT_DELETED = "Couldn't delete your account. Try again in a moment.";
 
 const FIELD_CLASS =
@@ -17,13 +15,17 @@ export function DeleteAccountScreen() {
   const fieldId = useId();
   const [typed, setTyped] = useState('');
   const [refusal, setRefusal] = useState<string>();
+  // One deletion at a time: a double click sends a single call.
+  const [pending, setPending] = useState(false);
 
   // Deleted, the session ends with the account: the sign-in screen shows, at
   // home, so that signing in again does not land back on this page.
   async function handleDelete() {
+    setPending(true);
     const { error } = await authClient.deleteUser();
     if (error) {
-      setRefusal(error.code === 'SESSION_EXPIRED' ? SESSION_TOO_OLD : NOT_DELETED);
+      setRefusal(NOT_DELETED);
+      setPending(false);
       return;
     }
     window.history.replaceState({}, '', '/');
@@ -56,7 +58,7 @@ export function DeleteAccountScreen() {
         <Button
           variant="destructive"
           className="self-start"
-          disabled={typed !== CONFIRMATION}
+          disabled={typed !== CONFIRMATION || pending}
           onClick={() => void handleDelete()}
         >
           Delete my account
