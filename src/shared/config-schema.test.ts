@@ -168,4 +168,12 @@ describe('mcpSelectionChangeSchema', () => {
 
     expect(parsed.error?.issues.map((issue) => issue.message)).toEqual(['Only the selection of actions can be changed.']);
   });
+
+  it('refuses a change without any action (contract 15)', async () => {
+    const { mcpSelectionChangeSchema } = await import('./config-schema');
+
+    const parsed = mcpSelectionChangeSchema.safeParse({ fromVersion: 1, selectedIds: [] });
+
+    expect(parsed.error?.issues.map((issue) => issue.message)).toEqual(['Pick at least one action.']);
+  });
 });
