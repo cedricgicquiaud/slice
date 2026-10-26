@@ -44,6 +44,7 @@ CREATE TABLE "connector_api_actions" (
 );
 --> statement-breakpoint
 CREATE TABLE "connector_calls" (
+	"id" bigint GENERATED ALWAYS AS IDENTITY (sequence name "connector_calls_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 9223372036854775807 START WITH 1 CACHE 1),
 	"connector_id" text NOT NULL,
 	"version" integer NOT NULL,
 	"action" text NOT NULL,

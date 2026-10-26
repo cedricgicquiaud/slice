@@ -64,7 +64,7 @@ export function createMcpCalls(database: Database): McpCalls {
         .select()
         .from(connectorCalls)
         .where(eq(connectorCalls.connectorId, connectorId))
-        .orderBy(asc(connectorCalls.calledAt));
+        .orderBy(asc(connectorCalls.calledAt), asc(connectorCalls.id));
       return rows.map(({ action, version, calledAt, result, status, durationMs }) => ({
         action,
         version,

@@ -8,6 +8,7 @@
  */
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
   check,
   foreignKey,
@@ -221,6 +222,8 @@ export const callResult = pgEnum('call_result', [
 export const connectorCalls = pgTable(
   'connector_calls',
   {
+    /** The order of writing: tells apart the calls of one request, which share their arrival date. */
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity(),
     connectorId: text('connector_id').notNull(),
     /** The version active when the call arrived. */
     version: integer('version').notNull(),

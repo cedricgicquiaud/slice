@@ -1,5 +1,5 @@
 {
-  "id": "2f8d19b2-57aa-4d96-be9a-9c312673faf3",
+  "id": "f4818c79-0729-450b-860d-ee0d55f7fb0e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -314,6 +314,23 @@
       "name": "connector_calls",
       "schema": "",
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "connector_calls_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
         "connector_id": {
           "name": "connector_id",
           "type": "text",

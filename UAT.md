@@ -722,9 +722,9 @@ dans la table `connector_calls` de la base de développement. La page « Usage �
   les actions du MCP.
 - Lire les notes : arrêter `pnpm dev` (Ctrl+C : la base de développement n'accepte qu'un programme à la fois), puis
   lancer
-  `node --import tsx --input-type=module -e "const { openDatabase } = await import('./src/server/db/client.ts'); const { sql } = await import('drizzle-orm'); const db = openDatabase({ driver: 'pglite', dataDir: 'data/pglite' }); console.table(await db.rows(sql\`select * from connector_calls order by called_at\`)); await db.close();"`
-  Le tableau affiché a exactement les colonnes `connector_id`, `version`, `action`, `called_at`, `result`, `status`,
-  `duration_ms`. Relancer `pnpm dev` pour la suite.
+  `node --import tsx --input-type=module -e "const { openDatabase } = await import('./src/server/db/client.ts'); const { sql } = await import('drizzle-orm'); const db = openDatabase({ driver: 'pglite', dataDir: 'data/pglite' }); console.table(await db.rows(sql\`select * from connector_calls order by called_at, id\`)); await db.close();"`
+  Le tableau affiché a exactement les colonnes `id` (l'ordre d'écriture), `connector_id`, `version`, `action`,
+  `called_at`, `result`, `status`, `duration_ms`. Relancer `pnpm dev` pour la suite.
 
 Pour aller vite, enchaîner les appels ci-dessous, puis lire les notes une seule fois : chaque appel laisse au plus une
 ligne. La suppression du compte se joue en dernier.

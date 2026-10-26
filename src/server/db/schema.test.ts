@@ -114,13 +114,14 @@ describe('database schema (D3)', () => {
     });
   });
 
-  it("keeps of an action call its action, the active version, the date, the result and the duration, and nothing else (WAT-154, D3, contract 17)", async () => {
+  it("keeps of an action call its action, the active version, the date, the result and the duration, its order of writing and nothing else (WAT-154, D3, contract 17)", async () => {
     const columns = await rows<{ column_name: string; udt_name: string; is_nullable: string }>(
       sql`select column_name, udt_name, is_nullable from information_schema.columns
           where table_schema = 'public' and table_name = 'connector_calls' order by ordinal_position`
     );
 
     expect(columns.map((c) => `${c.column_name} ${c.udt_name} ${c.is_nullable}`)).toEqual([
+      'id int8 NO',
       'connector_id text NO',
       'version int4 NO',
       'action text NO',
