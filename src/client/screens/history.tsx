@@ -16,8 +16,12 @@ export function HistoryScreen({ mcpId }: { mcpId: string }) {
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [restored, setRestored] = useState<number | null>(null);
+  // "Restore" stays greyed during the call: a double click restores once.
+  const [restoring, setRestoring] = useState(false);
 
   async function handleRestore(number: number) {
+    if (restoring) return;
+    setRestoring(true);
     const activeSince = await restoreMcpVersion(mcpId, number);
     // One active version at a time (D4): the restored one, from the date the server gives.
     setHistory((current) =>
@@ -30,6 +34,7 @@ export function HistoryScreen({ mcpId }: { mcpId: string }) {
       }
     );
     setRestored(number);
+    setRestoring(false);
   }
 
   useEffect(() => {
@@ -69,7 +74,12 @@ export function HistoryScreen({ mcpId }: { mcpId: string }) {
           )}
           <ul className="mt-8 flex flex-col gap-3">
             {history.versions.map((version) => (
-              <VersionRow key={version.number} version={version} onRestore={() => void handleRestore(version.number)} />
+              <VersionRow
+                key={version.number}
+                version={version}
+                restoring={restoring}
+                onRestore={() => void handleRestore(version.number)}
+              />
             ))}
           </ul>
         </>
@@ -78,7 +88,15 @@ export function HistoryScreen({ mcpId }: { mcpId: string }) {
   );
 }
 
-function VersionRow({ version, onRestore }: { version: McpVersion; onRestore: () => void }) {
+function VersionRow({
+  version,
+  restoring,
+  onRestore,
+}: {
+  version: McpVersion;
+  restoring: boolean;
+  onRestore: () => void;
+}) {
   const nameId = useId();
   const actionsId = useId();
   const [unfolded, setUnfolded] = useState(false);
@@ -111,7 +129,14 @@ function VersionRow({ version, onRestore }: { version: McpVersion; onRestore: ()
           </span>
         ) : (
           // The active version has nothing to restore (contract 22).
-          <Button type="button" variant="ghost" size="sm" onClick={onRestore} className="ml-auto text-muted-foreground">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={restoring}
+            onClick={onRestore}
+            className="ml-auto text-muted-foreground"
+          >
             Restore
           </Button>
         )}
