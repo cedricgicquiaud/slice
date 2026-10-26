@@ -338,4 +338,15 @@ describe('POST /api/mcps/:id/versions', () => {
       served: ['list_notes'],
     });
   });
+
+  it("creates no version for the active version's selection (contract 14, D5)", async () => {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+
+    const res = await save(id, { fromVersion: 1, selectedIds: ['POST /notes', 'GET /notes'] });
+
+    expect({ status: res.status, body: await res.json() }).toEqual({
+      status: 400,
+      body: { code: 'INVALID_SELECTION', message: 'This selection is already the active version.' },
+    });
+  });
 });
