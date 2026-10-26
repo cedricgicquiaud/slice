@@ -1,6 +1,6 @@
 // WAT-144/145/146 — the selection of an MCP: read for "Edit actions", changed by "Save" into a new version.
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { readMcpSelection } from './mcp-selection';
+import { readMcpSelection, saveMcpSelection } from './mcp-selection';
 import { createHostedStore, type HostedStore } from './hosted-store';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
@@ -11,6 +11,7 @@ import { createTestAccount } from '../db/test-account';
 vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 const MONDAY = new Date('2026-10-19T08:30:00.000Z');
+const TUESDAY = new Date('2026-10-20T14:00:00.000Z');
 
 const LIST_NOTES = { name: 'list_notes', label: 'List notes', method: 'GET', path: '/notes', params: [] } as const;
 const CREATE_NOTE = {
@@ -95,6 +96,30 @@ describe('the selection of an MCP, for "Edit actions"', () => {
         },
       ],
       selectedIds: ['GET /notes', 'POST /notes'],
+    });
+  });
+});
+
+describe('"Save"', () => {
+  it("makes the new selection version 2, the active one: the MCP's address serves its actions (contract 5, 6)", async () => {
+    const { workspaceId } = await createTestAccount({ database, email: 'save@example.com' });
+    const { id } = await store.put(NOTES, workspaceId, MONDAY);
+
+    const outcome = await saveMcpSelection(
+      database,
+      workspaceId,
+      id,
+      { fromVersion: 1, selectedIds: ['GET /notes', 'POST /notes', 'DELETE /trash'] },
+      TUESDAY
+    );
+
+    expect({ outcome, served: (await store.get(id))?.endpoints }).toEqual({
+      outcome: { version: 2 },
+      served: [
+        { name: 'list_notes', description: 'List notes', method: 'GET', path: '/notes', params: [] },
+        { name: 'create_note', description: 'Create a note', method: 'POST', path: '/notes', params: CREATE_NOTE.params },
+        { name: 'empty_trash', description: 'Empty the trash', method: 'DELETE', path: '/trash', params: [] },
+      ],
     });
   });
 });
