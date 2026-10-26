@@ -98,7 +98,10 @@ export async function readMcpUsage(
       action: connectorCalls.action,
       calls: count(),
       succeeded: sql<number>`count(*) filter (where ${succeeded})`.mapWith(Number),
-      averageDurationMs: sql<number | null>`round(avg(${connectorCalls.durationMs}) filter (where ${succeeded}))`.mapWith(Number),
+      // Only the succeeded calls make the average (D10).
+      averageDurationMs: sql<number | null>`round(avg(${connectorCalls.durationMs}) filter (where ${succeeded}))`.mapWith(
+        Number
+      ),
       lastCalledAt: max(connectorCalls.calledAt),
     })
     .from(connectorCalls)
