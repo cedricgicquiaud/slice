@@ -234,6 +234,12 @@ export const connectorCalls = pgTable(
     durationMs: integer('duration_ms').notNull(),
   },
   (table) => [
+    // Deleting a connector deletes its versions, and with them the notes of its calls (D14).
+    foreignKey({
+      name: 'connector_calls_version_fk',
+      columns: [table.connectorId, table.version],
+      foreignColumns: [connectorVersions.connectorId, connectorVersions.number],
+    }).onDelete('cascade'),
     check('connector_calls_status_iff_failed', sql`(${table.result} = 'failed') = (${table.status} is not null)`),
   ]
 );
