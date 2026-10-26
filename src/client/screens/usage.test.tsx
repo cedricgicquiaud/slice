@@ -279,4 +279,24 @@ describe('Recent calls', () => {
     const [, ...calls] = await recentCallsTable();
     expect(calls.map((cells) => cells[3])).toEqual(['420 ms', '1.2 s']);
   });
+
+  it('says "No calls in the last 30 days." for an MCP without any call, every action "Never called" (contract 12, D10)', async () => {
+    server.usages['notion-id'] = NOTION_UNUSED;
+
+    render(<UsageScreen mcpId="notion-id" />);
+
+    const [, ...actions] = await actionsTable();
+    expect({
+      message: screen.queryByText('No calls in the last 30 days.') !== null,
+      recentCalls: screen.queryByRole('table', { name: 'Recent calls' }) !== null,
+      actions,
+    }).toEqual({
+      message: true,
+      recentCalls: false,
+      actions: [
+        ['Search', 'Never called'],
+        ['Get a page', 'Never called'],
+      ],
+    });
+  });
 });
