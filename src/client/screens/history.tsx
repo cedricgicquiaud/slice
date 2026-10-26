@@ -4,6 +4,7 @@
  * name at the top and a way back to "My MCPs".
  */
 import { useEffect, useId, useState } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { getMcpHistory, type McpHistory, type McpVersion } from '../lib/mcps-api';
 import { CREATED } from './mcps';
 
@@ -35,12 +36,27 @@ export function HistoryScreen({ mcpId }: { mcpId: string }) {
 
 function VersionRow({ version }: { version: McpVersion }) {
   const nameId = useId();
+  const actionsId = useId();
+  const [unfolded, setUnfolded] = useState(false);
   const actionCount = version.actionLabels.length;
   return (
     <li aria-labelledby={nameId} className="flex flex-col gap-2 rounded-lg border border-border bg-card px-4 py-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h2 id={nameId} className="text-base font-medium text-foreground">
-          Version {version.number}
+          <button
+            type="button"
+            aria-expanded={unfolded}
+            aria-controls={actionsId}
+            onClick={() => setUnfolded((current) => !current)}
+            className="inline-flex items-center gap-1 transition-colors hover:text-primary"
+          >
+            <ChevronRight
+              size={14}
+              aria-hidden="true"
+              className={unfolded ? 'rotate-90 transition-transform' : 'transition-transform'}
+            />
+            Version {version.number}
+          </button>
         </h2>
         <span className="text-sm text-muted-foreground">
           {actionCount} {actionCount === 1 ? 'action' : 'actions'}
@@ -52,6 +68,13 @@ function VersionRow({ version }: { version: McpVersion }) {
           </span>
         )}
       </div>
+      {unfolded && (
+        <ul id={actionsId} className="ml-5 flex flex-col gap-1 text-sm text-foreground">
+          {version.actionLabels.map((label, position) => (
+            <li key={position}>{label}</li>
+          ))}
+        </ul>
+      )}
     </li>
   );
 }
