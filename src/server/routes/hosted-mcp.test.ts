@@ -466,6 +466,43 @@ describe('the note of an action call refused before the API', () => {
   });
 });
 
+/** Send several JSON-RPC messages in one request (a batch), as the SDK accepts them; the raw answer. */
+async function postBatch(url: string, messages: unknown[]): Promise<string> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      accept: 'application/json, text/event-stream',
+      authorization: 'Bearer TOKEN',
+    },
+    body: JSON.stringify(messages),
+  });
+  return res.text();
+}
+
+const toolCall = (id: number, name: string, args: Record<string, unknown>) => ({
+  jsonrpc: '2.0',
+  id,
+  method: 'tools/call',
+  params: { name, arguments: args },
+});
+
+// WAT-156 — a request carrying several action calls.
+describe('a batch of action calls', () => {
+  it('notes each of its calls (contract 13)', async () => {
+    const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+
+    await postBatch(`${baseUrl}/m/${id}`, [toolCall(1, 'list_things', {}), toolCall(2, 'delete_thing', { id: '42' })]);
+
+    await vi.waitFor(async () =>
+      expect((await calls.of(id)).map(({ action, result }) => `${action} ${result.kind}`).sort()).toEqual([
+        'delete_thing succeeded',
+        'list_things succeeded',
+      ])
+    );
+  });
+});
+
 /** An address where nothing listens: a port just released. */
 async function closedAddress(): Promise<string> {
   const server = createServer();
