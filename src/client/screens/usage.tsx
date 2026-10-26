@@ -66,7 +66,11 @@ export function UsageScreen({ mcpId }: { mcpId: string }) {
             </p>
           ))}
           <ActionsTable actions={usage.actions} />
-          <RecentCallsTable calls={usage.recentCalls} />
+          {usage.recentCalls.length === 0 ? (
+            <p className="mt-8 text-sm text-muted-foreground">No calls in the last 30 days.</p>
+          ) : (
+            <RecentCallsTable calls={usage.recentCalls} />
+          )}
         </>
       )}
     </div>
