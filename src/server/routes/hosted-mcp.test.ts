@@ -7,6 +7,7 @@ import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { createApp } from '../app';
 import { createHostedStore, type HostedStore } from '../services/hosted-store';
+import { createAccountMcps } from '../services/account-mcps';
 import type { HostedMcpConfig } from '../services/hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
@@ -63,7 +64,13 @@ beforeAll(async () => {
   store = createHostedStore(database);
   account = await createTestAccount({ database });
 
-  app = createApp({ nodeEnv: 'test', hostedStore: store, now, auth: account.auth }).listen(0);
+  app = createApp({
+    nodeEnv: 'test',
+    hostedStore: store,
+    accountMcps: createAccountMcps(database),
+    now,
+    auth: account.auth,
+  }).listen(0);
   await new Promise<void>((r) => app.once('listening', r));
   baseUrl = `http://127.0.0.1:${(app.address() as AddressInfo).port}`;
 });
@@ -195,6 +202,68 @@ describe('hosted connector served from the database', () => {
     );
     expect(everything.length).toBeGreaterThan(0);
     expect(everything.filter((r) => /feedface|AGENT-SECRET/.test(r.row))).toEqual([]);
+  });
+});
+
+/** Two actions: the agent may only read things, or only create them, as the user checks. */
+const READ_AND_WRITE_SPEC = `openapi: 3.0.3
+info: { title: Demo, version: "1.0" }
+servers: [{ url: http://placeholder }]
+paths:
+  /things:
+    get:
+      operationId: listThings
+      summary: List things
+      responses: { '200': { description: ok } }
+    post:
+      operationId: createThing
+      summary: Create a thing
+      responses: { '201': { description: created } }
+`;
+
+/** Create an MCP from screen 4 with `selectedIds` checked among the actions of `rawSpec`. */
+async function hostSelection(rawSpec: string, selectedIds: string[]): Promise<string> {
+  const res = await fetch(`${baseUrl}/api/host`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie: account.cookie },
+    body: JSON.stringify({
+      parsedSpec: {},
+      rawSpec,
+      selectedIds,
+      config: {
+        mcpName: 'demo',
+        baseUrl: upstreamUrl,
+        upstreamAuth: { type: 'bearer' },
+        hosting: 'cloud',
+        mode: 'remote',
+        includeParamDescriptions: false,
+        retryOnServerError: false,
+      },
+    }),
+  });
+  expect(res.status).toBe(200);
+  return ((await res.json()) as { id: string }).id;
+}
+
+// WAT-141 — the selection made on screens 2 and 3 becomes the MCP's version 1.
+describe('the versions of an MCP created from screen 4', () => {
+  it('start with a version 1, active since its creation, holding exactly the checked actions (contract 1, 9)', async () => {
+    const id = await hostSelection(READ_AND_WRITE_SPEC, ['POST /things']);
+
+    const res = await fetch(`${baseUrl}/api/mcps/${id}/versions`, { headers: { cookie: account.cookie } });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      apiName: 'Demo',
+      versions: [
+        {
+          number: 1,
+          createdAt: '2026-10-24T09:00:00.000Z',
+          activeSince: '2026-10-24T09:00:00.000Z',
+          actionLabels: ['Create a thing'],
+        },
+      ],
+    });
   });
 });
 
