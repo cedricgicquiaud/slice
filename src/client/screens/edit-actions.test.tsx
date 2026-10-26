@@ -1,6 +1,7 @@
 // WAT-144/145/146 — "Edit actions", at /mcps/<id>/edit: step 2 again, the active version's actions checked; "Save" makes the next version.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import App from '../App';
 
 /** The Notes API: three actions in two groups; version 1 holds the reading and the creation of notes. */
@@ -60,5 +61,25 @@ describe('Edit actions', () => {
       back: screen.getByRole('link', { name: 'Back to My MCPs' }).getAttribute('href'),
       steps: screen.queryByRole('navigation', { name: /steps/i }) !== null,
     }).toEqual({ name: true, back: '/mcps', steps: false });
+  });
+
+  it("shows every action of the API with step 2's groups, labels and counter, the active version's checked (contract 3, D2)", async () => {
+    server.selections['notes-id'] = NOTES_SELECTION;
+    window.history.pushState({}, '', '/mcps/notes-id/edit');
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: 'Tag: All' }));
+
+    const checked = (label: string) => (screen.getByRole('checkbox', { name: `Select ${label}` }) as HTMLInputElement).checked;
+    expect({
+      groups: ['Notes', 'Trash'].map((tag) => screen.queryByRole('button', { name: `Tag: ${tag}` }) !== null),
+      checked: { list: checked('List notes'), create: checked('Create a note'), emptyTrash: checked('Empty the trash') },
+      counter: screen.getByText('Selected').parentElement?.textContent,
+    }).toEqual({
+      groups: [true, true],
+      checked: { list: true, create: true, emptyTrash: false },
+      counter: 'Selected2 / 3',
+    });
   });
 });
