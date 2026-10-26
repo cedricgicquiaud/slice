@@ -1,9 +1,9 @@
 /**
  * The MCPs of an account, as its "My MCPs" page shows them (D9).
  */
-import { and, count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, isNotNull } from 'drizzle-orm';
 import type { Database } from '../db/client';
-import { connectorActions, connectors } from '../db/schema';
+import { connectorActions, connectorVersions, connectors } from '../db/schema';
 import { apiNameOf, readMcpHistory, type McpHistory } from './mcp-versions';
 
 /** One line of the list. */
@@ -41,7 +41,18 @@ export function createAccountMcps(database: Database): AccountMcps {
           actionCount: count(connectorActions.position),
         })
         .from(connectors)
-        .leftJoin(connectorActions, eq(connectorActions.connectorId, connectors.id))
+        // The count is the active version's (D11).
+        .leftJoin(
+          connectorVersions,
+          and(eq(connectorVersions.connectorId, connectors.id), isNotNull(connectorVersions.activeSince))
+        )
+        .leftJoin(
+          connectorActions,
+          and(
+            eq(connectorActions.connectorId, connectorVersions.connectorId),
+            eq(connectorActions.version, connectorVersions.number)
+          )
+        )
         .where(eq(connectors.workspaceId, workspaceId))
         .groupBy(connectors.id)
         .orderBy(desc(connectors.createdAt));
