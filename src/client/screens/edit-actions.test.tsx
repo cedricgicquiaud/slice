@@ -28,21 +28,24 @@ const NOTES_SELECTION = {
  * SLICE's API as this page sees it: `GET /api/mcps/:id/selection` answers the
  * selection kept in `selections` under that id, else 404 as for an unknown MCP
  * or another account's; `POST /api/mcps/:id/versions` is kept in `saves` and
- * answers version 2; any other call is "who is signed in?" (`session`).
+ * answers version 2 once `held` resolves, when set; any other call is "who is
+ * signed in?" (`session`).
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
 const server = vi.hoisted(() => {
-  const state: { session: unknown; selections: Record<string, unknown>; saves: Array<{ url: string; change: unknown }> } = {
-    session: null,
-    selections: {},
-    saves: [],
-  };
+  const state: {
+    session: unknown;
+    selections: Record<string, unknown>;
+    saves: Array<{ url: string; change: unknown }>;
+    held: Promise<void> | null;
+  } = { session: null, selections: {}, saves: [], held: null };
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : String(input);
     if (init?.method === 'POST' && /^\/api\/mcps\/[^/]+\/versions$/.test(url)) {
       state.saves.push({ url, change: JSON.parse(String(init.body)) });
+      await state.held;
       return json({ number: 2 }, 201);
     }
     const asked = /^\/api\/mcps\/([^/]+)\/selection$/.exec(url);
@@ -56,6 +59,7 @@ const server = vi.hoisted(() => {
 afterEach(() => {
   server.selections = {};
   server.saves = [];
+  server.held = null;
   window.history.pushState({}, '', '/');
 });
 
@@ -160,5 +164,23 @@ describe('Edit actions', () => {
     await user.click(screen.getByRole('checkbox', { name: 'Select Create a note' }));
 
     expect(screen.getByRole('button', { name: /save/i })).toBeDisabled();
+  });
+
+  it('greys Save during the call: a double click saves one version only (contract 25)', async () => {
+    server.selections['notes-id'] = NOTES_SELECTION;
+    let answer = () => {};
+    server.held = new Promise<void>((resolve) => (answer = resolve));
+    window.history.pushState({}, '', '/mcps/notes-id/edit');
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Tag: All' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Empty the trash' }));
+
+    await user.dblClick(screen.getByRole('button', { name: /save/i }));
+    const greyedDuringTheCall = screen.getByRole('button', { name: /save/i }).hasAttribute('disabled');
+    answer();
+    await screen.findByRole('status');
+
+    expect({ greyedDuringTheCall, saves: server.saves.length }).toEqual({ greyedDuringTheCall: true, saves: 1 });
   });
 });
