@@ -233,4 +233,20 @@ describe('GET /api/mcps/:id/selection', () => {
       },
     });
   });
+
+  it("answers another account's MCP exactly as an unknown id (contract 19, D12)", async () => {
+    const other = await createTestAccount({ database, email: 'neighbour-selection@example.com' });
+    const { id } = await store.put(NOTES, other.workspaceId, CREATED);
+
+    const theirs = await fetch(`${edit.url}/api/mcps/${id}/selection`, { headers: { cookie: account.cookie } });
+    const unknown = await fetch(`${edit.url}/api/mcps/no-such-mcp-id/selection`, { headers: { cookie: account.cookie } });
+
+    expect({
+      theirs: { status: theirs.status, body: await theirs.text() },
+      unknown: { status: unknown.status, body: await unknown.text() },
+    }).toEqual({
+      theirs: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+      unknown: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+    });
+  });
 });
