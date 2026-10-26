@@ -123,7 +123,7 @@ export type GenerateRequestInput = z.input<typeof generateRequestSchema>;
 export const mcpSelectionChangeSchema = z.strictObject(
   {
     fromVersion: z.number().int().positive(),
-    selectedIds: z.array(z.string().min(1)),
+    selectedIds: z.array(z.string().min(1)).min(1, 'Pick at least one action.'),
   },
   {
     error: (issue) => (issue.code === 'unrecognized_keys' ? 'Only the selection of actions can be changed.' : undefined),
