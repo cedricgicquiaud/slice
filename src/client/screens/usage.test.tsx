@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import App from '../App';
+import { UsageScreen } from './usage';
 
 /** The Notion MCP, its two actions never called in the last 30 days. */
 const NOTION_UNUSED = {
@@ -17,17 +18,22 @@ const NOTION_UNUSED = {
 /**
  * SLICE's API as this page sees it: `GET /api/mcps/:id/usage` answers the usage
  * kept in `usages` under that id, else 404 as for an unknown MCP or another
- * account's; any other call is "who is signed in?" (`session`).
+ * account's, or `refusal` when set; any other call is "who is signed in?" (`session`).
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
 const server = vi.hoisted(() => {
-  const state: { session: unknown; usages: Record<string, unknown> } = { session: null, usages: {} };
+  const state: {
+    session: unknown;
+    usages: Record<string, unknown>;
+    refusal: { status: number; code: string; message: string } | null;
+  } = { session: null, usages: {}, refusal: null };
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = input instanceof Request ? input.url : String(input);
     const asked = /^\/api\/mcps\/([^/]+)\/usage$/.exec(url);
     if (!asked) return json(state.session);
+    if (state.refusal) return json({ code: state.refusal.code, message: state.refusal.message }, state.refusal.status);
     const usage = state.usages[asked[1]!];
     return usage ? json(usage) : json({ code: 'NOT_FOUND', message: 'Unknown MCP id.' }, 404);
   }) as typeof fetch;
@@ -36,6 +42,7 @@ const server = vi.hoisted(() => {
 
 afterEach(() => {
   server.usages = {};
+  server.refusal = null;
   window.history.pushState({}, '', '/');
 });
 
@@ -66,5 +73,13 @@ describe('Usage', () => {
       spaced: message.classList.contains('mt-4'),
       back: screen.getByRole('link', { name: 'Back to My MCPs' }).getAttribute('href'),
     }).toEqual({ notFound: true, spaced: true, back: '/mcps' });
+  });
+
+  it("shows the server's message when the usage is refused for another reason", async () => {
+    server.refusal = { status: 503, code: 'SERVICE_UNAVAILABLE', message: 'SLICE is unavailable for the moment.' };
+
+    render(<UsageScreen mcpId="notion-id" />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('SLICE is unavailable for the moment.');
   });
 });
