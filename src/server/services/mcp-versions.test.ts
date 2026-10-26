@@ -173,24 +173,29 @@ describe('"Restore"', () => {
 
   it('never leaves two active versions when a "Restore" and a "Save" of the same MCP run at once', async () => {
     // A real race on PostgreSQL only (`DATABASE_URL`): PGlite's single connection runs the two one after the other.
+    // Played twenty times: without the lock, a single run would pass part of the time.
     const { workspaceId } = await createTestAccount({ database, email: 'restore-race@example.com' });
-    const { id } = await store.put(NOTION, workspaceId, MONDAY);
-    await activateVersion2(id, TUESDAY);
 
-    const [, saved] = await Promise.all([
-      restoreMcpVersion(database, workspaceId, id, 1, WEDNESDAY),
-      saveMcpSelection(database, workspaceId, id, { fromVersion: 2, selectedIds: ['POST /search'] }, WEDNESDAY),
-    ]);
-    const history = await readMcpHistory(database, workspaceId, id);
+    for (let round = 0; round < 20; round += 1) {
+      const { id } = await store.put(NOTION, workspaceId, MONDAY);
+      await activateVersion2(id, TUESDAY);
 
-    // Whichever runs first, version 1 ends up the only active one: "Save" is refused after
-    // the "Restore", or its version 3 is replaced by the "Restore" that follows it.
-    expect([
-      { saved: { version: 3 }, active: [1] },
-      { saved: { refused: 'changed-meanwhile' }, active: [1] },
-    ]).toContainEqual({
-      saved,
-      active: history?.versions.filter((version) => version.activeSince !== null).map((version) => version.number),
-    });
+      const [, saved] = await Promise.all([
+        restoreMcpVersion(database, workspaceId, id, 1, WEDNESDAY),
+        saveMcpSelection(database, workspaceId, id, { fromVersion: 2, selectedIds: ['POST /search'] }, WEDNESDAY),
+      ]);
+      const history = await readMcpHistory(database, workspaceId, id);
+
+      // Whichever runs first, version 1 ends up the only active one: "Save" is refused after
+      // the "Restore", or its version 3 is replaced by the "Restore" that follows it.
+      expect([
+        { round, saved: { version: 3 }, active: [1] },
+        { round, saved: { refused: 'changed-meanwhile' }, active: [1] },
+      ]).toContainEqual({
+        round,
+        saved,
+        active: history?.versions.filter((version) => version.activeSince !== null).map((version) => version.number),
+      });
+    }
   });
 });
