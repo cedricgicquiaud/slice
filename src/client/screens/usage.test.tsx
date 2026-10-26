@@ -168,7 +168,7 @@ describe('Usage by action', () => {
 
     const table = await screen.findByRole('table', { name: 'Actions' });
     const lines = within(table).getAllByRole('row').slice(1);
-    const [, , emptyTrash] = await actionsTable();
+    const [, , , emptyTrash] = await actionsTable();
     expect({
       marked: lines.map((line) => within(line).queryByText('Not available') !== null),
       figures: emptyTrash?.slice(1),
