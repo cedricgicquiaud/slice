@@ -445,4 +445,28 @@ describe('POST /api/mcps/:id/versions/:number/restore', () => {
       tools: ['list_notes', 'create_note'],
     });
   });
+
+  it("numbers the change saved after restoring version 1 as version 3, started from version 1's actions (contract 11, D9)", async () => {
+    const id = await notesAtVersion2();
+    await restore(id, 1);
+
+    const { version, selectedIds } = (await (
+      await fetch(`${edit.url}/api/mcps/${id}/selection`, { headers: { cookie: account.cookie } })
+    ).json()) as { version: number; selectedIds: string[] };
+    const saved = await fetch(`${edit.url}/api/mcps/${id}/versions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: account.cookie },
+      body: JSON.stringify({ fromVersion: version, selectedIds: [...selectedIds, 'DELETE /trash'] }),
+    });
+
+    expect({
+      read: { version, selectedIds },
+      saved: { status: saved.status, body: await saved.json() },
+      served: (await store.get(id))?.endpoints.map((action) => action.name),
+    }).toEqual({
+      read: { version: 1, selectedIds: ['GET /notes', 'POST /notes'] },
+      saved: { status: 201, body: { number: 3 } },
+      served: ['list_notes', 'create_note', 'empty_trash'],
+    });
+  });
 });
