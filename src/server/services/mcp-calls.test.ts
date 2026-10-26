@@ -63,6 +63,20 @@ describe('the notes of action calls', () => {
     expect(await calls.of(id)).toEqual(notes);
   });
 
+  it('read back in the order they were written when they share their date, as the calls of one request do (D6)', async () => {
+    const { id } = await createHostedStore(database).put(contacts, workspaceId, NOW);
+    const calls = createMcpCalls(database);
+    // A request a minute after NOW is written before one arriving at NOW, whose answer took longer.
+    // Each carries twenty calls sharing its arrival date; their duration tells them apart.
+    const later = Array.from({ length: 20 }, (_, n) => callAt(1, { kind: 'succeeded' }, 100 + n));
+    const earlier = Array.from({ length: 20 }, (_, n) => callAt(0, { kind: 'succeeded' }, n));
+
+    await calls.write(id, later);
+    await calls.write(id, earlier);
+
+    expect((await calls.of(id)).map((note) => note.durationMs)).toEqual([...earlier, ...later].map((note) => note.durationMs));
+  });
+
   it('are deleted with their MCP (contract 14, D14)', async () => {
     const { id } = await createHostedStore(database).put(contacts, workspaceId, NOW);
     const calls = createMcpCalls(database);
