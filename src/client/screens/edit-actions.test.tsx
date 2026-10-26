@@ -27,15 +27,24 @@ const NOTES_SELECTION = {
 /**
  * SLICE's API as this page sees it: `GET /api/mcps/:id/selection` answers the
  * selection kept in `selections` under that id, else 404 as for an unknown MCP
- * or another account's; any other call is "who is signed in?" (`session`).
+ * or another account's; `POST /api/mcps/:id/versions` is kept in `saves` and
+ * answers version 2; any other call is "who is signed in?" (`session`).
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
 const server = vi.hoisted(() => {
-  const state: { session: unknown; selections: Record<string, unknown> } = { session: null, selections: {} };
+  const state: { session: unknown; selections: Record<string, unknown>; saves: Array<{ url: string; change: unknown }> } = {
+    session: null,
+    selections: {},
+    saves: [],
+  };
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : String(input);
+    if (init?.method === 'POST' && /^\/api\/mcps\/[^/]+\/versions$/.test(url)) {
+      state.saves.push({ url, change: JSON.parse(String(init.body)) });
+      return json({ number: 2 }, 201);
+    }
     const asked = /^\/api\/mcps\/([^/]+)\/selection$/.exec(url);
     if (!asked) return json(state.session);
     const selection = state.selections[asked[1]!];
@@ -46,6 +55,7 @@ const server = vi.hoisted(() => {
 
 afterEach(() => {
   server.selections = {};
+  server.saves = [];
   window.history.pushState({}, '', '/');
 });
 
@@ -93,5 +103,29 @@ describe('Edit actions', () => {
       actions: screen.queryAllByRole('checkbox').length,
       save: screen.queryByRole('button', { name: /save/i }),
     }).toEqual({ notFound: true, actions: 0, save: null });
+  });
+
+  it('saves a checked action as version 2 and says the agent sees it in its next conversation (contract 5, D6)', async () => {
+    server.selections['notes-id'] = NOTES_SELECTION;
+    window.history.pushState({}, '', '/mcps/notes-id/edit');
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Tag: All' }));
+
+    await user.click(screen.getByRole('checkbox', { name: 'Select Empty the trash' }));
+    await user.click(screen.getByRole('button', { name: /save/i }));
+
+    expect({
+      message: (await screen.findByRole('status')).textContent,
+      saves: server.saves.map(({ url, change }) => {
+        const { fromVersion, selectedIds } = change as { fromVersion: number; selectedIds: string[] };
+        return { url, fromVersion, selectedIds: [...selectedIds].sort() };
+      }),
+    }).toEqual({
+      message: 'Saved as version 2. Your agent sees the new actions in its next conversation, with nothing to paste again.',
+      saves: [
+        { url: '/api/mcps/notes-id/versions', fromVersion: 1, selectedIds: ['DELETE /trash', 'GET /notes', 'POST /notes'] },
+      ],
+    });
   });
 });
