@@ -9,6 +9,14 @@
  */
 import { Router } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import {
+  ErrorCode,
+  isJSONRPCErrorResponse,
+  isJSONRPCResultResponse,
+  type JSONRPCErrorResponse,
+  type JSONRPCMessage,
+  type JSONRPCResultResponse,
+} from '@modelcontextprotocol/sdk/types.js';
 import { buildHostedMcpServer, relayStore, type HostedMcpConfig } from '../services/hosted-mcp-factory';
 import type { HostedStore } from '../services/hosted-store';
 import type { CallNote, CallResult, McpCalls } from '../services/mcp-calls';
@@ -53,6 +61,18 @@ function actionCall(body: unknown): { id: string | number; name: string } | unde
   if (method !== 'tools/call' || typeof params?.name !== 'string') return undefined;
   if (typeof id !== 'string' && typeof id !== 'number') return undefined;
   return { id, name: params.name };
+}
+
+/**
+ * Whether a response is the SDK's refusal of a call's values (`validateToolInput`),
+ * made before SLICE's code runs: a tool error that starts with the code of invalid params.
+ */
+function refusesValues(message: JSONRPCMessage): message is JSONRPCResultResponse | JSONRPCErrorResponse {
+  if (isJSONRPCErrorResponse(message)) return message.error.code === ErrorCode.InvalidParams;
+  if (!isJSONRPCResultResponse(message)) return false;
+  const { isError, content } = message.result as { isError?: boolean; content?: Array<{ text?: unknown }> };
+  const text = content?.[0]?.text;
+  return isError === true && typeof text === 'string' && text.startsWith(`MCP error ${ErrorCode.InvalidParams}:`);
 }
 
 /** The action calls of a request, single message or batch, each with what it is told once handled. */
@@ -136,6 +156,12 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
 
     try {
       await server.connect(transport);
+      // A call whose values the SDK refuses never reaches the engine: only its response tells.
+      const send = transport.send.bind(transport);
+      transport.send = (message, sendOptions) => {
+        if (refusesValues(message) && message.id !== undefined) onActionResult(message.id, { kind: 'invalid_request' });
+        return send(message, sendOptions);
+      };
       const authorization = req.headers.authorization ?? '';
       await relayStore.run({ authorization, onActionResult }, async () => {
         await transport.handleRequest(req, res, req.body);
