@@ -7,9 +7,14 @@
  */
 import { Router } from 'express';
 import type { ApiErrorPayload } from '@shared/types';
+import { mcpSelectionChangeSchema } from '@shared/config-schema';
 import type { AccountMcps } from '../services/account-mcps';
 
 const UNKNOWN_MCP: ApiErrorPayload = { code: 'NOT_FOUND', message: 'Unknown MCP id.' };
+
+function invalidSelection(message: string): ApiErrorPayload {
+  return { code: 'INVALID_SELECTION', message };
+}
 
 export function createMcpsRouter(accountMcps: AccountMcps): Router {
   const router = Router();
@@ -39,7 +44,13 @@ export function createMcpsRouter(accountMcps: AccountMcps): Router {
   });
 
   router.post('/:id/versions', async (req, res) => {
-    const outcome = await accountMcps.saveSelection(res.locals.workspaceId, req.params.id, req.body);
+    // Only the selection changes (D3): anything else refuses the whole change, before anything is saved.
+    const change = mcpSelectionChangeSchema.safeParse(req.body);
+    if (!change.success) {
+      res.status(400).json(invalidSelection(change.error.issues[0]?.message ?? 'Invalid selection.'));
+      return;
+    }
+    const outcome = await accountMcps.saveSelection(res.locals.workspaceId, req.params.id, change.data);
     if ('refused' in outcome) {
       res.status(404).json(UNKNOWN_MCP);
       return;

@@ -242,12 +242,14 @@ export class ParseError extends Error {
  * - 401 `UNAUTHORIZED` — no live session (any `/api/*` route but health and sign-in)
  * - 403 `FORBIDDEN` — a write sent from another site than SLICE's page (any `/api/*` route);
  *   also reserved, with 404 `NOT_FOUND`, for the account's own MCPs
+ * - 400 `INVALID_SELECTION` — "Save" on "Edit actions" sent something else than a selection of the API's actions
  */
 export type ApiErrorCode =
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'
   | 'NOT_FOUND'
   | 'INVALID_SPEC'
+  | 'INVALID_SELECTION'
   | 'NO_ENDPOINT_SELECTED'
   | 'PAYLOAD_TOO_LARGE'
   | 'GENERATION_FAILED'
