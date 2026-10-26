@@ -15,6 +15,9 @@ const PERIOD_MS = 30 * 24 * 3_600_000;
 /** At most 10,000 calls are noted per MCP and per day (D8). */
 const DAILY_CAP = 10_000;
 
+/** The page lists the 50 most recent calls (D10). */
+const RECENT_CALLS = 50;
+
 /** The calls of one action. */
 export interface ActionUsage {
   name: string;
@@ -36,7 +39,7 @@ export interface McpUsage {
   actions: ActionUsage[];
   /** The days of the period (`YYYY-MM-DD`, UTC) on which the cap was reached: later calls went unnoted. */
   cappedDays: string[];
-  /** The recent calls, newest first. */
+  /** The 50 most recent calls, newest first. */
   recentCalls: RecentCall[];
 }
 
@@ -147,7 +150,8 @@ export async function readMcpUsage(
     .select()
     .from(connectorCalls)
     .where(eq(connectorCalls.connectorId, id))
-    .orderBy(desc(connectorCalls.calledAt), desc(connectorCalls.id));
+    .orderBy(desc(connectorCalls.calledAt), desc(connectorCalls.id))
+    .limit(RECENT_CALLS);
   const recentCalls = recent.map(({ calledAt, action, result, status, durationMs, version }) => ({
     calledAt: calledAt.toISOString(),
     action,
