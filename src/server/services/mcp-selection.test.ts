@@ -1,10 +1,12 @@
 // WAT-144/145/146 — the selection of an MCP: read for "Edit actions", changed by "Save" into a new version.
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { and, eq, isNotNull } from 'drizzle-orm';
 import { readMcpSelection, saveMcpSelection } from './mcp-selection';
 import { createHostedStore, type HostedStore } from './hosted-store';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
+import { connectorVersions } from '../db/schema';
 import { DATABASE_TEST_TIMEOUTS, createTestDatabase, type TestDatabase } from '../db/test-database';
 import { createTestAccount } from '../db/test-account';
 
@@ -158,6 +160,27 @@ describe('"Save"', () => {
     expect({ outcome, now: (await readMcpSelection(database, workspaceId, id))?.version }).toEqual({
       outcome: { refused: 'changed-meanwhile' },
       now: 2,
+    });
+  });
+
+  it('lets only one of two simultaneous changes from the same version through: the other is refused (contract 23, D13)', async () => {
+    // A real race on PostgreSQL only (`DATABASE_URL`): PGlite's single connection runs the two one after the other.
+    const { workspaceId } = await createTestAccount({ database, email: 'simultaneous@example.com' });
+    const { id } = await store.put(NOTES, workspaceId, MONDAY);
+
+    const outcomes = await Promise.all([
+      saveMcpSelection(database, workspaceId, id, { fromVersion: 1, selectedIds: ['GET /notes'] }, TUESDAY),
+      saveMcpSelection(database, workspaceId, id, { fromVersion: 1, selectedIds: ['POST /notes'] }, TUESDAY),
+    ]);
+    const active = await database.db
+      .select({ number: connectorVersions.number })
+      .from(connectorVersions)
+      .where(and(eq(connectorVersions.connectorId, id), isNotNull(connectorVersions.activeSince)));
+
+    // Whichever runs first: two outcomes, one of each.
+    expect({ outcomes, active }).toEqual({
+      outcomes: expect.arrayContaining([{ version: 2 }, { refused: 'changed-meanwhile' }]),
+      active: [{ number: 2 }],
     });
   });
 
