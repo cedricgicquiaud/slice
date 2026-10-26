@@ -240,6 +240,8 @@ export const connectorCalls = pgTable(
       columns: [table.connectorId, table.version],
       foreignColumns: [connectorVersions.connectorId, connectorVersions.number],
     }).onDelete('cascade'),
+    // An MCP's calls are read by date: its usage, its calls of the day, the oldest to purge.
+    index('connector_calls_connector_called_at_idx').on(table.connectorId, table.calledAt),
     check('connector_calls_status_iff_failed', sql`(${table.result} = 'failed') = (${table.status} is not null)`),
   ]
 );

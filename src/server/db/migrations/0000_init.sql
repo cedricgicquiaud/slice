@@ -125,6 +125,7 @@ ALTER TABLE "connectors" ADD CONSTRAINT "connectors_workspace_id_workspaces_id_f
 ALTER TABLE "sessions" ADD CONSTRAINT "sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "workspaces" ADD CONSTRAINT "workspaces_owner_id_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "accounts_user_id_idx" ON "accounts" USING btree ("user_id");--> statement-breakpoint
+CREATE INDEX "connector_calls_connector_called_at_idx" ON "connector_calls" USING btree ("connector_id","called_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "connector_versions_one_active_idx" ON "connector_versions" USING btree ("connector_id") WHERE "connector_versions"."active_since" is not null;--> statement-breakpoint
 CREATE INDEX "connectors_created_at_idx" ON "connectors" USING btree ("created_at");--> statement-breakpoint
 CREATE INDEX "sessions_user_id_idx" ON "sessions" USING btree ("user_id");--> statement-breakpoint
