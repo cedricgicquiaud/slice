@@ -51,6 +51,9 @@ days_per_week: observed   # remplacer par un nombre (ex. 2) pour forcer la capac
 |---|---|---|---|---|---|
 | SLICE — Les MCP rangés en base de données | 0,5 (23/10 21:20 → 24/10 09:06, 11,8 h) | 0,5 h | 8,4 h (23:26 → 07:48, PR #57 attendant pendant le run de L2) | 1,3 h (dernière PR ouverte → merge) | 1,6 h (entre découpage et run) |
 | SLICE — Compte et liste de ses MCP | 1,1 (24/10 18:06 → 25/10 18:54, 25,8 h) | 4,2 h | 6,8 h (L1 5 h 05, L2 ~1 h 20 estimée, L3 25 min) | 12,0 h (#63 9,0 h, la nuit ; #64 1,3 h ; #65 1,7 h) | 2,8 h |
+| SLICE — Modifier un MCP, même adresse | 0,3 (26/10 09:15 → 17:03, 7,8 h) | 0,85 h | 4,6 h (L1 1 h 57, L2 1 h 37, L3 ~1 h ; estimées) | 1,2 h (de la fin de l'audit au merge : #70 27 min, #71 36 min, #73 10 min) | 1,15 h (`sync`, tâche isolée WAT-152, attente entre découpage et run) |
+
+Modifier un MCP, contre Compte et liste : tout a rétréci, d'abord l'attente de merge (12,0 h → 1,2 h, merges dans la journée) et le cadrage (4,2 h → 0,85 h). Les runs passent de 6,8 h à 4,6 h ; ils restent dominés par les blocages (une permission en L1, un serveur orphelin en L2), la L3 sans blocage a pris ~1 h. Coût par étape (`--projet`) : cadrage 10,30 $ ; production non attribuée (worktrees, rangée « hors méthode »).
 
 Compte et liste, contre base de données : l'attente de merge a grossi (1,3 h → 12,0 h, dont 9 h de nuit sur #63), le cadrage aussi (0,5 h → 4,2 h, entretien en deux tours et une décision reprise). Les runs restent sous 7 h pour une feature XL.
 

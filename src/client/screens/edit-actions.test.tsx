@@ -210,4 +210,35 @@ describe('Edit actions', () => {
       saved: screen.queryByRole('status'),
     }).toEqual({ refusal: 'This MCP changed in the meantime. Reload to see its current actions.', saved: null });
   });
+
+  it("spaces the saved message from the MCP's name as every page spaces its messages under the name (WAT-153)", async () => {
+    server.selections['notes-id'] = NOTES_SELECTION;
+    window.history.pushState({}, '', '/mcps/notes-id/edit');
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Tag: All' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Empty the trash' }));
+
+    await user.click(screen.getByRole('button', { name: /save/i }));
+
+    expect(await screen.findByRole('status')).toHaveClass('mt-4');
+  });
+
+  it("spaces a refusal from the MCP's name as every page spaces its messages under the name (WAT-153)", async () => {
+    server.selections['notes-id'] = NOTES_SELECTION;
+    server.saveRefusal = {
+      status: 409,
+      code: 'CONFLICT',
+      message: 'This MCP changed in the meantime. Reload to see its current actions.',
+    };
+    window.history.pushState({}, '', '/mcps/notes-id/edit');
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Tag: All' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select Empty the trash' }));
+
+    await user.click(screen.getByRole('button', { name: /save/i }));
+
+    expect(await screen.findByRole('alert')).toHaveClass('mt-4');
+  });
 });
