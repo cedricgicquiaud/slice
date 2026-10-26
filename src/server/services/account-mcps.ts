@@ -5,6 +5,7 @@ import { and, count, desc, eq, isNotNull } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { connectorActions, connectorVersions, connectors } from '../db/schema';
 import { apiNameOf, readMcpHistory, type McpHistory } from './mcp-versions';
+import { readMcpSelection, type McpSelection } from './mcp-selection';
 
 /** One line of the list. */
 export interface AccountMcp {
@@ -26,6 +27,8 @@ export interface AccountMcps {
   delete(workspaceId: string, id: string): Promise<boolean>;
   /** The versions of the MCP `id` of `workspaceId` (D8), or `undefined` when there is no such MCP. */
   history(workspaceId: string, id: string): Promise<McpHistory | undefined>;
+  /** The selection of the MCP `id` of `workspaceId`, for "Edit actions" (D2), or `undefined` when there is no such MCP. */
+  selection(workspaceId: string, id: string): Promise<McpSelection | undefined>;
 }
 
 export function createAccountMcps(database: Database): AccountMcps {
@@ -71,5 +74,6 @@ export function createAccountMcps(database: Database): AccountMcps {
       return deleted.length > 0;
     },
     history: (workspaceId, id) => readMcpHistory(database, workspaceId, id),
+    selection: (workspaceId, id) => readMcpSelection(database, workspaceId, id),
   };
 }
