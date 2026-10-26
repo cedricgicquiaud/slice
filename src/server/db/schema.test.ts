@@ -27,6 +27,29 @@ function rows<T>(query: SQL): Promise<T[]> {
   return database.rows<T>(query);
 }
 
+function insertVersion(connectorId: string, number: number, active: boolean) {
+  return rows(
+    sql`insert into connector_versions (connector_id, number, created_at, active_since)
+        values (${connectorId}, ${number}, now(), ${active ? sql`now()` : null})`
+  );
+}
+
+function insertApiAction(connectorId: string, position: number) {
+  return rows(
+    sql`insert into connector_api_actions (connector_id, position, name, label, group_name, deprecated, method, path, params)
+        values (${connectorId}, ${position}, 'ping', 'Ping', 'Health', false, 'GET', '/ping', '[]'::jsonb)`
+  );
+}
+
+/** What is left of a connector's history: its versions, their actions, its API's full list. */
+function leftOf(connectorId: string) {
+  return rows<{ kind: string }>(
+    sql`select 'version' as kind from connector_versions where connector_id = ${connectorId}
+        union all select 'action' from connector_actions where connector_id = ${connectorId}
+        union all select 'api action' from connector_api_actions where connector_id = ${connectorId}`
+  );
+}
+
 describe('database schema (D3)', () => {
   it('creates connectors, connector_actions and workspaces with the columns of the schema', async () => {
     const columns = await rows<{ table_name: string; column_name: string; udt_name: string; is_nullable: string }>(
@@ -137,6 +160,17 @@ describe('database schema (D3)', () => {
     expect(await rows(sql`select 1 from connector_actions where connector_id = 'cascade'`)).toEqual([]);
   });
 
+  it('deletes the versions and the full list of actions of a deleted connector (contract 13)', async () => {
+    await insertConnector('cascade-history', 'none', null, null);
+    await insertVersion('cascade-history', 1, true);
+    await insertAction('cascade-history', 0);
+    await insertApiAction('cascade-history', 0);
+
+    await rows(sql`delete from connectors where id = 'cascade-history'`);
+
+    expect(await leftOf('cascade-history')).toEqual([]);
+  });
+
   it('refuses two actions at the same position of a connector', async () => {
     await insertConnector('positions', 'none', null, null);
     await insertAction('positions', 0);
@@ -154,26 +188,27 @@ describe('database schema (D3)', () => {
 });
 
 describe('deleting an account (WAT-101)', () => {
-  it('deletes its workspace, its connectors and their actions with it (D11)', async () => {
+  it('deletes its workspace, its connectors, their versions and their lists of actions with it (D11, contract 13)', async () => {
     await rows(sql`insert into users (id, name, email) values ('leaving', '', 'leaving@example.com')`);
     await rows(sql`insert into workspaces (id, owner_id, created_at) values ('leaving-workspace', 'leaving', now())`);
     await rows(
       sql`insert into connectors (id, name, base_url, upstream_auth_type, created_at, workspace_id)
           values ('leaving-mcp', 'demo', 'https://api.example.com', 'none', now(), 'leaving-workspace')`
     );
+    await insertVersion('leaving-mcp', 1, true);
     await rows(
       sql`insert into connector_actions (connector_id, version, position, name, label, description, method, path, params)
           values ('leaving-mcp', 1, 0, 'ping', 'Ping', 'Ping', 'GET', '/ping', '[]'::jsonb)`
     );
+    await insertApiAction('leaving-mcp', 0);
 
     await rows(sql`delete from users where id = 'leaving'`);
 
     const left = await rows<{ kind: string }>(
       sql`select 'workspace' as kind from workspaces where id = 'leaving-workspace'
-          union all select 'connector' from connectors where id = 'leaving-mcp'
-          union all select 'action' from connector_actions where connector_id = 'leaving-mcp'`
+          union all select 'connector' from connectors where id = 'leaving-mcp'`
     );
-    expect(left).toEqual([]);
+    expect([...left, ...(await leftOf('leaving-mcp'))]).toEqual([]);
   });
 });
 
