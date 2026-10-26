@@ -100,13 +100,7 @@ export function createHostedStore(database: Database): HostedStore {
         ...(connector.apiName !== null && { apiName: connector.apiName }),
         baseUrl: connector.baseUrl,
         upstreamAuth: upstreamAuthOf(connector),
-        endpoints: actions.map(({ name, description, method, path, params }) => ({
-          name,
-          description,
-          method,
-          path,
-          params,
-        })),
+        endpoints: actions,
         createdAt: connector.createdAt.toISOString(),
         workspaceId: connector.workspaceId,
       };
