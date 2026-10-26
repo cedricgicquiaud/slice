@@ -160,4 +160,22 @@ describe('"Save"', () => {
       now: 2,
     });
   });
+
+  it("refuses an action that is not one of the API's, and saves nothing (contract 16)", async () => {
+    const { workspaceId } = await createTestAccount({ database, email: 'foreign-action@example.com' });
+    const { id } = await store.put(NOTES, workspaceId, MONDAY);
+
+    const outcome = await saveMcpSelection(
+      database,
+      workspaceId,
+      id,
+      { fromVersion: 1, selectedIds: ['GET /notes', 'GET /admin/users'] },
+      TUESDAY
+    );
+
+    expect({ outcome, now: (await readMcpSelection(database, workspaceId, id))?.version }).toEqual({
+      outcome: { refused: 'unknown-action' },
+      now: 1,
+    });
+  });
 });
