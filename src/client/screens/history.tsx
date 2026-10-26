@@ -16,25 +16,33 @@ export function HistoryScreen({ mcpId }: { mcpId: string }) {
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [restored, setRestored] = useState<number | null>(null);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
   // "Restore" stays greyed during the call: a double click restores once.
   const [restoring, setRestoring] = useState(false);
 
   async function handleRestore(number: number) {
     if (restoring) return;
     setRestoring(true);
-    const activeSince = await restoreMcpVersion(mcpId, number);
-    // One active version at a time (D4): the restored one, from the date the server gives.
-    setHistory((current) =>
-      current && {
-        ...current,
-        versions: current.versions.map((version) => ({
-          ...version,
-          activeSince: version.number === number ? activeSince : null,
-        })),
-      }
-    );
-    setRestored(number);
-    setRestoring(false);
+    setRestored(null);
+    setRestoreError(null);
+    try {
+      const activeSince = await restoreMcpVersion(mcpId, number);
+      // One active version at a time (D4): the restored one, from the date the server gives.
+      setHistory((current) =>
+        current && {
+          ...current,
+          versions: current.versions.map((version) => ({
+            ...version,
+            activeSince: version.number === number ? activeSince : null,
+          })),
+        }
+      );
+      setRestored(number);
+    } catch (err) {
+      setRestoreError(messageOf(err));
+    } finally {
+      setRestoring(false);
+    }
   }
 
   useEffect(() => {
@@ -70,6 +78,11 @@ export function HistoryScreen({ mcpId }: { mcpId: string }) {
             <p role="status" className="mt-2 text-sm text-foreground">
               Version {restored} restored. Your agent sees these actions in its next conversation, with nothing to
               paste again.
+            </p>
+          )}
+          {restoreError && (
+            <p role="alert" className="mt-2 text-sm text-destructive">
+              {restoreError}
             </p>
           )}
           <ul className="mt-8 flex flex-col gap-3">
