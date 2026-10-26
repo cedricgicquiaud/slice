@@ -1,6 +1,7 @@
 // WAT-142/143 — "History", at /mcps/<id>/history: the versions of one of my MCPs, never another account's.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import App from '../App';
 import { HistoryScreen } from './history';
 
@@ -97,5 +98,20 @@ describe('History', () => {
       'Active since Oct 22, 2026',
       null,
     ]);
+  });
+
+  it('shows the labels of a version\'s actions once it is unfolded (contract 8)', async () => {
+    server.histories['notion-id'] = TWO_VERSIONS;
+    const user = userEvent.setup();
+    render(<HistoryScreen mcpId="notion-id" />);
+    const version1 = within(await screen.findByRole('listitem', { name: 'Version 1' }));
+    const folded = version1.queryByText('Search') !== null;
+
+    await user.click(version1.getByRole('button', { name: 'Version 1' }));
+
+    expect({
+      folded,
+      unfolded: version1.getAllByRole('listitem').map((action) => action.textContent),
+    }).toEqual({ folded: false, unfolded: ['Search', 'Get a page'] });
   });
 });
