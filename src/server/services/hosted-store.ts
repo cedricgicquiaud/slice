@@ -47,8 +47,10 @@ export function createHostedStore(database: Database): HostedStore {
         await tx.insert(connectorActions).values(
           config.endpoints.map((endpoint, position) => ({
             connectorId: id,
+            version: 1,
             position,
             ...endpoint,
+            label: endpoint.label ?? endpoint.name,
             // Older paths may carry a lowercase method; the column only takes uppercase.
             method: endpoint.method.toUpperCase() as HttpMethod,
           }))

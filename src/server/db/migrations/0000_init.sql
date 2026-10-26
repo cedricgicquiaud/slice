@@ -17,13 +17,37 @@ CREATE TABLE "accounts" (
 --> statement-breakpoint
 CREATE TABLE "connector_actions" (
 	"connector_id" text NOT NULL,
+	"version" integer NOT NULL,
 	"position" integer NOT NULL,
 	"name" text NOT NULL,
+	"label" text NOT NULL,
 	"description" text NOT NULL,
 	"method" "http_method" NOT NULL,
 	"path" text NOT NULL,
 	"params" jsonb NOT NULL,
-	CONSTRAINT "connector_actions_connector_id_position_pk" PRIMARY KEY("connector_id","position")
+	CONSTRAINT "connector_actions_connector_id_version_position_pk" PRIMARY KEY("connector_id","version","position")
+);
+--> statement-breakpoint
+CREATE TABLE "connector_api_actions" (
+	"connector_id" text NOT NULL,
+	"position" integer NOT NULL,
+	"name" text NOT NULL,
+	"label" text NOT NULL,
+	"group_name" text NOT NULL,
+	"description" text,
+	"deprecated" boolean NOT NULL,
+	"method" "http_method" NOT NULL,
+	"path" text NOT NULL,
+	"params" jsonb NOT NULL,
+	CONSTRAINT "connector_api_actions_connector_id_position_pk" PRIMARY KEY("connector_id","position")
+);
+--> statement-breakpoint
+CREATE TABLE "connector_versions" (
+	"connector_id" text NOT NULL,
+	"number" integer NOT NULL,
+	"created_at" timestamp with time zone NOT NULL,
+	"active_since" timestamp with time zone,
+	CONSTRAINT "connector_versions_connector_id_number_pk" PRIMARY KEY("connector_id","number")
 );
 --> statement-breakpoint
 CREATE TABLE "connectors" (

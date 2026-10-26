@@ -136,15 +136,49 @@ export const connectors = pgTable(
   ]
 );
 
+/** A connector's selections, numbered from 1 (D4). */
+export const connectorVersions = pgTable(
+  'connector_versions',
+  {
+    connectorId: text('connector_id').notNull(),
+    number: integer('number').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    /** When the version last became the active one (D8, D9); null while it is not. */
+    activeSince: timestamp('active_since', { withTimezone: true }),
+  },
+  (table) => [primaryKey({ columns: [table.connectorId, table.number] })]
+);
+
+/** The actions of a connector's version: what its address serves while the version is active. */
 export const connectorActions = pgTable(
   'connector_actions',
   {
     connectorId: text('connector_id')
       .notNull()
       .references(() => connectors.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
     position: integer('position').notNull(),
     name: text('name').notNull(),
+    label: text('label').notNull(),
     description: text('description').notNull(),
+    method: httpMethod('method').notNull(),
+    path: text('path').notNull(),
+    params: jsonb('params').$type<EndpointParam[]>().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.connectorId, table.version, table.position] })]
+);
+
+/** Every action of the connector's API, checked or not, as the selection screen shows it (D1). */
+export const connectorApiActions = pgTable(
+  'connector_api_actions',
+  {
+    connectorId: text('connector_id').notNull(),
+    position: integer('position').notNull(),
+    name: text('name').notNull(),
+    label: text('label').notNull(),
+    groupName: text('group_name').notNull(),
+    description: text('description'),
+    deprecated: boolean('deprecated').notNull(),
     method: httpMethod('method').notNull(),
     path: text('path').notNull(),
     params: jsonb('params').$type<EndpointParam[]>().notNull(),
