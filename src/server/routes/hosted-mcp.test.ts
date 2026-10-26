@@ -33,6 +33,8 @@ paths:
 let upstream: Server;
 let upstreamUrl: string;
 let received: Array<{ url: string; auth: string | undefined; apiKey: string | undefined }> = [];
+/** What the API does before it answers; tests make it slow. */
+let beforeAnswer: () => Promise<void> = async () => {};
 let testDb: TestDatabase;
 let database: Database;
 let store: HostedStore;
@@ -49,11 +51,13 @@ const hoursAfterCreation = (hours: number) => new Date(CREATED.getTime() + hours
 
 beforeEach(() => {
   clock = CREATED;
+  beforeAnswer = async () => {};
 });
 
 beforeAll(async () => {
-  upstream = createServer((req, res) => {
+  upstream = createServer(async (req, res) => {
     received.push({ url: req.url ?? '', auth: req.headers.authorization, apiKey: req.headers['x-api-key'] as string | undefined });
+    await beforeAnswer();
     // `/things/404`, `/things/500`: the API answers that status code.
     const failure = /^\/things\/([45]\d\d)$/.exec(req.url ?? '');
     if (failure) {
@@ -301,6 +305,54 @@ describe('the note of an action call that reaches the API', () => {
         { action: 'list_things', version: 1, calledAt: CREATED, result: { kind: 'succeeded' }, durationMs: expect.any(Number) },
       ])
     );
+  });
+
+  it('is dated from the arrival of the call, and lasts until SLICE is done with it, in milliseconds (D6)', async () => {
+    const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+    beforeAnswer = async () => {
+      clock = hoursAfterCreation(1);
+      await new Promise((r) => setTimeout(r, 300));
+    };
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`, 'TOKEN');
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    await vi.waitFor(async () => {
+      const [note] = await calls.of(id);
+      expect({ calledAt: note?.calledAt, lastsTheApiWait: (note?.durationMs ?? 0) >= 300 }).toEqual({
+        calledAt: CREATED,
+        lastsTheApiWait: true,
+      });
+    });
+  });
+
+  it('keeps the number of the version active when the call arrived (D3)', async () => {
+    const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+    await activateDeletionOnly(id);
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`, 'TOKEN');
+    await agent.callTool({ name: 'delete_thing', arguments: { id: '42' } });
+    await agent.close();
+
+    await vi.waitFor(async () => expect((await calls.of(id)).map((note) => note.version)).toEqual([2]));
+  });
+
+  it('changes nothing of what the agent reads: the result, or the API\'s code and message (relay unchanged)', async () => {
+    const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`, 'TOKEN');
+    const answered = await agent.callTool({ name: 'list_things', arguments: {} });
+    const failed = await agent.callTool({ name: 'delete_thing', arguments: { id: '404' } });
+    await agent.close();
+
+    expect({ answered, failed }).toEqual({
+      answered: { content: [{ type: 'text', text: '{\n  "ok": true\n}' }] },
+      failed: {
+        isError: true,
+        content: [{ type: 'text', text: 'Upstream 404 Not Found: {"error":"API-ERROR-MESSAGE"}' }],
+      },
+    });
   });
 
   it('is "Failed" with the code kept when the API answers another code: 404, 500 (contract 3, D4)', async () => {
