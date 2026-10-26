@@ -22,11 +22,16 @@ export function EditActionsScreen({ mcpId }: { mcpId: string }) {
   async function handleSave(selectedIds: string[]) {
     if (!selection || saving) return;
     setSaving(true);
+    setSavedAs(null);
+    setError(null);
     try {
       const number = await saveMcpSelection(mcpId, { fromVersion: selection.version, selectedIds });
       setSavedAs(number);
       // The saved selection is the active version now: the next "Save" starts from it.
       setSelection({ ...selection, version: number, selectedIds });
+    } catch (err) {
+      // A change made meanwhile in another tab (409, D13) is told as the server words it.
+      setError(messageOf(err));
     } finally {
       setSaving(false);
     }
