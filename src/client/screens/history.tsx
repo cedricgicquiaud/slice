@@ -75,7 +75,7 @@ export function HistoryScreen({ mcpId }: { mcpId: string }) {
         <>
           <h1 className="mt-4 font-serif text-4xl italic">{history.apiName}</h1>
           {restored !== null && (
-            <p role="status" className="mt-2 text-sm text-foreground">
+            <p role="status" className="mt-4 text-sm text-foreground">
               Version {restored} restored. Your agent sees these actions in its next conversation, with nothing to
               paste again.
             </p>
