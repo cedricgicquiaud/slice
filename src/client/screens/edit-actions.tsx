@@ -5,7 +5,9 @@
  * to "My MCPs".
  */
 import { useEffect, useState } from 'react';
+import type { ParsedSpec } from '@shared/types';
 import { getMcpSelection, type McpSelection } from '../lib/mcps-api';
+import { SelectionScreen } from './selection';
 
 export function EditActionsScreen({ mcpId }: { mcpId: string }) {
   const [selection, setSelection] = useState<McpSelection | null>(null);
@@ -22,6 +24,19 @@ export function EditActionsScreen({ mcpId }: { mcpId: string }) {
         </a>
         {selection && <h1 className="mt-2 font-serif text-3xl italic">{selection.apiName}</h1>}
       </header>
+      {selection && (
+        <SelectionScreen
+          spec={specOf(selection)}
+          initialSelectedIds={selection.selectedIds}
+          continueLabel="Save"
+          onContinue={() => {}}
+        />
+      )}
     </div>
   );
+}
+
+/** The selection screen reads the groups of a description only: those of the MCP's API. */
+function specOf(selection: McpSelection): ParsedSpec {
+  return { apiName: selection.apiName, apiVersion: '', baseUrl: '', authType: 'none', groups: selection.groups };
 }
