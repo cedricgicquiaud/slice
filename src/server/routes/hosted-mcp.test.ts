@@ -445,6 +445,25 @@ describe('the note of an action call refused before the API', () => {
       }).toEqual({ agentError: true, upstreamCalls: 0, results: [{ kind: 'invalid_request' }] })
     );
   });
+
+  it('is "Not available" for an action of the API the active version lacks: retired, or never chosen (contract 6, D4)', async () => {
+    const neverChosen = { name: 'archive_thing', description: 'Archive a thing', method: 'POST' as const, path: '/things/archive', params: [] };
+    const config = withApiActions({ ...threeActions(), endpoints: [...threeActions().endpoints, neverChosen] });
+    const { id } = await store.put({ ...config, endpoints: threeActions().endpoints }, account.workspaceId, CREATED);
+    await activateDeletionOnly(id);
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`, 'TOKEN');
+    await agent.callTool({ name: 'create_thing', arguments: { title: 'Groceries' } });
+    await agent.callTool({ name: 'archive_thing', arguments: {} });
+    await agent.close();
+
+    await vi.waitFor(async () =>
+      expect((await calls.of(id)).map(({ action, version, result }) => ({ action, version, result }))).toEqual([
+        { action: 'create_thing', version: 2, result: { kind: 'not_available' } },
+        { action: 'archive_thing', version: 2, result: { kind: 'not_available' } },
+      ])
+    );
+  });
 });
 
 /** An address where nothing listens: a port just released. */
