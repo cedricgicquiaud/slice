@@ -114,4 +114,16 @@ describe('History', () => {
       unfolded: version1.getAllByRole('listitem').map((action) => action.textContent),
     }).toEqual({ folded: false, unfolded: ['Search', 'Get a page'] });
   });
+
+  // The server answers another account's MCP exactly as an unknown one: one case for the page.
+  it('says the MCP is not found at the address of an unknown MCP or of another account\'s (contract 19)', async () => {
+    window.history.pushState({}, '', '/mcps/someone-elses-id/history');
+
+    render(<App />);
+
+    expect({
+      notFound: (await screen.findByRole('heading', { name: 'MCP not found' })) !== null,
+      back: screen.getByRole('link', { name: 'Back to My MCPs' }).getAttribute('href'),
+    }).toEqual({ notFound: true, back: '/mcps' });
+  });
 });
