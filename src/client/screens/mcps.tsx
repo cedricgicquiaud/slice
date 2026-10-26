@@ -1,7 +1,8 @@
 /**
  * "My MCPs", at `/mcps` (D9): the signed-in account's MCPs, newest first, each
- * with its API's name, action count, creation date and address. Deleting one
- * asks for confirmation, then takes effect at once (D10). No way to change one.
+ * with its API's name, action count, creation date and address, and a way to
+ * its history (D10). Deleting one asks for confirmation, then takes effect at
+ * once (D10). No way to change one.
  */
 import { useEffect, useId, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
@@ -92,31 +93,36 @@ function McpRow({ mcp, onDelete }: { mcp: Mcp; onDelete: () => Promise<void> }) 
           {copied ? <Check size={14} /> : <Copy size={14} />}
         </button>
       </div>
-      <Dialog>
-        <DialogTrigger asChild>
-          <Button variant="ghost" size="sm" className="self-end text-muted-foreground hover:text-destructive">
-            Delete
-          </Button>
-        </DialogTrigger>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete {mcp.apiName}?</DialogTitle>
-            <DialogDescription>
-              Its address stops working at once, for every agent that uses it. This can&apos;t be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
-            <DialogClose asChild>
-              <Button variant="destructive" onClick={() => void onDelete()}>
-                Delete
-              </Button>
-            </DialogClose>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <div className="flex justify-end gap-1">
+        <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
+          <a href={`/mcps/${mcp.id}/history`}>History</a>
+        </Button>
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive">
+              Delete
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete {mcp.apiName}?</DialogTitle>
+              <DialogDescription>
+                Its address stops working at once, for every agent that uses it. This can&apos;t be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button variant="outline">Cancel</Button>
+              </DialogClose>
+              <DialogClose asChild>
+                <Button variant="destructive" onClick={() => void onDelete()}>
+                  Delete
+                </Button>
+              </DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
     </li>
   );
 }
