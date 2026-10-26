@@ -11,6 +11,7 @@ import { createHostedMcpRouter } from './routes/hosted-mcp';
 import { createMcpsRouter } from './routes/mcps';
 import type { HostedStore } from './services/hosted-store';
 import type { AccountMcps } from './services/account-mcps';
+import type { McpCalls } from './services/mcp-calls';
 import type { SliceAuth } from './auth/auth';
 import { devSignIn } from './auth/dev-sign-in';
 import { requireSameOrigin, requireSession } from './middleware/require-session';
@@ -29,6 +30,8 @@ export interface CreateAppOptions {
   allowPrivateHosts?: boolean;
   /** Where hosted connectors live. Without it, the hosted routes are not mounted. */
   hostedStore?: HostedStore;
+  /** Where the notes of the hosted MCPs' action calls go. Without it, no call is noted. */
+  mcpCalls?: McpCalls;
   /** The MCPs of each account's workspace. Without it, `/api/mcps` is not mounted. */
   accountMcps?: AccountMcps;
   /** Clock that dates a created connector. Defaults to the system clock. */
@@ -112,7 +115,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
       allowPrivateHosts,
     };
     app.use('/api/host', createHostRouter(hosted));
-    app.use('/m', createHostedMcpRouter(hosted));
+    app.use('/m', createHostedMcpRouter({ ...hosted, calls: options.mcpCalls }));
   }
 
   if (nodeEnv === 'production') {

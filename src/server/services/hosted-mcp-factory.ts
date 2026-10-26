@@ -13,6 +13,7 @@ import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import type { EndpointParam, HttpMethod, UpstreamAuth } from '@shared/types';
 import { type ZodSchemaShape, schemaShapeForParam } from './zod-schema-builder';
 import { assertPublicUrl } from './ssrf-guard';
+import type { CallResult } from './mcp-calls';
 
 /** Knobs for the hosted engine. `allowPrivateHosts` is for tests/dev only. */
 export interface HostedMcpOptions {
@@ -65,12 +66,19 @@ export interface HostedMcpConfig {
   activeVersion?: number;
 }
 
+/** What one request tells the engine, and how the engine tells what became of its action calls. */
+export interface RelayContext {
+  authorization: string;
+  /** Told the result of each action call the engine handled, by its JSON-RPC id (WAT-155). */
+  onActionResult?: (requestId: string | number, result: CallResult) => void;
+}
+
 /**
  * Per-request relay context. The HTTP route wraps `handleRequest` in
  * `relayStore.run({ authorization }, …)`; tool handlers read the caller's
  * token from here, per request, without storing anything.
  */
-export const relayStore = new AsyncLocalStorage<{ authorization: string }>();
+export const relayStore = new AsyncLocalStorage<RelayContext>();
 
 /**
  * The bearer token the caller relayed, or `undefined` for a missing/malformed
@@ -245,8 +253,9 @@ export function buildHostedMcpServer(
       endpoint.description,
       shape,
       toolAnnotationsFor(endpoint.method),
-      async (args: Record<string, unknown>) => {
+      async (args: Record<string, unknown>, extra) => {
         const result = await callUpstream(config, endpoint, args, allowPrivateHosts);
+        relayStore.getStore()?.onActionResult?.(extra.requestId, { kind: 'succeeded' });
         return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
       }
     );

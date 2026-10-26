@@ -11,11 +11,16 @@ import { Router } from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { buildHostedMcpServer, relayStore, type HostedMcpConfig } from '../services/hosted-mcp-factory';
 import type { HostedStore } from '../services/hosted-store';
+import type { CallNote, CallResult, McpCalls } from '../services/mcp-calls';
 import { isDatabaseUnreachable } from '../db/errors';
 
 export interface HostedMcpRouterOptions {
   /** Where the hosted connectors are read from. */
   store: HostedStore;
+  /** Where the notes of action calls are written. Without it, no call is noted. */
+  calls?: McpCalls;
+  /** Clock that dates the arrival of a call. Defaults to the system clock. */
+  now?: () => Date;
   /** Forwarded to the engine — disables the SSRF guard (tests/dev only). */
   allowPrivateHosts?: boolean;
 }
@@ -50,10 +55,47 @@ function actionCall(body: unknown): { id: string | number; name: string } | unde
   return { id, name: params.name };
 }
 
+/** The action calls of a request, single message or batch, each with what it is told once handled. */
+type NotedCalls = Map<string | number, (result: CallResult) => void>;
+
+/**
+ * Note each action call of the request once its result is known and the
+ * response is gone (D7): the agent never waits for the database, and a failed
+ * write only reaches the server's log.
+ */
+function noteActionCalls(
+  calls: McpCalls,
+  connectorId: string,
+  version: number,
+  arrival: { calledAt: Date; startedAt: number },
+  body: unknown,
+  responded: Promise<void>
+): NotedCalls {
+  const noted: NotedCalls = new Map();
+  const notes = (Array.isArray(body) ? body : [body]).flatMap((message) => {
+    const call = actionCall(message);
+    if (!call) return [];
+    return new Promise<CallNote>((resolve) => {
+      noted.set(call.id, (result) => {
+        noted.delete(call.id);
+        const durationMs = Math.round(performance.now() - arrival.startedAt);
+        resolve({ action: call.name, version, calledAt: arrival.calledAt, result, durationMs });
+      });
+    });
+  });
+  if (notes.length > 0) {
+    void Promise.all([responded, ...notes]).then(([, ...written]) => calls.write(connectorId, written));
+  }
+  return noted;
+}
+
 export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
   const router = Router();
+  const now = options.now ?? (() => new Date());
 
   router.all('/:id', async (req, res) => {
+    const arrival = { calledAt: now(), startedAt: performance.now() };
+    const responded = new Promise<void>((resolve) => res.once('close', () => resolve()));
     let config: HostedMcpConfig | undefined;
     try {
       config = await options.store.get(req.params.id);
@@ -86,10 +128,16 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
       void server.close();
     });
 
+    const noted =
+      options.calls && config.activeVersion !== undefined
+        ? noteActionCalls(options.calls, req.params.id, config.activeVersion, arrival, req.body, responded)
+        : undefined;
+    const onActionResult = (requestId: string | number, result: CallResult) => noted?.get(requestId)?.(result);
+
     try {
       await server.connect(transport);
       const authorization = req.headers.authorization ?? '';
-      await relayStore.run({ authorization }, async () => {
+      await relayStore.run({ authorization, onActionResult }, async () => {
         await transport.handleRequest(req, res, req.body);
       });
     } catch (err) {
