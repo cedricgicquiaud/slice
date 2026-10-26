@@ -427,6 +427,26 @@ describe('the note of an action call that reaches the API', () => {
   });
 });
 
+// WAT-156 — a call refused before the API is noted all the same.
+describe('the note of an action call refused before the API', () => {
+  it('is "Invalid request" when the agent sends values the action refuses, and the API is not called (contract 5, D4)', async () => {
+    const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+    received = [];
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`, 'TOKEN');
+    const answer = await agent.callTool({ name: 'list_things', arguments: { limit: 'many' } });
+    await agent.close();
+
+    await vi.waitFor(async () =>
+      expect({
+        agentError: answer.isError,
+        upstreamCalls: received.length,
+        results: (await calls.of(id)).map((note) => note.result),
+      }).toEqual({ agentError: true, upstreamCalls: 0, results: [{ kind: 'invalid_request' }] })
+    );
+  });
+});
+
 /** An address where nothing listens: a port just released. */
 async function closedAddress(): Promise<string> {
   const server = createServer();
