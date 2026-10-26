@@ -18,6 +18,9 @@ const CALLED = new Intl.DateTimeFormat('en-US', {
   hourCycle: 'h23',
 });
 
+/** A day the cap was reached, e.g. "Oct 24, 2026": a day of UTC, as the server counts it (D8). */
+const CAPPED_DAY = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
+
 /** A duration (D11), e.g. "420 ms". */
 function durationOf(ms: number): string {
   return `${ms} ms`;
@@ -57,6 +60,11 @@ export function UsageScreen({ mcpId }: { mcpId: string }) {
       {usage && (
         <>
           <h1 className="mt-4 font-serif text-4xl italic">{usage.apiName}</h1>
+          {usage.cappedDays.map((day) => (
+            <p key={day} className="mt-4 text-sm text-foreground">
+              10,000 calls reached on {CAPPED_DAY.format(new Date(day))}: later calls that day are not counted.
+            </p>
+          ))}
           <ActionsTable actions={usage.actions} />
         </>
       )}
