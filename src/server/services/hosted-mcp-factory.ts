@@ -182,6 +182,13 @@ function isNetworkFailure(err: unknown): err is TypeError {
   return err instanceof TypeError && err.message === 'fetch failed';
 }
 
+/** What became of a call that threw: anything but the API's answer or silence is SLICE's own error (D4). */
+function resultOfFailedCall(err: unknown): CallResult {
+  if (err instanceof UpstreamFailure) return { kind: 'failed', status: err.status };
+  if (err instanceof UpstreamUnreachable) return { kind: 'api_unreachable' };
+  return { kind: 'slice_error' };
+}
+
 /** Issue the upstream call for one tool invocation, relaying the caller token. */
 async function callUpstream(
   config: HostedMcpConfig,
@@ -294,8 +301,7 @@ export function buildHostedMcpServer(
           tell({ kind: 'succeeded' });
           return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
         } catch (err) {
-          if (err instanceof UpstreamFailure) tell({ kind: 'failed', status: err.status });
-          if (err instanceof UpstreamUnreachable) tell({ kind: 'api_unreachable' });
+          tell(resultOfFailedCall(err));
           throw err;
         }
       }
