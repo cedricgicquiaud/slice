@@ -196,4 +196,29 @@ describe('"Save"', () => {
       now: 1,
     });
   });
+
+  it("saves a version of thousands of actions, past PostgreSQL's limit of 65,535 values in one statement", async () => {
+    const { workspaceId } = await createTestAccount({ database, email: 'huge-api@example.com' });
+    const apiActions = Array.from({ length: 7_500 }, (_, index) => ({
+      name: `read_${index}`,
+      label: `Read ${index}`,
+      group: 'Things',
+      deprecated: false,
+      method: 'GET' as const,
+      path: `/things/${index}`,
+      params: [],
+    }));
+    const readFirst = { name: 'read_0', label: 'Read 0', description: 'Read 0', method: 'GET', path: '/things/0', params: [] } as const;
+    const { id } = await store.put({ ...NOTES, endpoints: [{ ...readFirst, params: [] }], apiActions }, workspaceId, MONDAY);
+
+    const outcome = await saveMcpSelection(
+      database,
+      workspaceId,
+      id,
+      { fromVersion: 1, selectedIds: apiActions.map((action) => `GET ${action.path}`) },
+      TUESDAY
+    );
+
+    expect({ outcome, served: (await store.get(id))?.endpoints.length }).toEqual({ outcome: { version: 2 }, served: 7_500 });
+  });
 });
