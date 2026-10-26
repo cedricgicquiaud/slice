@@ -132,4 +132,24 @@ describe('<SelectionScreen> on "Edit actions"', () => {
 
     expect(onContinue.mock.calls).toEqual([[['POST /products']]]);
   });
+
+  it('lets its caller grey the button for the current selection: greyed as it starts, enabled once it changes (contract 14)', async () => {
+    render(
+      <SelectionScreen
+        spec={SPEC}
+        onContinue={() => {}}
+        initialSelectedIds={['POST /products']}
+        continueLabel="Save"
+        continueDisabled={(selected) => selected.size === 1 && selected.has('POST /products')}
+      />
+    );
+    const greyedAtFirst = screen.getByRole('button', { name: /save/i }).hasAttribute('disabled');
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select List products' }));
+
+    expect({ greyedAtFirst, greyedOnceChanged: screen.getByRole('button', { name: /save/i }).hasAttribute('disabled') }).toEqual({
+      greyedAtFirst: true,
+      greyedOnceChanged: false,
+    });
+  });
 });
