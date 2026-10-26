@@ -1,10 +1,13 @@
 // WAT-159 — "Usage", at /mcps/<id>/usage: opened from My MCPs, reopened by a reload.
 // WAT-160 — by action, the calls, the successes, the average duration and the last call of the last 30 days.
 // WAT-161 — the 50 most recent calls, newest first.
+// WAT-162 — another account's MCP is not found, and nothing shows without a session.
 import { describe, it, expect, vi, afterEach, afterAll } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import App from '../App';
 import { UsageScreen } from './usage';
+import { AuthGate } from '../components/auth-gate';
+import { refreshSession } from '../lib/auth-client';
 
 /**
  * Dates show at the time of the person's computer (D11): this one is in Paris,
@@ -72,7 +75,8 @@ const NOTION_UNUSED = {
 /**
  * SLICE's API as this page sees it: `GET /api/mcps/:id/usage` answers the usage
  * kept in `usages` under that id, else 404 as for an unknown MCP or another
- * account's, or `refusal` when set; any other call is "who is signed in?" (`session`).
+ * account's, or `refusal` when set (a 401 means the session is gone); any other
+ * call is "who is signed in?" (`session`).
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
 const server = vi.hoisted(() => {
@@ -87,12 +91,24 @@ const server = vi.hoisted(() => {
     const url = input instanceof Request ? input.url : String(input);
     const asked = /^\/api\/mcps\/([^/]+)\/usage$/.exec(url);
     if (!asked) return json(state.session);
+    if (state.refusal?.status === 401) state.session = null;
     if (state.refusal) return json({ code: state.refusal.code, message: state.refusal.message }, state.refusal.status);
     const usage = state.usages[asked[1]!];
     return usage ? json(usage) : json({ code: 'NOT_FOUND', message: 'Unknown MCP id.' }, 404);
   }) as typeof fetch;
   return state;
 });
+
+const LIVE_SESSION = {
+  session: { id: 's1', userId: 'u1', token: 't', expiresAt: '2026-11-01T00:00:00.000Z' },
+  user: { id: 'u1', email: 'ada@example.com', name: '', emailVerified: true },
+};
+
+/** The server now answers `session`; like a sign-in or out, the client is told to ask again. */
+function serverSession(session: unknown) {
+  server.session = session;
+  refreshSession();
+}
 
 afterEach(() => {
   server.usages = {};
@@ -135,6 +151,20 @@ describe('Usage', () => {
     render(<UsageScreen mcpId="notion-id" />);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('SLICE is unavailable for the moment.');
+  });
+
+  it('shows the sign-in screen when the usage is refused for want of a session (contract 22, D13)', async () => {
+    serverSession(LIVE_SESSION);
+    server.refusal = { status: 401, code: 'UNAUTHORIZED', message: 'Sign in to continue.' };
+
+    render(
+      <AuthGate>
+        <UsageScreen mcpId="notion-id" />
+      </AuthGate>
+    );
+    await screen.findByRole('link', { name: 'Back to My MCPs' });
+
+    expect(await screen.findByRole('heading', { name: 'Sign in to SLICE' })).toBeInTheDocument();
   });
 });
 
