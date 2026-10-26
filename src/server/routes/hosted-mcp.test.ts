@@ -141,6 +141,27 @@ describe('hosted connector served from the database', () => {
     ]);
   });
 
+  it('serves the actions of its active version only (D4)', async () => {
+    const { id } = await store.put(threeActions(), account.workspaceId, CREATED);
+    // "Save" comes with the next delivery: version 2, holding only the deletion, is made active here.
+    await database.rows(sql`update connector_versions set active_since = null where connector_id = ${id}`);
+    await database.rows(
+      sql`insert into connector_versions (connector_id, number, created_at, active_since)
+          values (${id}, 2, ${hoursAfterCreation(1)}, ${hoursAfterCreation(1)})`
+    );
+    await database.rows(
+      sql`insert into connector_actions (connector_id, version, position, name, label, description, method, path, params)
+          values (${id}, 2, 0, 'delete_thing', 'Delete a thing', 'Delete a thing', 'DELETE', '/things/{id}',
+                  ${JSON.stringify([{ name: 'id', in: 'path', type: 'string', required: true }])}::jsonb)`
+    );
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`, 'TOKEN');
+    const { tools } = await agent.listTools();
+    await agent.close();
+
+    expect(tools.map((t) => t.name)).toEqual(['delete_thing']);
+  });
+
   it('gives a connector created from screen 4 a 22-character address kept in the database', async () => {
     const url = await host();
     const id = url.split('/m/')[1]!;
