@@ -151,4 +151,13 @@ describe('Usage by action', () => {
       listNotes: ['List notes', '3', '2', '300 ms', 'Oct 26, 2026, 14:02'],
     });
   });
+
+  it('shows "Never called" for an action of the active version without any call in 30 days (contract 9, D10)', async () => {
+    server.usages['notes-id'] = NOTES_USED;
+
+    render(<UsageScreen mcpId="notes-id" />);
+
+    const [, , createNote] = await actionsTable();
+    expect(createNote).toEqual(['Create a note', 'Never called']);
+  });
 });
