@@ -171,6 +171,15 @@ describe('database schema (D3)', () => {
     expect(await leftOf('cascade-history')).toEqual([]);
   });
 
+  it('refuses a second active version of a connector, never an inactive one (D4)', async () => {
+    await insertConnector('one-active', 'none', null, null);
+    await insertVersion('one-active', 1, true);
+    await insertVersion('one-active', 2, false);
+    await insertVersion('one-active', 3, false);
+
+    await expect(insertVersion('one-active', 4, true)).rejects.toThrow();
+  });
+
   it('refuses two actions at the same position of a connector', async () => {
     await insertConnector('positions', 'none', null, null);
     await insertAction('positions', 0);
