@@ -153,6 +153,7 @@ describe('database schema (D3)', () => {
 
   it('deletes the actions of a deleted connector', async () => {
     await insertConnector('cascade', 'none', null, null);
+    await insertVersion('cascade', 1, true);
     await insertAction('cascade', 0);
 
     await rows(sql`delete from connectors where id = 'cascade'`);
@@ -180,8 +181,15 @@ describe('database schema (D3)', () => {
     await expect(insertVersion('one-active', 4, true)).rejects.toThrow();
   });
 
+  it('refuses an action of a version the connector does not have', async () => {
+    await insertConnector('versionless', 'none', null, null);
+
+    await expect(insertAction('versionless', 0)).rejects.toThrow();
+  });
+
   it('refuses two actions at the same position of a connector', async () => {
     await insertConnector('positions', 'none', null, null);
+    await insertVersion('positions', 1, true);
     await insertAction('positions', 0);
 
     await expect(insertAction('positions', 0)).rejects.toThrow();
