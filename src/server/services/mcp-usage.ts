@@ -3,9 +3,10 @@
  * agents made, read from their notes (D3). Never a value, a response or a token:
  * the notes keep none.
  */
-import { and, asc, count, eq, gte, isNotNull, max, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, isNotNull, max, sql } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { connectorActions, connectorApiActions, connectorCalls, connectorVersions, connectors } from '../db/schema';
+import type { CallResult } from './mcp-calls';
 import { apiNameOf } from './mcp-versions';
 
 /** The page shows the last 30 days (D9). */
@@ -35,6 +36,21 @@ export interface McpUsage {
   actions: ActionUsage[];
   /** The days of the period (`YYYY-MM-DD`, UTC) on which the cap was reached: later calls went unnoted. */
   cappedDays: string[];
+  /** The recent calls, newest first. */
+  recentCalls: RecentCall[];
+}
+
+/** One call, as the list of recent calls shows it (D10). */
+export interface RecentCall {
+  /** ISO date the call arrived at SLICE. */
+  calledAt: string;
+  action: string;
+  /** The action's label, else its name. */
+  label: string;
+  result: CallResult;
+  durationMs: number;
+  /** The number of the version active when the call arrived. */
+  version: number;
 }
 
 /**
@@ -125,5 +141,21 @@ export async function readMcpUsage(
     .groupBy(day)
     .having(sql`count(*) >= ${DAILY_CAP}`)
     .orderBy(day);
-  return { apiName: apiNameOf(first), actions, cappedDays: capped.map((row) => row.day) };
+
+  const labelOf = new Map(apiActions.map(({ name, label }) => [name, label]));
+  const recent = await db
+    .select()
+    .from(connectorCalls)
+    .where(eq(connectorCalls.connectorId, id))
+    .orderBy(desc(connectorCalls.calledAt), desc(connectorCalls.id));
+  const recentCalls = recent.map(({ calledAt, action, result, status, durationMs, version }) => ({
+    calledAt: calledAt.toISOString(),
+    action,
+    label: labelOf.get(action) ?? action,
+    // The table keeps a status code for a failure, and for a failure only.
+    result: result === 'failed' ? { kind: result, status: status! } : { kind: result },
+    durationMs,
+    version,
+  }));
+  return { apiName: apiNameOf(first), actions, cappedDays: capped.map((row) => row.day), recentCalls };
 }
