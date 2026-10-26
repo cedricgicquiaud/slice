@@ -80,8 +80,14 @@ function resultOf(result: CallResult): string {
       return 'Succeeded';
     case 'failed':
       return `Failed (${result.status})`;
-    default:
-      return result.kind;
+    case 'api_unreachable':
+      return 'API unreachable';
+    case 'invalid_request':
+      return 'Invalid request';
+    case 'not_available':
+      return 'Not available';
+    case 'slice_error':
+      return 'SLICE error';
   }
 }
 
