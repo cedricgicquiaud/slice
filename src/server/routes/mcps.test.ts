@@ -485,4 +485,34 @@ describe('POST /api/mcps/:id/versions/:number/restore', () => {
       served: ['list_notes'],
     });
   });
+
+  it("answers a version of another account's MCP exactly as an unknown id, and leaves its active version (contract 19, D12)", async () => {
+    const other = await createTestAccount({ database, email: 'neighbour-restore@example.com' });
+    const { id } = await store.put(NOTES, other.workspaceId, CREATED);
+    await createAccountMcps(database).saveSelection(other.workspaceId, id, { fromVersion: 1, selectedIds: ['GET /notes'] });
+
+    const theirs = await restore(id, 1);
+    const unknown = await restore('no-such-mcp-id', 1);
+
+    expect({
+      theirs: { status: theirs.status, body: await theirs.text() },
+      unknown: { status: unknown.status, body: await unknown.text() },
+      served: (await store.get(id))?.endpoints.map((action) => action.name),
+    }).toEqual({
+      theirs: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+      unknown: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+      served: ['list_notes'],
+    });
+  });
+
+  it('answers 401 to a restoration without a session, and changes nothing (contract 20)', async () => {
+    const id = await notesAtVersion2();
+
+    const res = await restore(id, 1, null);
+
+    expect({ status: res.status, served: (await store.get(id))?.endpoints.map((action) => action.name) }).toEqual({
+      status: 401,
+      served: ['list_notes'],
+    });
+  });
 });
