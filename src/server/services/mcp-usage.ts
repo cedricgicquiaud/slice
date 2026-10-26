@@ -11,6 +11,9 @@ import { apiNameOf } from './mcp-versions';
 /** The page shows the last 30 days (D9). */
 const PERIOD_MS = 30 * 24 * 3_600_000;
 
+/** At most 10,000 calls are noted per MCP and per day (D8). */
+const DAILY_CAP = 10_000;
+
 /** The calls of one action. */
 export interface ActionUsage {
   name: string;
@@ -30,6 +33,8 @@ export interface McpUsage {
   apiName: string;
   /** The active version's actions, in their order, then the API's other actions called in the period. */
   actions: ActionUsage[];
+  /** The days of the period (`YYYY-MM-DD`, UTC) on which the cap was reached: later calls went unnoted. */
+  cappedDays: string[];
 }
 
 /**
@@ -64,6 +69,10 @@ export async function readMcpUsage(
   const [first] = active;
   if (!first) return undefined;
 
+  const inPeriod = and(
+    eq(connectorCalls.connectorId, id),
+    gte(connectorCalls.calledAt, new Date(now.getTime() - PERIOD_MS))
+  );
   const succeeded = sql`${connectorCalls.result} = 'succeeded'`;
   const stats = await db
     .select({
@@ -74,7 +83,7 @@ export async function readMcpUsage(
       lastCalledAt: max(connectorCalls.calledAt),
     })
     .from(connectorCalls)
-    .where(and(eq(connectorCalls.connectorId, id), gte(connectorCalls.calledAt, new Date(now.getTime() - PERIOD_MS))))
+    .where(inPeriod)
     .groupBy(connectorCalls.action);
   const statsOf = new Map(stats.map((row) => [row.action, row]));
   const lineOf = (name: string, label: string, available: boolean): ActionUsage => {
@@ -106,5 +115,15 @@ export async function readMcpUsage(
   for (const { name, label } of apiActions) {
     if (!activeNames.has(name) && statsOf.has(name)) actions.push(lineOf(name, label, false));
   }
-  return { apiName: apiNameOf(first), actions };
+
+  // The page tells a capped day from the notes themselves: that day holds the cap's count (D8).
+  const day = sql<string>`to_char(${connectorCalls.calledAt} at time zone 'UTC', 'YYYY-MM-DD')`;
+  const capped = await db
+    .select({ day })
+    .from(connectorCalls)
+    .where(inPeriod)
+    .groupBy(day)
+    .having(sql`count(*) >= ${DAILY_CAP}`)
+    .orderBy(day);
+  return { apiName: apiNameOf(first), actions, cappedDays: capped.map((row) => row.day) };
 }
