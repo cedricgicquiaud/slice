@@ -122,4 +122,23 @@ describe('"Save"', () => {
       ],
     });
   });
+
+  it('makes a selection identical to an older version a new version, numbered after the last one (contract 7, D5, D9)', async () => {
+    const { workspaceId } = await createTestAccount({ database, email: 'back-to-v1@example.com' });
+    const { id } = await store.put(NOTES, workspaceId, MONDAY);
+    await saveMcpSelection(database, workspaceId, id, { fromVersion: 1, selectedIds: ['GET /notes'] }, TUESDAY);
+
+    const outcome = await saveMcpSelection(
+      database,
+      workspaceId,
+      id,
+      { fromVersion: 2, selectedIds: ['GET /notes', 'POST /notes'] },
+      TUESDAY
+    );
+
+    expect({ outcome, served: (await store.get(id))?.endpoints.map((action) => action.name) }).toEqual({
+      outcome: { version: 3 },
+      served: ['list_notes', 'create_note'],
+    });
+  });
 });
