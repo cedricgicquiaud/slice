@@ -13,12 +13,38 @@ export interface Mcp {
   url: string;
 }
 
+/** One version of an MCP: a numbered, dated selection (D4). */
+export interface McpVersion {
+  number: number;
+  /** ISO creation date. */
+  createdAt: string;
+  /** ISO date the version last became the active one (D8), `null` while it is not. */
+  activeSince: string | null;
+  /** The labels of its actions, in their order. */
+  actionLabels: string[];
+}
+
+/** An MCP's history, as `GET /api/mcps/:id/versions` reads it. */
+export interface McpHistory {
+  /** The API's name as read in its description, else its domain. */
+  apiName: string;
+  /** Newest first. */
+  versions: McpVersion[];
+}
+
 /** The MCPs of the signed-in account, newest first. */
 export async function listMcps(): Promise<Mcp[]> {
   const res = await fetch('/api/mcps');
   if (!res.ok) await throwRefusal(res);
   const { mcps } = (await res.json()) as { mcps: Mcp[] };
   return mcps;
+}
+
+/** The versions of one of the account's MCPs (D8). */
+export async function getMcpHistory(id: string): Promise<McpHistory> {
+  const res = await fetch(`/api/mcps/${id}/versions`);
+  if (!res.ok) await throwRefusal(res);
+  return (await res.json()) as McpHistory;
 }
 
 /** Delete one of the account's MCPs, at once (D10). */

@@ -90,9 +90,9 @@ describe('getMcpHistory', () => {
     };
     const fetchMock = serverAnswers(200, history);
 
-    expect({ history: await getMcpHistory('notion-id'), asked: fetchMock.mock.calls[0]?.[0] }).toEqual({
+    expect({ history: await getMcpHistory('notion-id'), asked: fetchMock.mock.calls }).toEqual({
       history,
-      asked: '/api/mcps/notion-id/versions',
+      asked: [['/api/mcps/notion-id/versions']],
     });
   });
 });
