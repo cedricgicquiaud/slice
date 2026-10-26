@@ -430,6 +430,27 @@ describe('the note of an action call that reaches the API', () => {
       expect((await calls.of(id)).map((note) => note.result)).toEqual([{ kind: 'slice_error' }])
     );
   });
+
+  it('is "SLICE error" when SLICE fails before its engine runs, the agent reading a server error (contract 7, D4)', async () => {
+    // Two actions under one name: SLICE cannot build the MCP it stored.
+    const listTwice = { ...threeActions(), endpoints: [threeActions().endpoints[0]!, threeActions().endpoints[0]!] };
+    const { id } = await store.put(withApiActions(listTwice), account.workspaceId, CREATED);
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const res = await fetch(`${baseUrl}/m/${id}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' },
+        body: JSON.stringify(toolCall(1, 'list_things', {})),
+      });
+
+      expect(res.status).toBe(500);
+      await vi.waitFor(async () =>
+        expect((await calls.of(id)).map((note) => note.result)).toEqual([{ kind: 'slice_error' }])
+      );
+    } finally {
+      logged.mockRestore();
+    }
+  });
 });
 
 // WAT-156 — a call refused before the API is noted all the same.
