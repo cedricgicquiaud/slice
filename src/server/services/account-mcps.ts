@@ -70,6 +70,6 @@ export function createAccountMcps(database: Database): AccountMcps {
         .returning();
       return deleted.length > 0;
     },
-    history: (_workspaceId, id) => readMcpHistory(database, id),
+    history: (workspaceId, id) => readMcpHistory(database, workspaceId, id),
   };
 }

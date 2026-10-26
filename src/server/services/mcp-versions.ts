@@ -1,7 +1,7 @@
 /**
  * The versions of an MCP, as its "History" page shows them (D8).
  */
-import { asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { connectorActions, connectorVersions, connectors } from '../db/schema';
 
@@ -28,13 +28,20 @@ export function apiNameOf(connector: { apiName: string | null; baseUrl: string }
   return connector.apiName ?? new URL(connector.baseUrl).hostname;
 }
 
-/** The history of the MCP `id`, or `undefined` when there is no such MCP. */
-export async function readMcpHistory(database: Database, id: string): Promise<McpHistory | undefined> {
+/**
+ * The history of the MCP `id` of `workspaceId`, or `undefined` when `workspaceId`
+ * has no such MCP, whoever else owns it (D12).
+ */
+export async function readMcpHistory(
+  database: Database,
+  workspaceId: string,
+  id: string
+): Promise<McpHistory | undefined> {
   const { db } = database;
   const [connector] = await db
     .select({ apiName: connectors.apiName, baseUrl: connectors.baseUrl })
     .from(connectors)
-    .where(eq(connectors.id, id));
+    .where(and(eq(connectors.id, id), eq(connectors.workspaceId, workspaceId)));
   if (!connector) return undefined;
   const versions = await db
     .select()

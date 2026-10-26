@@ -59,7 +59,7 @@ describe('the history of an MCP', () => {
     const { id } = await store.put(NOTION, workspaceId, MONDAY);
     await activateVersion2(id, TUESDAY);
 
-    expect(await readMcpHistory(database, id)).toEqual({
+    expect(await readMcpHistory(database, workspaceId, id)).toEqual({
       apiName: 'Notion API',
       versions: [
         {
