@@ -145,6 +145,32 @@ describe('hosted store in the database', () => {
     expect(await store.apiActions(id)).toEqual(fourApiActions);
   });
 
+  it('keeps an API of 7,400 actions, all selected, past the database limit of 65,535 values per statement', async () => {
+    const store = createHostedStore(database);
+    const many: ApiAction[] = Array.from({ length: 7_400 }, (_, i) => ({
+      name: `action_${i}`,
+      label: `Action ${i}`,
+      group: 'Bulk',
+      deprecated: false,
+      method: 'GET',
+      path: `/items/${i}`,
+      params: [],
+    }));
+    const endpoints = many.map(({ name, label, method, path, params }) => ({
+      name,
+      label,
+      description: label,
+      method,
+      path,
+      params,
+    }));
+
+    const { id } = await store.put({ ...threeActions, endpoints, apiActions: many }, workspaceId, NOW);
+
+    expect(await store.apiActions(id)).toEqual(many);
+    expect((await store.get(id))?.endpoints.map(({ name }) => name)).toEqual(many.map(({ name }) => name));
+  });
+
   it('stores a lowercase method in uppercase', async () => {
     const store = createHostedStore(database);
     const lowercase = { ...threeActions.endpoints[0]!, method: 'get' as HttpMethod };
