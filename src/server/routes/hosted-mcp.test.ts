@@ -527,6 +527,42 @@ describe('a batch of action calls', () => {
   });
 });
 
+// WAT-157 — noting a call never slows the agent down, nor fails it.
+describe('noting a call', () => {
+  /** An app reading connectors from the file's database, writing notes with `notes`. */
+  async function appNotingWith(notes: McpCalls): Promise<{ base: string; close(): Promise<void> }> {
+    const noting = createApp({ nodeEnv: 'test', hostedStore: store, mcpCalls: notes, now, auth: account.auth }).listen(0);
+    await new Promise<void>((r) => noting.once('listening', r));
+    return {
+      base: `http://127.0.0.1:${(noting.address() as AddressInfo).port}`,
+      close: () => new Promise<void>((r) => noting.close(() => r())),
+    };
+  }
+
+  it("gives the agent the API's answer, without any error added, when the database refuses the note, and logs it (contract 18, D7)", async () => {
+    const refusingDb = await createTestDatabase();
+    const refusing = openDatabase(refusingDb.config);
+    await migrateDatabase(refusing);
+    await refusing.close();
+    const noting = await appNotingWith(createMcpCalls(refusing));
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+
+      const agent = await connectAgent(`${noting.base}/m/${id}`, 'TOKEN');
+      const answer = await agent.callTool({ name: 'list_things', arguments: {} });
+      await agent.close();
+
+      expect(answer).toEqual({ content: [{ type: 'text', text: '{\n  "ok": true\n}' }] });
+      await vi.waitFor(() => expect(logged).toHaveBeenCalledWith('[hosted-mcp] noting calls failed:', expect.any(String)));
+    } finally {
+      logged.mockRestore();
+      await noting.close();
+      await refusingDb.dispose();
+    }
+  });
+});
+
 const ACTION_GONE_TEXT =
   'This action is no longer available in this MCP. Start a new conversation to get the current list of actions.';
 
