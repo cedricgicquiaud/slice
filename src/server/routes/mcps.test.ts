@@ -10,6 +10,8 @@ import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
 import { DATABASE_TEST_TIMEOUTS, createTestDatabase, type TestDatabase } from '../db/test-database';
 import { createTestAccount, type TestAccount } from '../db/test-account';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
@@ -247,6 +249,48 @@ describe('GET /api/mcps/:id/selection', () => {
     }).toEqual({
       theirs: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
       unknown: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+    });
+  });
+});
+
+describe('POST /api/mcps/:id/versions', () => {
+  let edit: { url: string; close(): Promise<void> };
+  beforeAll(async () => {
+    edit = await startApp();
+  });
+  afterAll(async () => {
+    await edit?.close();
+  });
+
+  /** "Save" on "Edit actions", as the signed-in account unless `cookie` says otherwise. */
+  function save(id: string, change: unknown, cookie: string | undefined = account.cookie) {
+    return fetch(`${edit.url}/api/mcps/${id}/versions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(cookie && { cookie }) },
+      body: JSON.stringify(change),
+    });
+  }
+
+  it('makes the new selection version 2 at the same address: the agent lists its actions, My MCPs counts them (contract 5, 6)', async () => {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+
+    const saved = await save(id, { fromVersion: 1, selectedIds: ['GET /notes', 'POST /notes', 'DELETE /trash'] });
+    const listed = (await (await fetch(`${edit.url}/api/mcps`, { headers: { cookie: account.cookie } })).json()) as {
+      mcps: Array<{ id: string; actionCount: number; url: string }>;
+    };
+    const agent = new Client({ name: 'agent', version: '0.0.0' });
+    await agent.connect(new StreamableHTTPClientTransport(new URL(`${edit.url}/m/${id}`)));
+    const { tools } = await agent.listTools();
+    await agent.close();
+
+    expect({
+      saved: { status: saved.status, body: await saved.json() },
+      listed: listed.mcps.find((mcp) => mcp.id === id),
+      tools: tools.map((tool) => tool.name),
+    }).toEqual({
+      saved: { status: 201, body: { number: 2 } },
+      listed: { id, apiName: 'Notes API', actionCount: 3, createdAt: CREATED.toISOString(), url: `${edit.url}/m/${id}` },
+      tools: ['list_notes', 'create_note', 'empty_trash'],
     });
   });
 });
