@@ -61,6 +61,8 @@ export interface HostedMcpConfig {
   createdAt?: string;
   /** The workspace the connector belongs to (D15): given to the store's `put`, returned by `get`. */
   workspaceId?: string;
+  /** The number of the version `endpoints` come from, the active one: returned by the store's `get`. */
+  activeVersion?: number;
 }
 
 /**

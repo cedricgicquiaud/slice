@@ -71,8 +71,16 @@ export function createHostedStore(database: Database): HostedStore {
       return { id, createdAt: now.toISOString() };
     },
     async get(id) {
-      const [connector] = await db.select().from(connectors).where(eq(connectors.id, id));
-      if (!connector) return undefined;
+      const [found] = await db
+        .select({ connector: connectors, activeVersion: connectorVersions.number })
+        .from(connectors)
+        .leftJoin(
+          connectorVersions,
+          and(eq(connectorVersions.connectorId, connectors.id), isNotNull(connectorVersions.activeSince))
+        )
+        .where(eq(connectors.id, id));
+      if (!found) return undefined;
+      const { connector, activeVersion } = found;
       // The address serves the active version's actions, never the other versions' (D4).
       const actions = await db
         .select({
@@ -100,6 +108,7 @@ export function createHostedStore(database: Database): HostedStore {
         endpoints: actions,
         createdAt: connector.createdAt.toISOString(),
         workspaceId: connector.workspaceId,
+        ...(activeVersion !== null && { activeVersion }),
       };
     },
     async apiActions(id) {

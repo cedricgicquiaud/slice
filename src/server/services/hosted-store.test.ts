@@ -136,7 +136,12 @@ describe('hosted store in the database', () => {
     const { id } = await store.put(threeActions, workspaceId, NOW);
 
     expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
-    expect(await store.get(id)).toEqual({ ...threeActions, createdAt: '2026-10-24T09:00:00.000Z', workspaceId });
+    expect(await store.get(id)).toEqual({
+      ...threeActions,
+      createdAt: '2026-10-24T09:00:00.000Z',
+      workspaceId,
+      activeVersion: 1,
+    });
   });
 
   it("keeps every action of the connector's API, in order, with what the selection screen shows of it (D1)", async () => {
@@ -328,6 +333,7 @@ describe('hosted store across a restart', () => {
           ...threeActions,
           createdAt: '2026-10-24T09:00:00.000Z',
           workspaceId,
+          activeVersion: 1,
         });
       } finally {
         await reopened.close();
