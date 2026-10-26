@@ -149,7 +149,7 @@ export async function readMcpUsage(
   const recent = await db
     .select()
     .from(connectorCalls)
-    .where(eq(connectorCalls.connectorId, id))
+    .where(inPeriod)
     .orderBy(desc(connectorCalls.calledAt), desc(connectorCalls.id))
     .limit(RECENT_CALLS);
   const recentCalls = recent.map(({ calledAt, action, result, status, durationMs, version }) => ({
