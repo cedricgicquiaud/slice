@@ -501,7 +501,42 @@ describe('a batch of action calls', () => {
       ])
     );
   });
+
+  it('serves the active version\'s action, asks to start over for the retired one without calling the API, and notes both (contract 13, P-WAT-41 contract 18)', async () => {
+    const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+    await activateDeletionOnly(id);
+    received = [];
+
+    const answer = await postBatch(`${baseUrl}/m/${id}`, [
+      toolCall(1, 'delete_thing', { id: '42' }),
+      toolCall(2, 'create_thing', { title: 'Groceries' }),
+    ]);
+
+    const retired = sseMessages(answer).find((message) => message.id === 2);
+    await vi.waitFor(async () =>
+      expect({
+        retired: retired?.result,
+        upstreamCalls: received.map((call) => call.url),
+        notes: (await calls.of(id)).map(({ action, result }) => `${action} ${result.kind}`).sort(),
+      }).toEqual({
+        retired: { isError: true, content: [{ type: 'text', text: ACTION_GONE_TEXT }] },
+        upstreamCalls: ['/things/42'],
+        notes: ['create_thing not_available', 'delete_thing succeeded'],
+      })
+    );
+  });
 });
+
+const ACTION_GONE_TEXT =
+  'This action is no longer available in this MCP. Start a new conversation to get the current list of actions.';
+
+/** The JSON-RPC messages of an answer sent as a stream of server-sent events. */
+function sseMessages(answer: string): Array<{ id?: unknown; result?: unknown }> {
+  return answer
+    .split('\n')
+    .filter((line) => line.startsWith('data: '))
+    .map((line) => JSON.parse(line.slice('data: '.length)) as { id?: unknown; result?: unknown });
+}
 
 /** An address where nothing listens: a port just released. */
 async function closedAddress(): Promise<string> {
