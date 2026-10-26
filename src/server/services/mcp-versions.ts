@@ -1,7 +1,7 @@
 /**
  * The versions of an MCP, as its "History" page shows them (D8).
  */
-import { asc, eq } from 'drizzle-orm';
+import { asc, desc, eq } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { connectorActions, connectorVersions, connectors } from '../db/schema';
 
@@ -19,6 +19,7 @@ export interface McpVersion {
 export interface McpHistory {
   /** The API's name as read in its description, else its domain. */
   apiName: string;
+  /** Newest first. */
   versions: McpVersion[];
 }
 
@@ -35,7 +36,11 @@ export async function readMcpHistory(database: Database, id: string): Promise<Mc
     .from(connectors)
     .where(eq(connectors.id, id));
   if (!connector) return undefined;
-  const versions = await db.select().from(connectorVersions).where(eq(connectorVersions.connectorId, id));
+  const versions = await db
+    .select()
+    .from(connectorVersions)
+    .where(eq(connectorVersions.connectorId, id))
+    .orderBy(desc(connectorVersions.number));
   const actions = await db
     .select({ version: connectorActions.version, label: connectorActions.label })
     .from(connectorActions)
