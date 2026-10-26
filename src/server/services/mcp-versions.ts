@@ -104,10 +104,12 @@ export async function restoreMcpVersion(
       .for('update');
     if (!connector) return { refused: 'unknown-mcp' };
     const [version] = await tx
-      .select({ number: connectorVersions.number })
+      .select({ activeSince: connectorVersions.activeSince })
       .from(connectorVersions)
       .where(and(eq(connectorVersions.connectorId, id), eq(connectorVersions.number, number)));
     if (!version) return { refused: 'unknown-version' };
+    // Already the active one: it stays so, dated from its activation (D9).
+    if (version.activeSince) return { activeSince: version.activeSince.toISOString() };
     // The address serves the active version only (D4): the restored one takes over at once.
     await tx
       .update(connectorVersions)
