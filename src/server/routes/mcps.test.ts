@@ -515,4 +515,18 @@ describe('POST /api/mcps/:id/versions/:number/restore', () => {
       served: ['list_notes'],
     });
   });
+
+  it('answers 403 to a restoration sent from another site, and changes nothing (D16)', async () => {
+    const id = await notesAtVersion2();
+
+    const res = await fetch(`${edit.url}/api/mcps/${id}/versions/1/restore`, {
+      method: 'POST',
+      headers: { cookie: account.cookie, origin: 'https://evil.example' },
+    });
+
+    expect({ status: res.status, served: (await store.get(id))?.endpoints.map((action) => action.name) }).toEqual({
+      status: 403,
+      served: ['list_notes'],
+    });
+  });
 });
