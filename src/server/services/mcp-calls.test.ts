@@ -12,6 +12,7 @@ import { createTestAccount } from '../db/test-account';
 vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 const NOW = new Date('2026-10-26T09:00:00.000Z');
+const SLICE_PAGE = 'http://localhost:5173';
 
 const contacts: HostedMcpConfig = {
   name: 'crm',
@@ -70,5 +71,22 @@ describe('the notes of action calls', () => {
     await createAccountMcps(database).delete(workspaceId, id);
 
     expect(await calls.of(id)).toEqual([]);
+  });
+
+  it('are deleted with the account that owns their MCP (contract 14, D14)', async () => {
+    const leaving = await createTestAccount({ database, email: 'leaving@example.com' });
+    const { id } = await createHostedStore(database).put(contacts, leaving.workspaceId, NOW);
+    const calls = createMcpCalls(database);
+    await calls.write(id, [callAt(0, { kind: 'succeeded' })]);
+
+    const res = await leaving.auth.handler(
+      new Request(`${SLICE_PAGE}/api/auth/delete-user`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: leaving.cookie, origin: SLICE_PAGE },
+        body: '{}',
+      })
+    );
+
+    expect({ status: res.status, notes: await calls.of(id) }).toEqual({ status: 200, notes: [] });
   });
 });
