@@ -89,7 +89,7 @@ function noteActionCalls(
   version: number,
   arrival: { calledAt: Date; startedAt: number },
   body: unknown,
-  responded: Promise<void>
+  responded: Promise<number>
 ): NotedCalls {
   const noted: NotedCalls = new Map();
   const notes = (Array.isArray(body) ? body : [body]).flatMap((message) => {
@@ -102,6 +102,10 @@ function noteActionCalls(
         resolve({ action: call.name, version, calledAt: arrival.calledAt, result, durationMs });
       });
     });
+  });
+  // A call still untold when the request ends on a server error was cut short by SLICE itself (D4).
+  void responded.then((status) => {
+    if (status >= 500) for (const tell of [...noted.values()]) tell({ kind: 'slice_error' });
   });
   if (notes.length > 0) {
     Promise.all([responded, ...notes])
@@ -121,7 +125,7 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
 
   router.all('/:id', async (req, res) => {
     const arrival = { calledAt: now(), startedAt: performance.now() };
-    const responded = new Promise<void>((resolve) => res.once('close', () => resolve()));
+    const responded = new Promise<number>((resolve) => res.once('close', () => resolve(res.statusCode)));
     let config: HostedMcpConfig | undefined;
     try {
       config = await options.store.get(req.params.id);
