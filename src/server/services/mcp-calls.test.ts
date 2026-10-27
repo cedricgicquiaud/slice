@@ -115,6 +115,16 @@ describe('the notes kept (D9)', () => {
 
     expect(await calls.of(id)).toEqual([]);
   });
+
+  it('keep a call made 29 days ago', async () => {
+    const { id } = await createHostedStore(database).put(contacts, workspaceId, NOW);
+    const calls = createMcpCalls(database);
+    await calls.write(id, callsFrom(new Date('2026-09-27T09:00:00.000Z'), 1));
+
+    await calls.purgeOld(NOW);
+
+    expect((await calls.of(id)).map((note) => note.calledAt.toISOString())).toEqual(['2026-09-27T09:00:00.000Z']);
+  });
 });
 
 /** `count` calls of `list_contacts` a millisecond apart, from `from` on. */
