@@ -270,6 +270,15 @@ _Leçons des audits, ajoutées par `sync` après validation. Chaque agent les ap
   qui commence par `select … for update` sur `connectors`, comme « Save » (`mcp-selection.ts`)
   et « Restore » (`mcp-versions.ts`). Sans lui, deux versions peuvent devenir actives.
   *(audit PR #71 et #73)*
+- **Les messages d'un lot JSON-RPC se reconnaissent par leur position, jamais par leur `id`** :
+  rien n'empêche un agent de donner le même `id` à deux messages d'un même lot. *(audit PR #75)*
+- **Un tri sur une date prend `id` en second critère** : deux lignes à la même milliseconde
+  gardent le même ordre d'une lecture à l'autre. *(audit PR #75)*
+- **Un test qui mesure le temps réel a une borne haute large (5 s au moins)** : sous charge, un
+  aller-retour dépasse 2 s sans défaut. *(audit PR #78)*
+- **Une bibliothèque qui garde des minuteries après le démontage d'un écran s'arrête dans
+  `test-setup.ts`, à la fin de chaque fichier** (comme `stopAuthClient`) : sinon sa minuterie
+  tourne après la fermeture de jsdom et fait échouer le run, tests verts. *(WAT-166)*
 
 ## Idiomes d'interface
 
@@ -283,3 +292,8 @@ _Remarques visuelles faites au merge, ajoutées par `sync` après validation._
 - **Un message placé sous le titre d'une page** (confirmation ou refus) **a le même espacement
   partout : `mt-4`**, comme « Version N restored » et « There is no MCP at this address ».
   *(rétro P-WAT-41, WAT-153)*
+- **Une date ou une durée dans un tableau tient sur une ligne** : `whitespace-nowrap` sur sa
+  cellule. *(audit PR #76)*
+- **L'amorce de recette fait apparaître chaque état que l'écran sait afficher** (« Never
+  called », « Not available »…) : un état absent de l'amorce n'est jamais photographié.
+  *(audit PR #76)*
