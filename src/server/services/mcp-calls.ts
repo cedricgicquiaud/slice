@@ -28,6 +28,9 @@ export interface CallNote {
   durationMs: number;
 }
 
+/** At most 10,000 calls are noted per MCP and per day (D8). */
+const DAILY_CAP = 10_000;
+
 export interface McpCalls {
   /** Write the notes of calls made to the connector `connectorId`. */
   write(connectorId: string, notes: CallNote[]): Promise<void>;
@@ -57,7 +60,8 @@ export function createMcpCalls(database: Database): McpCalls {
           as note(version int, action text, called_at timestamptz, result text, status int, duration_ms int)
         where exists (
           select 1 from ${connectorApiActions} where connector_id = ${connectorId} and name = note.action
-        )`);
+        )
+        and (select count(*) from ${connectorCalls} where connector_id = ${connectorId}) < ${DAILY_CAP}`);
     },
     async of(connectorId) {
       const rows = await db
