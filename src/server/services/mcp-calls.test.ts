@@ -1,6 +1,6 @@
 // WAT-154 — an MCP keeps the note of each action call, and nothing else (D3, D4, D14).
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { createMcpCalls, type CallNote } from './mcp-calls';
+import { createMcpCalls, startCallsCleanup, type CallNote } from './mcp-calls';
 import { createHostedStore } from './hosted-store';
 import { createAccountMcps } from './account-mcps';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
@@ -124,6 +124,25 @@ describe('the notes kept (D9)', () => {
     await calls.purgeOld(NOW);
 
     expect((await calls.of(id)).map((note) => note.calledAt.toISOString())).toEqual(['2026-09-27T09:00:00.000Z']);
+  });
+
+  it('lose the calls of more than 30 days once started, then every hour', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const { id } = await createHostedStore(database).put(contacts, workspaceId, NOW);
+    const calls = createMcpCalls(database);
+    await calls.write(id, callsFrom(new Date('2026-09-25T09:00:00.000Z'), 1));
+    const cleanup = startCallsCleanup(calls, { now: () => NOW });
+    try {
+      await vi.waitFor(async () => expect(await calls.of(id)).toEqual([]));
+
+      await calls.write(id, callsFrom(new Date('2026-09-25T10:00:00.000Z'), 1));
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+
+      await vi.waitFor(async () => expect(await calls.of(id)).toEqual([]));
+    } finally {
+      cleanup.stop();
+      vi.useRealTimers();
+    }
   });
 });
 
