@@ -255,18 +255,14 @@ async function callUpstream(
   const abandon = new AbortController();
   const timer = setTimeout(() => abandon.abort(silence), timeoutMs);
   try {
-    let res: Response;
-    try {
-      res = await fetch(url, { method: endpoint.method, headers, body, signal: abandon.signal });
-    } catch (err) {
-      throw isNetworkFailure(err) ? new UpstreamUnreachable(err) : err;
-    }
+    const res = await fetch(url, { method: endpoint.method, headers, body, signal: abandon.signal });
     if (!res.ok) {
       throw new UpstreamFailure(res.status, `Upstream ${res.status} ${res.statusText}: ${await res.text()}`);
     }
     const ct = res.headers.get('content-type') ?? '';
     return await (ct.includes('application/json') ? res.json() : res.text());
   } catch (err) {
+    if (isNetworkFailure(err)) throw new UpstreamUnreachable(err);
     throw err === silence ? new UpstreamUnreachable(silence) : err;
   } finally {
     clearTimeout(timer);
