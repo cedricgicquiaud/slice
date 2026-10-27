@@ -710,9 +710,19 @@ describe('what is never noted', () => {
 
 // WAT-157 — noting a call never slows the agent down, nor fails it.
 describe('noting a call', () => {
-  /** An app reading connectors from the file's database, writing notes with `notes`. */
-  async function appNotingWith(notes: McpCalls): Promise<{ base: string; close(): Promise<void> }> {
-    const noting = createApp({ nodeEnv: 'test', hostedStore: store, mcpCalls: notes, now, auth: account.auth }).listen(0);
+  /** An app reading connectors from the file's database, writing notes with `notes`, waiting `upstreamTimeoutMs` for the API. */
+  async function appNotingWith(
+    notes: McpCalls,
+    upstreamTimeoutMs?: number
+  ): Promise<{ base: string; close(): Promise<void> }> {
+    const noting = createApp({
+      nodeEnv: 'test',
+      hostedStore: store,
+      mcpCalls: notes,
+      now,
+      auth: account.auth,
+      upstreamTimeoutMs,
+    }).listen(0);
     await new Promise<void>((r) => noting.once('listening', r));
     return {
       base: `http://127.0.0.1:${(noting.address() as AddressInfo).port}`,
@@ -790,6 +800,27 @@ describe('noting a call', () => {
     answerTheApi();
 
     await vi.waitFor(async () => expect((await calls.of(id)).map((note) => note.result)).toEqual([{ kind: 'succeeded' }]));
+  });
+
+  it('is "API unreachable" when the API stays silent past the delay, and the agent reads an error (D5, D4)', async () => {
+    const noting = await appNotingWith(calls, 200);
+    beforeAnswer = () => new Promise<void>(() => {});
+    try {
+      const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+
+      const agent = await connectAgent(`${noting.base}/m/${id}`, 'TOKEN');
+      const answer = await agent.callTool({ name: 'list_things', arguments: {} });
+      await agent.close();
+
+      await vi.waitFor(async () =>
+        expect({ agentError: answer.isError, results: (await calls.of(id)).map((note) => note.result) }).toEqual({
+          agentError: true,
+          results: [{ kind: 'api_unreachable' }],
+        })
+      );
+    } finally {
+      await noting.close();
+    }
   });
 
   it("gives the agent the API's answer once its MCP has 10,000 notes that day, and notes nothing more (contract 19, D8)", async () => {
