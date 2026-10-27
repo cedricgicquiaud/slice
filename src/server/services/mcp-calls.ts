@@ -61,7 +61,12 @@ export function createMcpCalls(database: Database): McpCalls {
         where exists (
           select 1 from ${connectorApiActions} where connector_id = ${connectorId} and name = note.action
         )
-        and (select count(*) from ${connectorCalls} where connector_id = ${connectorId}) < ${DAILY_CAP}`);
+        and (
+          select count(*) from ${connectorCalls}
+          where connector_id = ${connectorId}
+            and called_at >= date_trunc('day', note.called_at at time zone 'UTC') at time zone 'UTC'
+            and called_at < (date_trunc('day', note.called_at at time zone 'UTC') + interval '1 day') at time zone 'UTC'
+        ) < ${DAILY_CAP}`);
     },
     async of(connectorId) {
       const rows = await db
