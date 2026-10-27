@@ -246,3 +246,75 @@ describe('buildHostedMcpServer — runtime MCP from config', () => {
     }
   }, 20_000);
 });
+
+describe('an action whose API takes its time (D5)', () => {
+  let slowApi: Server;
+  let slowApiUrl: string;
+  /** How long the API waits before it answers; `Infinity` never answers. */
+  let answerAfterMs = Infinity;
+
+  beforeAll(async () => {
+    slowApi = createServer((_req, res) => {
+      if (answerAfterMs === Infinity) return;
+      setTimeout(() => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      }, answerAfterMs);
+    });
+    await new Promise<void>((r) => slowApi.listen(0, '127.0.0.1', r));
+    slowApiUrl = `http://127.0.0.1:${(slowApi.address() as { port: number }).port}`;
+  });
+
+  afterAll(async () => {
+    slowApi.closeAllConnections();
+    await new Promise<void>((r) => slowApi.close(() => r()));
+  });
+
+  /** An agent connected to an MCP of the slow API, whose engine waits `upstreamTimeoutMs` at most. */
+  async function agentOfSlowApi(upstreamTimeoutMs: number): Promise<{ agent: Client; close(): Promise<void> }> {
+    const srv = buildHostedMcpServer(
+      {
+        name: 'slow',
+        baseUrl: slowApiUrl,
+        upstreamAuth: { type: 'bearer' },
+        endpoints: [{ name: 'list_things', description: 'List', method: 'GET', path: '/things', params: [] }],
+      },
+      { allowPrivateHosts: true, upstreamTimeoutMs }
+    );
+    const tr = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID() });
+    await srv.connect(tr);
+    const http = createServer((req, res) => {
+      relayStore.run({ authorization: 'Bearer USERTOKEN' }, () => {
+        void tr.handleRequest(req, res);
+      });
+    });
+    await new Promise<void>((r) => http.listen(0, '127.0.0.1', r));
+    const agent = new Client({ name: 'slow-test', version: '0.0.0' });
+    await agent.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${(http.address() as { port: number }).port}/`)));
+    return {
+      agent,
+      async close() {
+        await agent.close();
+        http.closeAllConnections();
+        await new Promise<void>((r) => http.close(() => r()));
+      },
+    };
+  }
+
+  it('is abandoned when the API has not answered within the delay, and the agent reads an error', async () => {
+    answerAfterMs = Infinity;
+    const { agent, close } = await agentOfSlowApi(200);
+    try {
+      const startedAt = performance.now();
+      const answer = await agent.callTool({ name: 'list_things', arguments: {} });
+      const waitedMs = performance.now() - startedAt;
+
+      expect({ agentError: answer.isError, abandonedInTime: waitedMs >= 200 && waitedMs < 2_000 }).toEqual({
+        agentError: true,
+        abandonedInTime: true,
+      });
+    } finally {
+      await close();
+    }
+  });
+});
