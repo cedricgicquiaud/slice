@@ -33,6 +33,8 @@ export interface HostedMcpRouterOptions {
   now?: () => Date;
   /** Forwarded to the engine — disables the SSRF guard (tests/dev only). */
   allowPrivateHosts?: boolean;
+  /** Forwarded to the engine — how long an action waits for the API. Defaults to the engine's 30 seconds. */
+  upstreamTimeoutMs?: number;
 }
 
 // An MCP never expires (WAT-102, D2): the expiry below stays in the code but
@@ -169,6 +171,7 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
     const served = new Set(config.endpoints.map((endpoint) => endpoint.name));
     const server = buildHostedMcpServer(config, {
       allowPrivateHosts: options.allowPrivateHosts,
+      upstreamTimeoutMs: options.upstreamTimeoutMs,
     });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     res.on('close', () => {

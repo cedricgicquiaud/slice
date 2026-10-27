@@ -32,6 +32,8 @@ export interface CreateAppOptions {
   hostedStore?: HostedStore;
   /** Where the notes of the hosted MCPs' action calls go. Without it, no call is noted. */
   mcpCalls?: McpCalls;
+  /** How long a hosted MCP's action waits for the API. Defaults to 30 seconds; tests shorten it. */
+  upstreamTimeoutMs?: number;
   /** The MCPs of each account's workspace. Without it, `/api/mcps` is not mounted. */
   accountMcps?: AccountMcps;
   /** Clock that dates a created connector. Defaults to the system clock. */
@@ -115,7 +117,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
       allowPrivateHosts,
     };
     app.use('/api/host', createHostRouter(hosted));
-    app.use('/m', createHostedMcpRouter({ ...hosted, calls: options.mcpCalls }));
+    app.use('/m', createHostedMcpRouter({ ...hosted, calls: options.mcpCalls, upstreamTimeoutMs: options.upstreamTimeoutMs }));
   }
 
   if (nodeEnv === 'production') {
