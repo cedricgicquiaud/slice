@@ -117,6 +117,16 @@ function callsFrom(from: Date, count: number): CallNote[] {
 }
 
 describe('the notes of a day (D8)', () => {
+  it('go up to 10,000 for an MCP: the call after 9,999 notes is noted', async () => {
+    const { id } = await createHostedStore(database).put(contacts, workspaceId, NOW);
+    const calls = createMcpCalls(database);
+    await calls.write(id, callsFrom(NOW, 9_999));
+
+    await calls.write(id, callsFrom(new Date('2026-10-26T18:00:00.000Z'), 1));
+
+    expect((await calls.of(id)).length).toBe(10_000);
+  });
+
   it('stop at 10,000 for an MCP: a call beyond is not noted', async () => {
     const { id } = await createHostedStore(database).put(contacts, workspaceId, NOW);
     const calls = createMcpCalls(database);
