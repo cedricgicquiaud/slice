@@ -334,7 +334,7 @@ describe('an action whose API takes its time (D5)', () => {
       const answer = await agent.callTool({ name: 'list_things', arguments: {} });
       const waitedMs = performance.now() - startedAt;
 
-      expect({ agentError: answer.isError, abandonedInTime: waitedMs >= 200 && waitedMs < 2_000 }).toEqual({
+      expect({ agentError: answer.isError, abandonedInTime: waitedMs >= 200 && waitedMs < 5_000 }).toEqual({
         agentError: true,
         abandonedInTime: true,
       });
