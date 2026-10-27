@@ -112,3 +112,16 @@ export function createMcpCalls(database: Database): McpCalls {
     },
   };
 }
+
+const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+
+/** Delete the notes of more than 30 days now, then every hour, until stopped (D9). */
+export function startCallsCleanup(calls: McpCalls, options: { now: () => Date }): { stop(): void } {
+  const run = () => {
+    void calls.purgeOld(options.now());
+  };
+  run();
+  const timer = setInterval(run, CLEANUP_INTERVAL_MS);
+  timer.unref();
+  return { stop: () => clearInterval(timer) };
+}
