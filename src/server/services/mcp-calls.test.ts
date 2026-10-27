@@ -136,4 +136,15 @@ describe('the notes of a day (D8)', () => {
 
     expect((await calls.of(id)).length).toBe(10_000);
   });
+
+  it('start again the next day, at midnight UTC', async () => {
+    const { id } = await createHostedStore(database).put(contacts, workspaceId, NOW);
+    const calls = createMcpCalls(database);
+    await calls.write(id, callsFrom(NOW, 10_000));
+
+    await calls.write(id, callsFrom(new Date('2026-10-26T23:59:59.999Z'), 1));
+    await calls.write(id, callsFrom(new Date('2026-10-27T00:00:00.000Z'), 1));
+
+    expect((await calls.of(id)).slice(10_000).map((note) => note.calledAt.toISOString())).toEqual(['2026-10-27T00:00:00.000Z']);
+  });
 });
