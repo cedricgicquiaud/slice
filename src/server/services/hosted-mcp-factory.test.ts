@@ -255,10 +255,15 @@ describe('an action whose API takes its time (D5)', () => {
   let answerAfterMs = Infinity;
   /** Settled once the API received a call. */
   let reached: () => void = () => {};
+  /** Settled once the API saw its caller leave a call it had not answered. */
+  let left: () => void = () => {};
 
   beforeAll(async () => {
     slowApi = createServer((_req, res) => {
       reached();
+      res.once('close', () => {
+        if (!res.writableEnded) left();
+      });
       if (answerAfterMs === Infinity) return;
       setTimeout(() => {
         res.writeHead(200, { 'content-type': 'application/json' });
@@ -337,6 +342,20 @@ describe('an action whose API takes its time (D5)', () => {
       await agent.callTool({ name: 'list_things', arguments: {} });
 
       expect(told).toEqual([{ kind: 'api_unreachable' }]);
+    } finally {
+      await close();
+    }
+  });
+
+  it('leaves no request open at the API once abandoned', async () => {
+    answerAfterMs = Infinity;
+    const { agent, close } = await agentOfSlowApi(200);
+    try {
+      const apiSawItLeave = new Promise<string>((resolve) => (left = () => resolve('closed')));
+      await agent.callTool({ name: 'list_things', arguments: {} });
+      const stillOpen = new Promise<string>((resolve) => setTimeout(() => resolve('still open'), 1_000));
+
+      expect(await Promise.race([apiSawItLeave, stillOpen])).toBe('closed');
     } finally {
       await close();
     }
