@@ -104,3 +104,26 @@ describe('the notes of action calls', () => {
     expect({ status: res.status, notes: await calls.of(id) }).toEqual({ status: 200, notes: [] });
   });
 });
+
+/** `count` calls of `list_contacts` a millisecond apart, from `from` on. */
+function callsFrom(from: Date, count: number): CallNote[] {
+  return Array.from({ length: count }, (_, n) => ({
+    action: 'list_contacts',
+    version: 1,
+    calledAt: new Date(from.getTime() + n),
+    result: { kind: 'succeeded' as const },
+    durationMs: 120,
+  }));
+}
+
+describe('the notes of a day (D8)', () => {
+  it('stop at 10,000 for an MCP: a call beyond is not noted', async () => {
+    const { id } = await createHostedStore(database).put(contacts, workspaceId, NOW);
+    const calls = createMcpCalls(database);
+    await calls.write(id, callsFrom(NOW, 10_000));
+
+    await calls.write(id, callsFrom(new Date('2026-10-26T18:00:00.000Z'), 1));
+
+    expect((await calls.of(id)).length).toBe(10_000);
+  });
+});
