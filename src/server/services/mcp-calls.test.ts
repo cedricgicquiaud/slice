@@ -137,6 +137,18 @@ describe('the notes of a day (D8)', () => {
     expect((await calls.of(id)).length).toBe(10_000);
   });
 
+  it('stop at 10,000 for one MCP only: another MCP of the same account is still noted', async () => {
+    const store = createHostedStore(database);
+    const capped = await store.put(contacts, workspaceId, NOW);
+    const other = await store.put(contacts, workspaceId, NOW);
+    const calls = createMcpCalls(database);
+    await calls.write(capped.id, callsFrom(NOW, 10_000));
+
+    await calls.write(other.id, callsFrom(new Date('2026-10-26T18:00:00.000Z'), 1));
+
+    expect((await calls.of(other.id)).length).toBe(1);
+  });
+
   it('stop at 10,000 within the calls of one request that crosses the limit', async () => {
     const { id } = await createHostedStore(database).put(contacts, workspaceId, NOW);
     const calls = createMcpCalls(database);
