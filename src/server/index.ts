@@ -5,7 +5,7 @@ import { databaseConfigFromEnv, openDatabase } from './db/client';
 import { migrateDatabase } from './db/migrate';
 import { createHostedStore } from './services/hosted-store';
 import { createAccountMcps } from './services/account-mcps';
-import { createMcpCalls } from './services/mcp-calls';
+import { createMcpCalls, startCallsCleanup } from './services/mcp-calls';
 
 const PORT = Number(process.env.PORT ?? 3001);
 const NODE_ENV = process.env.NODE_ENV ?? 'development';
@@ -21,6 +21,8 @@ try {
   const hostedStore = createHostedStore(database);
   const accountMcps = createAccountMcps(database);
   const mcpCalls = createMcpCalls(database);
+  // The calls of more than 30 days leave the database within the hour (D9).
+  startCallsCleanup(mcpCalls, { now: () => new Date() });
 
   const auth = createAuth({
     database,

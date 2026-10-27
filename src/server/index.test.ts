@@ -12,6 +12,7 @@ import { openDatabase } from './db/client';
 import { migrateDatabase } from './db/migrate';
 import { startTestProcess, stopTestProcess } from './test-processes';
 import { createHostedStore } from './services/hosted-store';
+import { createMcpCalls } from './services/mcp-calls';
 import { createTestAccount, TEST_AUTH_SECRET } from './db/test-account';
 import { DATABASE_TEST_TIMEOUTS } from './db/test-database';
 
@@ -233,6 +234,45 @@ describe('server entry point', () => {
         expect(res.status).toBe(200);
       } finally {
         await server.stop();
+      }
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it('deletes at startup the calls of more than 30 days, and keeps the others (contract 20, D9)', async () => {
+    const scratch = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    try {
+      const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000);
+      const database = openDatabase({ driver: 'pglite', dataDir: path.join(scratch, 'pglite') });
+      await migrateDatabase(database);
+      const { workspaceId } = await createTestAccount({ database });
+      const { id } = await createHostedStore(database).put(
+        {
+          name: 'used',
+          baseUrl: 'https://api.example.com',
+          upstreamAuth: { type: 'none' },
+          endpoints: [{ name: 'list_things', description: 'List things', method: 'GET', path: '/things', params: [] }],
+          apiActions: [
+            { name: 'list_things', label: 'List things', group: 'Things', deprecated: false, method: 'GET', path: '/things', params: [] },
+          ],
+        },
+        workspaceId,
+        daysAgo(40)
+      );
+      const note = (calledAt: Date) => ({ action: 'list_things', version: 1, calledAt, result: { kind: 'succeeded' as const }, durationMs: 80 });
+      const recent = daysAgo(29);
+      await createMcpCalls(database).write(id, [note(daysAgo(31)), note(recent)]);
+      await database.close();
+
+      const server = await startServer(ROOT, { SLICE_DATA_DIR: scratch });
+      await server.stop();
+
+      const reopened = openDatabase({ driver: 'pglite', dataDir: path.join(scratch, 'pglite') });
+      try {
+        expect((await createMcpCalls(reopened).of(id)).map((kept) => kept.calledAt)).toEqual([recent]);
+      } finally {
+        await reopened.close();
       }
     } finally {
       rmSync(scratch, { recursive: true, force: true });

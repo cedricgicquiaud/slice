@@ -1,6 +1,6 @@
 // WAT-154 — an MCP keeps the note of each action call, and nothing else (D3, D4, D14).
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { createMcpCalls, type CallNote } from './mcp-calls';
+import { createMcpCalls, startCallsCleanup, type CallNote } from './mcp-calls';
 import { createHostedStore } from './hosted-store';
 import { createAccountMcps } from './account-mcps';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
@@ -102,5 +102,158 @@ describe('the notes of action calls', () => {
     );
 
     expect({ status: res.status, notes: await calls.of(id) }).toEqual({ status: 200, notes: [] });
+  });
+});
+
+describe('the notes kept (D9)', () => {
+  it('lose a call made 31 days ago', async () => {
+    const { id } = await createHostedStore(database).put(contacts, workspaceId, NOW);
+    const calls = createMcpCalls(database);
+    await calls.write(id, callsFrom(new Date('2026-09-25T09:00:00.000Z'), 1));
+
+    await calls.purgeOld(NOW);
+
+    expect(await calls.of(id)).toEqual([]);
+  });
+
+  it('keep a call made 29 days ago', async () => {
+    const { id } = await createHostedStore(database).put(contacts, workspaceId, NOW);
+    const calls = createMcpCalls(database);
+    await calls.write(id, callsFrom(new Date('2026-09-27T09:00:00.000Z'), 1));
+
+    await calls.purgeOld(NOW);
+
+    expect((await calls.of(id)).map((note) => note.calledAt.toISOString())).toEqual(['2026-09-27T09:00:00.000Z']);
+  });
+
+  it('lose the calls of more than 30 days once started, then every hour', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const { id } = await createHostedStore(database).put(contacts, workspaceId, NOW);
+    const calls = createMcpCalls(database);
+    await calls.write(id, callsFrom(new Date('2026-09-25T09:00:00.000Z'), 1));
+    const cleanup = startCallsCleanup(calls, { now: () => NOW });
+    try {
+      await vi.waitFor(async () => expect(await calls.of(id)).toEqual([]));
+
+      await calls.write(id, callsFrom(new Date('2026-09-25T10:00:00.000Z'), 1));
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+
+      await vi.waitFor(async () => expect(await calls.of(id)).toEqual([]));
+    } finally {
+      cleanup.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it('are cleaned up again an hour after a cleanup failed on an unreachable database, the failure only logged (D7)', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const downDb = await createTestDatabase();
+    const down = openDatabase(downDb.config);
+    await migrateDatabase(down);
+    await down.close();
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const cleanup = startCallsCleanup(createMcpCalls(down), { now: () => NOW });
+    try {
+      await vi.waitFor(() => expect(logged).toHaveBeenCalledTimes(1));
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+
+      await vi.waitFor(() =>
+        expect(logged.mock.calls).toEqual([
+          ['[mcp-calls] cleanup failed:', expect.any(String)],
+          ['[mcp-calls] cleanup failed:', expect.any(String)],
+        ])
+      );
+    } finally {
+      cleanup.stop();
+      logged.mockRestore();
+      vi.useRealTimers();
+      await downDb.dispose();
+    }
+  });
+});
+
+/** `count` calls of `list_contacts` a millisecond apart, from `from` on. */
+function callsFrom(from: Date, count: number): CallNote[] {
+  return Array.from({ length: count }, (_, n) => ({
+    action: 'list_contacts',
+    version: 1,
+    calledAt: new Date(from.getTime() + n),
+    result: { kind: 'succeeded' as const },
+    durationMs: 120,
+  }));
+}
+
+describe('the notes of a day (D8)', () => {
+  it('go up to 10,000 for an MCP: the call after 9,999 notes is noted', async () => {
+    const { id } = await createHostedStore(database).put(contacts, workspaceId, NOW);
+    const calls = createMcpCalls(database);
+    await calls.write(id, callsFrom(NOW, 9_999));
+
+    await calls.write(id, callsFrom(new Date('2026-10-26T18:00:00.000Z'), 1));
+
+    expect((await calls.of(id)).length).toBe(10_000);
+  });
+
+  it('stop at 10,000 for an MCP: a call beyond is not noted', async () => {
+    const { id } = await createHostedStore(database).put(contacts, workspaceId, NOW);
+    const calls = createMcpCalls(database);
+    await calls.write(id, callsFrom(NOW, 10_000));
+
+    await calls.write(id, callsFrom(new Date('2026-10-26T18:00:00.000Z'), 1));
+
+    expect((await calls.of(id)).length).toBe(10_000);
+  });
+
+  it('stop at 10,000 for one MCP only: another MCP of the same account is still noted', async () => {
+    const store = createHostedStore(database);
+    const capped = await store.put(contacts, workspaceId, NOW);
+    const other = await store.put(contacts, workspaceId, NOW);
+    const calls = createMcpCalls(database);
+    await calls.write(capped.id, callsFrom(NOW, 10_000));
+
+    await calls.write(other.id, callsFrom(new Date('2026-10-26T18:00:00.000Z'), 1));
+
+    expect((await calls.of(other.id)).length).toBe(1);
+  });
+
+  it('stop at 10,000 within the calls of one request that crosses the limit', async () => {
+    const { id } = await createHostedStore(database).put(contacts, workspaceId, NOW);
+    const calls = createMcpCalls(database);
+    await calls.write(id, callsFrom(NOW, 9_998));
+
+    await calls.write(id, callsFrom(new Date('2026-10-26T18:00:00.000Z'), 3));
+
+    expect((await calls.of(id)).length).toBe(10_000);
+  });
+
+  it('stop at 10,000 when the two requests that reach the limit are noted at once', async () => {
+    // A real race on PostgreSQL only (`DATABASE_URL`): PGlite's single connection runs the two one after the other.
+    // Played twenty times: without a lock, a single run would pass part of the time.
+    const store = createHostedStore(database);
+    const calls = createMcpCalls(database);
+    const counts: number[] = [];
+    for (let round = 0; round < 20; round += 1) {
+      const { id } = await store.put(contacts, workspaceId, NOW);
+      await calls.write(id, callsFrom(NOW, 9_999));
+
+      await Promise.all([
+        calls.write(id, callsFrom(new Date('2026-10-26T18:00:00.000Z'), 1)),
+        calls.write(id, callsFrom(new Date('2026-10-26T19:00:00.000Z'), 1)),
+      ]);
+      counts.push((await calls.of(id)).length);
+    }
+
+    expect(counts).toEqual(Array.from({ length: 20 }, () => 10_000));
+  });
+
+  it('start again the next day, at midnight UTC', async () => {
+    const { id } = await createHostedStore(database).put(contacts, workspaceId, NOW);
+    const calls = createMcpCalls(database);
+    await calls.write(id, callsFrom(NOW, 10_000));
+
+    await calls.write(id, callsFrom(new Date('2026-10-26T23:59:59.999Z'), 1));
+    await calls.write(id, callsFrom(new Date('2026-10-27T00:00:00.000Z'), 1));
+
+    expect((await calls.of(id)).slice(10_000).map((note) => note.calledAt.toISOString())).toEqual(['2026-10-27T00:00:00.000Z']);
   });
 });

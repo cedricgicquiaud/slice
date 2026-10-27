@@ -935,3 +935,71 @@ recette (propriétaire du MCP), `<B>` par celle d'un autre compte (connecté en 
   l'écran de connexion « Sign in to SLICE » s'affiche, rien de l'utilisation. Preuve aussi, pour une session qui expire
   pendant que la page est affichée, par le test « shows the sign-in screen when the usage is refused for want of a
   session » (`src/client/screens/usage.test.tsx`).
+
+### Livraison 3 — Les appels restent bornés
+
+**Préparer la recette**
+
+- Lancer `pnpm dev`, ouvrir http://localhost:5173, puis lancer l'amorce `.pilot/recette/amorce-usage.js` (console du
+  navigateur, comme en livraison 2) : elle crée le MCP « Recette Notes » et l'appelle trois fois. Noter son adresse et
+  son identifiant (la fin de l'adresse après `/m/`).
+- Pour une API qui ne répond jamais : dans un terminal, lancer `nc -l 9999` (le programme accepte la connexion et ne
+  répond rien). Dans la console du navigateur, recoller le code de création de la livraison 1 en remplaçant
+  `https://httpbin.org` par `http://127.0.0.1:9999` ; noter l'adresse du MCP « Recette Usage » affichée.
+- Les appels se font par `pnpm exec tsx scripts/try-hosted.ts <adresse> <action> '<valeurs>'`, comme en livraison 1.
+
+**Un agent dont l'API ne répond pas dans les 30 secondes reçoit une erreur (WAT-163)**
+
+- [ ] Appeler `read_echo` (`'{}'`) sur l'adresse du MCP de l'API muette : la commande attend, puis rend une erreur au
+  bout de 30 secondes (chronométrer : entre 30 et 31 s), avec le texte « The API did not answer within 30 seconds. »
+- [ ] Ouvrir « Usage » de ce MCP (« My MCPs », lien « Usage ») : le dernier appel de `read_echo` porte « API
+  unreachable ».
+- [ ] Une API qui répond en 29 secondes est servie normalement : preuve par le test « is served normally when the API
+  answers in 29 seconds, the delay being 30 seconds by default » (`src/server/services/hosted-mcp-factory.test.ts`),
+  où l'attente de 29 s est simulée. À la main, une API lente mais sous la limite : `https://httpbin.org/delay/10`
+  répond en 10 s et le résultat est « Succeeded ».
+- [ ] Refus : l'appel abandonné ne laisse pas la requête vers l'API ouverte. Au moment où la commande rend son erreur,
+  `nc -l 9999` s'arrête de lui-même dans son terminal (SLICE a fermé la connexion). Preuve aussi par le test « leaves
+  no request open at the API once abandoned ».
+- [ ] Prouvé avec un vrai client MCP contre une API qui ne répond pas : les tests de
+  `src/server/services/hosted-mcp-factory.test.ts`, groupe « an action whose API takes its time », passent avec un
+  délai réglé à 200 ms (erreur reçue, résultat « API unreachable », requête refermée).
+
+**Au-delà de 10 000 appels notés dans la journée, un MCP n'en note plus, et l'agent reçoit toujours ses réponses (WAT-164)**
+
+On ne peut pas atteindre 10 000 appels à la main ; chaque case renvoie à son test.
+
+- [ ] Refus : au-delà de 10 000 notes dans la journée pour un MCP, l'appel suivant n'est pas noté. Preuve par les
+  tests « stop at 10,000 for an MCP: a call beyond is not noted » (10 000 notes + 1 → 10 000), « go up to 10,000 for an
+  MCP: the call after 9,999 notes is noted » (9 999 + 1 → 10 000) et « stop at 10,000 within the calls of one request
+  that crosses the limit » (9 998 + un lot de 3 → 10 000), dans `src/server/services/mcp-calls.test.ts`.
+- [ ] Au-delà du plafond, l'agent reçoit toujours sa réponse : preuve par le test « gives the agent the API's answer
+  once its MCP has 10,000 notes that day, and notes nothing more » (`src/server/routes/hosted-mcp.test.ts`), avec un
+  vrai client MCP. La page « Usage » affiche alors le message de la livraison 2 (« 10,000 calls reached on <date>… »).
+- [ ] Le plafond est par MCP : un autre MCP du même compte continue d'être noté. Preuve par le test « stop at 10,000
+  for one MCP only: another MCP of the same account is still noted ».
+- [ ] Le lendemain, les appels sont de nouveau notés, à minuit UTC (1 h du matin à Paris en hiver) : preuve par le
+  test « start again the next day, at midnight UTC » (une note à 23:59:59.999 UTC refusée, celle de minuit UTC écrite).
+- [ ] Refus : deux écritures simultanées à la limite ne dépassent pas 10 000 notes. Preuve par le test « stop at
+  10,000 when the two requests that reach the limit are noted at once », joué vingt fois ; il ne prouve la course que
+  sur PostgreSQL : vérifier que l'étape « Storage tests (PostgreSQL) » de la CI de la PR, qui lance
+  `src/server/services/mcp-calls.test.ts`, est verte.
+
+**Un appel de plus de 30 jours disparaît de la base dans l'heure (WAT-165)**
+
+- [ ] Un appel de plus de 30 jours n'est plus en base au démarrage suivant du serveur. Arrêter `pnpm dev` (Ctrl+C),
+  puis vieillir deux appels de « Recette Notes » (remplacer `<id>` par son identifiant) :
+  `node --import tsx --input-type=module -e "const { openDatabase } = await import('./src/server/db/client.ts'); const { sql } = await import('drizzle-orm'); const db = openDatabase({ driver: 'pglite', dataDir: 'data/pglite' }); const [a, b] = await db.rows(sql\`select id from connector_calls where connector_id = '<id>' order by id limit 2\`); await db.rows(sql\`update connector_calls set called_at = now() - interval '31 days' where id = \${a.id}\`); await db.rows(sql\`update connector_calls set called_at = now() - interval '29 days' where id = \${b.id}\`); console.table(await db.rows(sql\`select id, action, called_at from connector_calls where connector_id = '<id>' order by called_at\`)); await db.close();"`
+  Le tableau montre un appel à 31 jours et un à 29 jours. Relancer `pnpm dev`, attendre « SLICE server running », l'arrêter,
+  puis relire les notes (commande de la livraison 1) : l'appel à 31 jours a disparu.
+- [ ] La suppression tourne au démarrage du serveur (case ci-dessus), puis toutes les heures : preuve par le test
+  « lose the calls of more than 30 days once started, then every hour » (`src/server/services/mcp-calls.test.ts`,
+  horloge avancée d'une heure) et « deletes at startup the calls of more than 30 days, and keeps the others »
+  (`src/server/index.test.ts`).
+- [ ] Refus : l'appel à 29 jours de la première case est toujours dans les notes. Preuve aussi par le test « keep a
+  call made 29 days ago ».
+- [ ] Une suppression qui échoue (base injoignable) s'écrit dans le terminal du serveur, `[mcp-calls] cleanup failed:`
+  suivi de la raison, et n'arrête pas le serveur ; la suivante, une heure plus tard, réessaie. Preuve par le test « are
+  cleaned up again an hour after a cleanup failed on an unreachable database, the failure only logged ».
+- [ ] `docs/API.md`, section `ANY /m/:id`, décrit le délai de 30 secondes, le plafond de 10 000 appels notés par MCP et
+  par jour UTC, et la conservation des notes pendant 30 jours.

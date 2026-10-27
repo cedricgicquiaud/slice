@@ -1,13 +1,14 @@
 // Core of the shared hosted runtime (Pivot-4): build an McpServer in-memory
 // from a stored config, serve it, and relay the caller's token to the upstream
 // — proving one engine can BE any MCP from data, at request time.
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { buildHostedMcpServer, relayStore, type HostedMcpConfig } from './hosted-mcp-factory';
+import type { CallResult } from './mcp-calls';
 
 function freePort(): Promise<number> {
   return new Promise((resolve) => {
@@ -245,4 +246,176 @@ describe('buildHostedMcpServer — runtime MCP from config', () => {
       await new Promise<void>((r) => http.close(() => r()));
     }
   }, 20_000);
+});
+
+describe('an action whose API takes its time (D5)', () => {
+  let slowApi: Server;
+  let slowApiUrl: string;
+  /** How long the API waits before it answers; `Infinity` never answers. */
+  let answerAfterMs = Infinity;
+  /** Whether the API, never answering, still sends its headers first: then only its body is missing. */
+  let sendsHeadersFirst = false;
+  /** Settled once the API received a call. */
+  let reached: () => void = () => {};
+  /** Settled once the API saw its caller leave a call it had not answered. */
+  let left: () => void = () => {};
+
+  beforeAll(async () => {
+    slowApi = createServer((_req, res) => {
+      reached();
+      res.once('close', () => {
+        if (!res.writableEnded) left();
+      });
+      if (answerAfterMs === Infinity) {
+        if (sendsHeadersFirst) {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.flushHeaders();
+        }
+        return;
+      }
+      setTimeout(() => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+      }, answerAfterMs);
+    });
+    await new Promise<void>((r) => slowApi.listen(0, '127.0.0.1', r));
+    slowApiUrl = `http://127.0.0.1:${(slowApi.address() as { port: number }).port}`;
+  });
+
+  afterAll(async () => {
+    slowApi.closeAllConnections();
+    await new Promise<void>((r) => slowApi.close(() => r()));
+  });
+
+  /**
+   * An agent connected to an MCP of the slow API, whose engine waits `upstreamTimeoutMs` at most,
+   * and what the engine told of each action call.
+   */
+  async function agentOfSlowApi(
+    upstreamTimeoutMs: number | undefined
+  ): Promise<{ agent: Client; told: CallResult[]; close(): Promise<void> }> {
+    const told: CallResult[] = [];
+    const srv = buildHostedMcpServer(
+      {
+        name: 'slow',
+        baseUrl: slowApiUrl,
+        upstreamAuth: { type: 'bearer' },
+        endpoints: [{ name: 'list_things', description: 'List', method: 'GET', path: '/things', params: [] }],
+      },
+      { allowPrivateHosts: true, upstreamTimeoutMs }
+    );
+    const tr = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID() });
+    await srv.connect(tr);
+    const http = createServer((req, res) => {
+      const onActionResult = (_requestId: string | number, result: CallResult) => told.push(result);
+      relayStore.run({ authorization: 'Bearer USERTOKEN', onActionResult }, () => {
+        void tr.handleRequest(req, res);
+      });
+    });
+    await new Promise<void>((r) => http.listen(0, '127.0.0.1', r));
+    const agent = new Client({ name: 'slow-test', version: '0.0.0' });
+    await agent.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${(http.address() as { port: number }).port}/`)));
+    return {
+      agent,
+      told,
+      async close() {
+        await agent.close();
+        http.closeAllConnections();
+        await new Promise<void>((r) => http.close(() => r()));
+      },
+    };
+  }
+
+  it('is abandoned when the API has not answered within the delay, and the agent reads an error', async () => {
+    answerAfterMs = Infinity;
+    const { agent, close } = await agentOfSlowApi(200);
+    try {
+      const startedAt = performance.now();
+      const answer = await agent.callTool({ name: 'list_things', arguments: {} });
+      const waitedMs = performance.now() - startedAt;
+
+      expect({ agentError: answer.isError, abandonedInTime: waitedMs >= 200 && waitedMs < 5_000 }).toEqual({
+        agentError: true,
+        abandonedInTime: true,
+      });
+    } finally {
+      await close();
+    }
+  });
+
+  it('tells the agent that the API did not answer within the delay', async () => {
+    answerAfterMs = Infinity;
+    const { agent, close } = await agentOfSlowApi(200);
+    try {
+      const answer = await agent.callTool({ name: 'list_things', arguments: {} });
+
+      expect(answer.content).toEqual([{ type: 'text', text: 'The API did not answer within 0.2 seconds.' }]);
+    } finally {
+      await close();
+    }
+  });
+
+  it('is told "API unreachable" when it is abandoned (D4)', async () => {
+    answerAfterMs = Infinity;
+    const { agent, told, close } = await agentOfSlowApi(200);
+    try {
+      await agent.callTool({ name: 'list_things', arguments: {} });
+
+      expect(told).toEqual([{ kind: 'api_unreachable' }]);
+    } finally {
+      await close();
+    }
+  });
+
+  it('is abandoned, and told "API unreachable", when the API sends its headers then stays silent (D5, D4)', async () => {
+    answerAfterMs = Infinity;
+    sendsHeadersFirst = true;
+    const { agent, told, close } = await agentOfSlowApi(200);
+    try {
+      const startedAt = performance.now();
+      const answer = await agent.callTool({ name: 'list_things', arguments: {} });
+      const waitedMs = performance.now() - startedAt;
+
+      expect({ agentError: answer.isError, abandonedInTime: waitedMs >= 200 && waitedMs < 5_000, told }).toEqual({
+        agentError: true,
+        abandonedInTime: true,
+        told: [{ kind: 'api_unreachable' }],
+      });
+    } finally {
+      sendsHeadersFirst = false;
+      await close();
+    }
+  });
+
+  it('leaves no request open at the API once abandoned', async () => {
+    answerAfterMs = Infinity;
+    const { agent, close } = await agentOfSlowApi(200);
+    try {
+      const apiSawItLeave = new Promise<string>((resolve) => (left = () => resolve('closed')));
+      await agent.callTool({ name: 'list_things', arguments: {} });
+      const stillOpen = new Promise<string>((resolve) => setTimeout(() => resolve('still open'), 1_000));
+
+      expect(await Promise.race([apiSawItLeave, stillOpen])).toBe('closed');
+    } finally {
+      await close();
+    }
+  });
+
+  it('is served normally when the API answers in 29 seconds, the delay being 30 seconds by default', async () => {
+    answerAfterMs = 29_000;
+    const { agent, told, close } = await agentOfSlowApi(undefined);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const arrived = new Promise<void>((resolve) => (reached = resolve));
+      const answering = agent.callTool({ name: 'list_things', arguments: {} });
+      await arrived;
+      await vi.advanceTimersByTimeAsync(29_000);
+      const answer = await answering;
+
+      expect({ agentError: answer.isError ?? false, told }).toEqual({ agentError: false, told: [{ kind: 'succeeded' }] });
+    } finally {
+      vi.useRealTimers();
+      await close();
+    }
+  });
 });

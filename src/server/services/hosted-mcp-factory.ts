@@ -19,7 +19,12 @@ import type { CallResult } from './mcp-calls';
 export interface HostedMcpOptions {
   /** When false (the production default), the upstream host is SSRF-guarded. */
   allowPrivateHosts?: boolean;
+  /** How long an action waits for the API before it is abandoned (D5). Defaults to 30 seconds. */
+  upstreamTimeoutMs?: number;
 }
+
+/** An action waits at most 30 seconds for the API (D5). */
+const UPSTREAM_TIMEOUT_MS = 30_000;
 
 /** One endpoint the hosted MCP exposes as a tool. */
 export interface HostedEndpoint {
@@ -194,7 +199,8 @@ async function callUpstream(
   config: HostedMcpConfig,
   endpoint: HostedEndpoint,
   args: Record<string, unknown>,
-  allowPrivateHosts: boolean
+  allowPrivateHosts: boolean,
+  timeoutMs: number
 ): Promise<unknown> {
   // Defense in depth: re-check the host at request time, not just at config
   // creation. The caller controls neither host nor protocol here (both are
@@ -244,17 +250,23 @@ async function callUpstream(
 
   const body = assembleBody(endpoint, args);
 
-  let res: Response;
+  // The API that has not answered in time is an API SLICE cannot reach (D4, D5).
+  const silence = new Error(`The API did not answer within ${timeoutMs / 1000} seconds.`);
+  const abandon = new AbortController();
+  const timer = setTimeout(() => abandon.abort(silence), timeoutMs);
   try {
-    res = await fetch(url, { method: endpoint.method, headers, body });
+    const res = await fetch(url, { method: endpoint.method, headers, body, signal: abandon.signal });
+    if (!res.ok) {
+      throw new UpstreamFailure(res.status, `Upstream ${res.status} ${res.statusText}: ${await res.text()}`);
+    }
+    const ct = res.headers.get('content-type') ?? '';
+    return await (ct.includes('application/json') ? res.json() : res.text());
   } catch (err) {
-    throw isNetworkFailure(err) ? new UpstreamUnreachable(err) : err;
+    if (isNetworkFailure(err)) throw new UpstreamUnreachable(err);
+    throw err === silence ? new UpstreamUnreachable(silence) : err;
+  } finally {
+    clearTimeout(timer);
   }
-  if (!res.ok) {
-    throw new UpstreamFailure(res.status, `Upstream ${res.status} ${res.statusText}: ${await res.text()}`);
-  }
-  const ct = res.headers.get('content-type') ?? '';
-  return ct.includes('application/json') ? res.json() : res.text();
 }
 
 /**
@@ -283,6 +295,7 @@ export function buildHostedMcpServer(
   options: HostedMcpOptions = {}
 ): McpServer {
   const allowPrivateHosts = options.allowPrivateHosts ?? false;
+  const upstreamTimeoutMs = options.upstreamTimeoutMs ?? UPSTREAM_TIMEOUT_MS;
   const server = new McpServer({ name: config.name, version: '0.1.0' });
   for (const endpoint of config.endpoints) {
     const shape: Record<string, ZodTypeAny> = {};
@@ -297,7 +310,7 @@ export function buildHostedMcpServer(
       async (args: Record<string, unknown>, extra) => {
         const tell = (result: CallResult) => relayStore.getStore()?.onActionResult?.(extra.requestId, result);
         try {
-          const result = await callUpstream(config, endpoint, args, allowPrivateHosts);
+          const result = await callUpstream(config, endpoint, args, allowPrivateHosts, upstreamTimeoutMs);
           tell({ kind: 'succeeded' });
           return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
         } catch (err) {
