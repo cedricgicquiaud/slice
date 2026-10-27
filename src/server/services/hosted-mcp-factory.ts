@@ -250,8 +250,10 @@ async function callUpstream(
 
   const body = assembleBody(endpoint, args);
 
+  // The API that has not answered in time is an API SLICE cannot reach (D4, D5).
+  const silence = new Error(`The API did not answer within ${timeoutMs / 1000} seconds.`);
   const abandon = new AbortController();
-  const timer = setTimeout(() => abandon.abort(), timeoutMs);
+  const timer = setTimeout(() => abandon.abort(silence), timeoutMs);
   try {
     let res: Response;
     try {
@@ -264,6 +266,8 @@ async function callUpstream(
     }
     const ct = res.headers.get('content-type') ?? '';
     return await (ct.includes('application/json') ? res.json() : res.text());
+  } catch (err) {
+    throw err === silence ? new UpstreamUnreachable(silence) : err;
   } finally {
     clearTimeout(timer);
   }
