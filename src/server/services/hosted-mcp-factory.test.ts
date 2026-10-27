@@ -253,6 +253,8 @@ describe('an action whose API takes its time (D5)', () => {
   let slowApiUrl: string;
   /** How long the API waits before it answers; `Infinity` never answers. */
   let answerAfterMs = Infinity;
+  /** Whether the API, never answering, still sends its headers first: then only its body is missing. */
+  let sendsHeadersFirst = false;
   /** Settled once the API received a call. */
   let reached: () => void = () => {};
   /** Settled once the API saw its caller leave a call it had not answered. */
@@ -264,7 +266,13 @@ describe('an action whose API takes its time (D5)', () => {
       res.once('close', () => {
         if (!res.writableEnded) left();
       });
-      if (answerAfterMs === Infinity) return;
+      if (answerAfterMs === Infinity) {
+        if (sendsHeadersFirst) {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.flushHeaders();
+        }
+        return;
+      }
       setTimeout(() => {
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ ok: true }));
@@ -355,6 +363,26 @@ describe('an action whose API takes its time (D5)', () => {
 
       expect(told).toEqual([{ kind: 'api_unreachable' }]);
     } finally {
+      await close();
+    }
+  });
+
+  it('is abandoned, and told "API unreachable", when the API sends its headers then stays silent (D5, D4)', async () => {
+    answerAfterMs = Infinity;
+    sendsHeadersFirst = true;
+    const { agent, told, close } = await agentOfSlowApi(200);
+    try {
+      const startedAt = performance.now();
+      const answer = await agent.callTool({ name: 'list_things', arguments: {} });
+      const waitedMs = performance.now() - startedAt;
+
+      expect({ agentError: answer.isError, abandonedInTime: waitedMs >= 200 && waitedMs < 5_000, told }).toEqual({
+        agentError: true,
+        abandonedInTime: true,
+        told: [{ kind: 'api_unreachable' }],
+      });
+    } finally {
+      sendsHeadersFirst = false;
       await close();
     }
   });
