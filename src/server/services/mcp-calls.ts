@@ -52,9 +52,9 @@ export function createMcpCalls(database: Database): McpCalls {
         status: result.kind === 'failed' ? result.status : null,
         duration_ms: durationMs,
       }));
-      // Only a call of one of the API's actions is noted (D2), on a UTC day the MCP has not reached its cap
-      // (D8). In one statement, whatever the number of calls: the notes travel as a single JSON value, far
-      // from PostgreSQL's limit on parameters, and each day's notes are counted once.
+      // Only a call of one of the API's actions is noted (D2), while its UTC day has room left under the
+      // cap (D8), in the order of the calls. In one statement, whatever the number of calls: the notes
+      // travel as a single JSON value, far from PostgreSQL's limit on parameters.
       await db.execute(sql`
         with call as (
           select *, date_trunc('day', called_at at time zone 'UTC') as utc_day
