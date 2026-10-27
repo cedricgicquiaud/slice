@@ -7,6 +7,7 @@ import type { Database } from '../db/client';
 import { connectorActions, connectorVersions, connectors } from '../db/schema';
 import { apiNameOf, readMcpHistory, restoreMcpVersion, type McpHistory, type RestoreOutcome } from './mcp-versions';
 import { readMcpSelection, saveMcpSelection, type McpSelection, type SaveOutcome } from './mcp-selection';
+import { readMcpUsage, type McpUsage } from './mcp-usage';
 
 /** One line of the list. */
 export interface AccountMcp {
@@ -34,6 +35,8 @@ export interface AccountMcps {
   saveSelection(workspaceId: string, id: string, change: McpSelectionChange): Promise<SaveOutcome>;
   /** Make version `number` of the MCP `id` of `workspaceId` the active one again, from now (D9). */
   restore(workspaceId: string, id: string, number: number): Promise<RestoreOutcome>;
+  /** The usage of the MCP `id` of `workspaceId` over the last 30 days (D10), or `undefined` when there is no such MCP. */
+  usage(workspaceId: string, id: string): Promise<McpUsage | undefined>;
 }
 
 export function createAccountMcps(database: Database): AccountMcps {
@@ -82,5 +85,6 @@ export function createAccountMcps(database: Database): AccountMcps {
     selection: (workspaceId, id) => readMcpSelection(database, workspaceId, id),
     saveSelection: (workspaceId, id, change) => saveMcpSelection(database, workspaceId, id, change, new Date()),
     restore: (workspaceId, id, number) => restoreMcpVersion(database, workspaceId, id, number, new Date()),
+    usage: (workspaceId, id) => readMcpUsage(database, workspaceId, id, new Date()),
   };
 }

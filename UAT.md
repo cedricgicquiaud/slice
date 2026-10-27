@@ -820,3 +820,118 @@ ligne. La suppression du compte se joue en dernier.
   décompresser ; `grep -ri connector_calls <dossier du kit>` ne trouve rien, et le kit n'a aucune base de données.
 - [ ] `docs/API.md`, section `ANY /m/:id`, décrit la note des appels : ce qu'elle garde, ce qu'elle ne garde jamais,
   les six résultats et ce qui n'est pas noté.
+
+### Livraison 2 — Une page montre l'utilisation de chaque MCP
+
+**Préparer la recette**
+
+- Supprimer le dossier `data/` de la base de développement s'il date d'avant la livraison 1 (table des appels), puis
+  lancer `pnpm dev` et ouvrir http://localhost:5173.
+- Raccourci : l'amorce `.pilot/recette/amorce-usage.js`, collée dans la console du navigateur sur
+  http://localhost:5173, ouvre une session pour `recette@slice.local` et crée le MCP « Recette Notes », dont l'API est
+  SLICE lui-même (`http://localhost:3001/api`). Sa version 1 coche « Read health » (répond 200) et « Read a missing
+  page » (répond 404) ; « Create a note » reste décochée. L'amorce appelle ensuite chacune des trois actions une fois,
+  comme un agent, et place la page sur « Usage » de ce MCP. Recharger alors la page (Cmd+R). Chaque passage crée un
+  nouveau MCP « Recette Notes » : prendre le plus récent (en tête de « My MCPs »).
+- Noter l'adresse du MCP (« My MCPs ») et son identifiant, la fin de l'adresse après `/m/`. Pour les vérifications en
+  terminal, copier aussi la valeur du cookie `better-auth.session_token` (outils du navigateur, onglet Application ou
+  Stockage, Cookies, `http://localhost:5173`).
+- Pour appeler une action à nouveau, dans un terminal :
+  `curl -s -X POST <adresse> -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"read_health","arguments":{}}}'`
+  (remplacer `read_health` par `read_a_missing_page` ou `create_note`), puis recharger « Usage » : la page ne se met
+  pas à jour toute seule.
+
+**J'ouvre « Usage » depuis « My MCPs », et recharger la page me la rend (WAT-159)**
+
+- [ ] Sur « My MCPs », chaque ligne porte trois liens, dans cet ordre : « Edit actions », « History », « Usage ».
+- [ ] Cliquer « Usage » sur « Recette Notes » : l'adresse du navigateur devient `http://localhost:5173/mcps/<identifiant>/usage`,
+  et la page montre en titre « Recette Notes », avec « Back to My MCPs » au-dessus.
+- [ ] Les trois étapes du parcours de création (en haut de l'écran d'accueil) ne s'affichent pas sur cette page.
+- [ ] Recharger la page (Cmd+R) : la même page revient, même titre, mêmes chiffres.
+- [ ] « Back to My MCPs » ramène à la liste.
+- [ ] Refus : ouvrir `http://localhost:5173/mcps/nexistepas/usage` : la page affiche en titre « MCP not found » et,
+  dessous, « There is no MCP at this address in your account. », avec le même espace sous le titre que les messages
+  de « History ».
+
+**Je vois, par action, les appels, les réussis, la durée moyenne et le dernier appel des 30 derniers jours (WAT-160)**
+
+Avec l'amorce, chaque action a été appelée une fois.
+
+- [ ] Le tableau « Actions » a les colonnes « Action », « Calls », « Succeeded », « Average duration », « Last call ».
+- [ ] La ligne « Read health » montre `1` appel, `1` réussi, une durée moyenne en millisecondes (par exemple « 12 ms »)
+  et la date et l'heure de l'appel, à l'heure de l'ordinateur (par exemple « Oct 27, 2026, 09:14 »).
+- [ ] La ligne « Read a missing page » montre `1` appel, `0` réussi, « — » en durée moyenne (seuls les appels réussis
+  comptent), et la date et l'heure de l'appel.
+- [ ] Appeler `read_health` deux fois de plus (commande ci-dessus), recharger : « Read health » montre `3` appels et
+  `3` réussis ; appeler `read_a_missing_page` une fois de plus : `2` appels, `0` réussi, et « Read health » garde sa
+  moyenne (les échecs n'y entrent pas).
+- [ ] La ligne « Create a note », action de l'API hors de la version active mais appelée, est en dernier et porte la
+  marque « Not available », avec `1` appel et `0` réussi. Aucune autre ligne ne porte cette marque.
+- [ ] Sur « Recette Notes », « Edit actions » : cocher aussi « Create a note », puis « Save ». Recharger « Usage » :
+  « Create a note » a rejoint les actions de la version active, sans la marque « Not available », et garde son appel.
+- [ ] Une action de la version active jamais appelée affiche « Never called » à la place de ses chiffres : relancer
+  l'amorce en supprimant sa ligne `await callAction('read_a_missing_page', 2);`, puis ouvrir « Usage » du nouveau
+  MCP : « Read a missing page » affiche « Never called ».
+- [ ] Un jour où 10 000 appels ont été notés, la page affiche sous le titre « 10,000 calls reached on <date>: later
+  calls that day are not counted. » (par exemple « 10,000 calls reached on Oct 24, 2026: … »). On ne peut pas
+  l'atteindre à la main : preuve par les tests « names each day of the last 30 on which 10,000 calls were noted, and
+  only those » (`src/server/services/mcp-usage.test.ts`, 10 000 notes un jour, 9 999 le lendemain) et « says so under
+  the title for a day on which 10,000 calls were noted » (`src/client/screens/usage.test.tsx`).
+- [ ] Refus : un appel de plus de 30 jours n'entre dans aucun chiffre ni dans les derniers appels. Preuve par les tests
+  « leaves a call made more than 30 days ago out of every figure » et « leave out a call made more than 30 days ago »
+  (`src/server/services/mcp-usage.test.ts`, un appel à 31 jours ignoré, un à 29 jours compté).
+- [ ] Refus : la lecture ne renvoie ni les valeurs envoyées par l'agent, ni la réponse de l'API, ni le jeton.
+  `curl -s http://localhost:3001/api/mcps/<identifiant>/usage -H 'Cookie: better-auth.session_token=<valeur>'` ne
+  montre que les champs `apiName`, `actions`, `cappedDays`, `recentCalls` décrits dans `docs/API.md` ; aucun
+  `{"ok":true…` de la réponse de `/api/health`. Preuve aussi par le test « reads back neither the values the agent
+  sent, nor the API's response, nor the token » (`src/server/routes/mcps.test.ts`).
+- [ ] `docs/API.md` décrit `GET /api/mcps/:id/usage` : la période de 30 jours, chaque champ de la réponse et les refus
+  401, 404, 429 et 503.
+
+**Je vois les 50 derniers appels de mon MCP, du plus récent au plus ancien (WAT-161)**
+
+- [ ] Sous le tableau « Actions », le tableau « Recent calls » a les colonnes « Date », « Action », « Result »,
+  « Duration », « Version ».
+- [ ] Avec l'amorce, il montre trois lignes, du plus récent au plus ancien : « Create a note » « Not available »,
+  « Read a missing page » « Failed (404) », « Read health » « Succeeded », chacune en version `1`.
+- [ ] La date et l'heure s'affichent comme « Oct 27, 2026, 09:14 », à l'heure de l'horloge de l'ordinateur (comparer
+  avec l'heure de l'appel).
+- [ ] La durée s'affiche en millisecondes sous une seconde (« 12 ms »). Au-delà d'une seconde, en secondes avec une
+  décimale (« 1.2 s ») : preuve par le test « shows a duration in milliseconds under a second, in seconds from a
+  second on » (`src/client/screens/usage.test.tsx`).
+- [ ] Les six résultats s'écrivent « Succeeded », « Failed (<code>) », « API unreachable », « Invalid request »,
+  « Not available », « SLICE error ». Les trois premiers de l'amorce se voient ici ; « Invalid request » s'obtient en
+  appelant une action avec des valeurs qu'elle refuse ; preuve de l'ensemble par le test « words each of the six
+  results as decided ».
+- [ ] Après « Save » d'une nouvelle version (« Edit actions »), un nouvel appel de `read_health` apparaît en tête avec
+  la version `2`, et les anciens gardent la version `1`.
+- [ ] Refus : au-delà de 50 appels, seuls les 50 plus récents s'affichent. Lancer 51 fois la commande d'appel de
+  `read_health` (par exemple `for i in $(seq 51); do curl -s … > /dev/null; done`), recharger : « Recent calls » compte
+  50 lignes, et l'appel le plus ancien (celui de l'amorce) n'y est plus, alors que la ligne « Read health » du tableau
+  « Actions » compte bien tous ses appels. Preuve aussi par le test « are the 50 most recent, newest first: the 51st
+  most recent is left out » (`src/server/services/mcp-usage.test.ts`).
+- [ ] Un MCP sans aucun appel : créer un MCP sans l'appeler (par exemple relancer l'amorce en supprimant ses trois
+  dernières lignes `await callAction(…)`), ouvrir son « Usage » : chaque action affiche « Never called », et à la
+  place des derniers appels s'affiche « No calls in the last 30 days. »
+- [ ] L'amorce `.pilot/recette/amorce-usage.js` obtient un vrai « Succeeded » et un vrai « Failed (404) » en
+  développement, contre l'API de SLICE lui-même.
+
+**L'utilisation du MCP d'un autre compte reste introuvable, et rien ne se voit sans connexion (WAT-162)**
+
+Dans les commandes ci-dessous, remplacer `<id>` par l'identifiant du MCP, `<A>` par la valeur du cookie du compte de
+recette (propriétaire du MCP), `<B>` par celle d'un autre compte (connecté en navigation privée avec une autre adresse).
+
+- [ ] Le propriétaire lit l'utilisation de son MCP :
+  `curl -i http://localhost:3001/api/mcps/<id>/usage -H 'Cookie: better-auth.session_token=<A>'` affiche
+  `HTTP/1.1 200` et le JSON de la page.
+- [ ] Refus : la même commande avec le cookie de B affiche `HTTP/1.1 404` et
+  `{"code":"NOT_FOUND","message":"Unknown MCP id."}`, exactement comme sur un identifiant inventé
+  (`.../api/mcps/nexistepas/usage`).
+- [ ] Refus : en navigation privée connectée avec B, ouvrir `http://localhost:5173/mcps/<id>/usage` : la page affiche
+  « MCP not found » et « There is no MCP at this address in your account. », comme pour un identifiant inventé.
+- [ ] Refus : la même commande sans cookie affiche `HTTP/1.1 401` et
+  `{"code":"UNAUTHORIZED","message":"Sign in to continue."}`.
+- [ ] Refus : dans une fenêtre de navigation privée sans connexion, ouvrir `http://localhost:5173/mcps/<id>/usage` :
+  l'écran de connexion « Sign in to SLICE » s'affiche, rien de l'utilisation. Preuve aussi, pour une session qui expire
+  pendant que la page est affichée, par le test « shows the sign-in screen when the usage is refused for want of a
+  session » (`src/client/screens/usage.test.tsx`).

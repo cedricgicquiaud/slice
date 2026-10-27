@@ -1,0 +1,372 @@
+// WAT-159 — "Usage", at /mcps/<id>/usage: opened from My MCPs, reopened by a reload.
+// WAT-160 — by action, the calls, the successes, the average duration and the last call of the last 30 days.
+// WAT-161 — the 50 most recent calls, newest first.
+// WAT-162 — another account's MCP is not found, and nothing shows without a session.
+import { describe, it, expect, vi, afterEach, afterAll } from 'vitest';
+import { render, screen, within } from '@testing-library/react';
+import App from '../App';
+import { UsageScreen } from './usage';
+import { AuthGate } from '../components/auth-gate';
+import { refreshSession } from '../lib/auth-client';
+
+/**
+ * Dates show at the time of the person's computer (D11): this one is in Paris,
+ * an hour ahead of UTC on Oct 26, 2026. Set before any import, as the page's
+ * formats read the time zone once.
+ */
+vi.hoisted(() => {
+  vi.stubEnv('TZ', 'Europe/Paris');
+});
+
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
+
+/**
+ * The Notes MCP: "List notes" called 3 times, 2 succeeded; "Create a note"
+ * never called; "Empty the trash", outside the active version, called once.
+ */
+const NOTES_USED = {
+  apiName: 'Notes API',
+  actions: [
+    {
+      name: 'list_notes',
+      label: 'List notes',
+      available: true,
+      calls: 3,
+      succeeded: 2,
+      averageDurationMs: 300,
+      lastCalledAt: '2026-10-26T13:02:00.000Z',
+    },
+    { name: 'create_note', label: 'Create a note', available: true, calls: 0, succeeded: 0, averageDurationMs: null, lastCalledAt: null },
+    {
+      name: 'empty_trash',
+      label: 'Empty the trash',
+      available: false,
+      calls: 1,
+      succeeded: 0,
+      averageDurationMs: null,
+      lastCalledAt: '2026-10-25T08:30:00.000Z',
+    },
+  ],
+  recentCalls: [],
+  cappedDays: [],
+};
+
+/** The text of each cell of each row of the table of actions, its header row first. */
+async function actionsTable(): Promise<string[][]> {
+  const table = await screen.findByRole('table', { name: 'Actions' });
+  return within(table)
+    .getAllByRole('row')
+    .map((row) => Array.from(row.children, (cell) => cell.textContent ?? ''));
+}
+
+/** The Notion MCP, its two actions never called in the last 30 days. */
+const NOTION_UNUSED = {
+  apiName: 'Notion API',
+  actions: [
+    { name: 'search', label: 'Search', available: true, calls: 0, succeeded: 0, averageDurationMs: null, lastCalledAt: null },
+    { name: 'get_a_page', label: 'Get a page', available: true, calls: 0, succeeded: 0, averageDurationMs: null, lastCalledAt: null },
+  ],
+  recentCalls: [],
+  cappedDays: [],
+};
+
+/**
+ * SLICE's API as this page sees it: `GET /api/mcps/:id/usage` answers the usage
+ * kept in `usages` under that id, else 404 as for an unknown MCP or another
+ * account's, or `refusal` when set (a 401 means the session is gone); any other
+ * call is "who is signed in?" (`session`).
+ * Set before any import: the auth client keeps the `fetch` it finds when loaded.
+ */
+const server = vi.hoisted(() => {
+  const state: {
+    session: unknown;
+    usages: Record<string, unknown>;
+    refusal: { status: number; code: string; message: string } | null;
+  } = { session: null, usages: {}, refusal: null };
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input);
+    const asked = /^\/api\/mcps\/([^/]+)\/usage$/.exec(url);
+    if (!asked) return json(state.session);
+    if (state.refusal?.status === 401) state.session = null;
+    if (state.refusal) return json({ code: state.refusal.code, message: state.refusal.message }, state.refusal.status);
+    const usage = state.usages[asked[1]!];
+    return usage ? json(usage) : json({ code: 'NOT_FOUND', message: 'Unknown MCP id.' }, 404);
+  }) as typeof fetch;
+  return state;
+});
+
+const LIVE_SESSION = {
+  session: { id: 's1', userId: 'u1', token: 't', expiresAt: '2026-11-01T00:00:00.000Z' },
+  user: { id: 'u1', email: 'ada@example.com', name: '', emailVerified: true },
+};
+
+/** The server now answers `session`; like a sign-in or out, the client is told to ask again. */
+function serverSession(session: unknown) {
+  server.session = session;
+  refreshSession();
+}
+
+afterEach(() => {
+  server.usages = {};
+  server.refusal = null;
+  window.history.pushState({}, '', '/');
+});
+
+describe('Usage', () => {
+  it('opens at /mcps/<id>/usage, as when reloaded there: the MCP named at the top, a way back, no steps (contract 11, D12)', async () => {
+    server.usages['notion-id'] = NOTION_UNUSED;
+    window.history.pushState({}, '', '/mcps/notion-id/usage');
+
+    render(<App />);
+
+    expect({
+      name: (await screen.findByRole('heading', { name: 'Notion API' })) !== null,
+      back: screen.getByRole('link', { name: 'Back to My MCPs' }).getAttribute('href'),
+      steps: screen.queryByRole('navigation', { name: /steps/i }) !== null,
+    }).toEqual({ name: true, back: '/mcps', steps: false });
+  });
+
+  // The server answers another account's MCP exactly as an unknown one: one case for the page.
+  it("says the MCP is not found at the address of an unknown MCP or of another account's, spaced mt-4 under the title (contract 21)", async () => {
+    window.history.pushState({}, '', '/mcps/someone-elses-id/usage');
+
+    render(<App />);
+
+    const notFound = await screen.findByRole('heading', { name: 'MCP not found' });
+    const message = screen.getByText('There is no MCP at this address in your account.');
+    expect({
+      notFound: notFound !== null,
+      spaced: message.classList.contains('mt-4'),
+      back: screen.getByRole('link', { name: 'Back to My MCPs' }).getAttribute('href'),
+    }).toEqual({ notFound: true, spaced: true, back: '/mcps' });
+  });
+
+  it("shows the server's message when the usage is refused for another reason", async () => {
+    server.refusal = { status: 503, code: 'SERVICE_UNAVAILABLE', message: 'SLICE is unavailable for the moment.' };
+
+    render(<UsageScreen mcpId="notion-id" />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('SLICE is unavailable for the moment.');
+  });
+
+  it('shows the sign-in screen when the usage is refused for want of a session (contract 22, D13)', async () => {
+    serverSession(LIVE_SESSION);
+    server.refusal = { status: 401, code: 'UNAUTHORIZED', message: 'Sign in to continue.' };
+
+    render(
+      <AuthGate>
+        <UsageScreen mcpId="notion-id" />
+      </AuthGate>
+    );
+    await screen.findByRole('link', { name: 'Back to My MCPs' });
+
+    expect(await screen.findByRole('heading', { name: 'Sign in to SLICE' })).toBeInTheDocument();
+  });
+});
+
+describe('Usage by action', () => {
+  it("shows an action's calls, successes, the successes' average duration and its last call, at the computer's time (contract 8, D10, D11)", async () => {
+    server.usages['notes-id'] = NOTES_USED;
+
+    render(<UsageScreen mcpId="notes-id" />);
+
+    const [header, listNotes] = await actionsTable();
+    expect({ header, listNotes }).toEqual({
+      header: ['Action', 'Calls', 'Succeeded', 'Average duration', 'Last call'],
+      listNotes: ['List notes', '3', '2', '300 ms', 'Oct 26, 2026, 14:02'],
+    });
+  });
+
+  it('shows "Never called" for an action of the active version without any call in 30 days (contract 9, D10)', async () => {
+    server.usages['notes-id'] = NOTES_USED;
+
+    render(<UsageScreen mcpId="notes-id" />);
+
+    const [, , createNote] = await actionsTable();
+    expect(createNote).toEqual(['Create a note', 'Never called']);
+  });
+
+  it('marks "Not available" the line of an action outside the active version, called in the last 30 days, and that line only (contract 6, D10)', async () => {
+    server.usages['notes-id'] = NOTES_USED;
+
+    render(<UsageScreen mcpId="notes-id" />);
+
+    const table = await screen.findByRole('table', { name: 'Actions' });
+    const lines = within(table).getAllByRole('row').slice(1);
+    const [, , , emptyTrash] = await actionsTable();
+    expect({
+      marked: lines.map((line) => within(line).queryByText('Not available') !== null),
+      figures: emptyTrash?.slice(1),
+    }).toEqual({ marked: [false, false, true], figures: ['1', '0', '—', 'Oct 25, 2026, 09:30'] });
+  });
+
+  it('keeps the average duration and the last call on one line, as the label may wrap (D11)', async () => {
+    server.usages['notes-id'] = NOTES_USED;
+
+    render(<UsageScreen mcpId="notes-id" />);
+
+    const table = await screen.findByRole('table', { name: 'Actions' });
+    const listNotes = within(table).getAllByRole('row')[1]!;
+    const [, , , averageDuration, lastCall] = Array.from(listNotes.children);
+    expect({
+      averageDuration: averageDuration?.classList.contains('whitespace-nowrap'),
+      lastCall: lastCall?.classList.contains('whitespace-nowrap'),
+    }).toEqual({ averageDuration: true, lastCall: true });
+  });
+
+  it('says so under the title for a day on which 10,000 calls were noted (contract 19, D8)', async () => {
+    server.usages['notes-id'] = { ...NOTES_USED, cappedDays: ['2026-10-24'] };
+
+    render(<UsageScreen mcpId="notes-id" />);
+
+    const message = await screen.findByText(
+      '10,000 calls reached on Oct 24, 2026: later calls that day are not counted.'
+    );
+    expect(message).toHaveClass('mt-4');
+  });
+});
+
+describe('Recent calls', () => {
+  /** The text of each cell of each row of the table of recent calls, its header row first. */
+  async function recentCallsTable(): Promise<string[][]> {
+    const table = await screen.findByRole('table', { name: 'Recent calls' });
+    return within(table)
+      .getAllByRole('row')
+      .map((row) => Array.from(row.children, (cell) => cell.textContent ?? ''));
+  }
+
+  it('shows each call with its date and time, its action, its result, its duration and its version, as the server lists them (contract 1, 10, D10)', async () => {
+    server.usages['notes-id'] = {
+      ...NOTES_USED,
+      recentCalls: [
+        {
+          calledAt: '2026-10-26T13:02:00.000Z',
+          action: 'list_notes',
+          label: 'List notes',
+          result: { kind: 'succeeded' },
+          durationMs: 420,
+          version: 2,
+        },
+        {
+          calledAt: '2026-10-26T09:45:00.000Z',
+          action: 'create_note',
+          label: 'Create a note',
+          result: { kind: 'failed', status: 404 },
+          durationMs: 87,
+          version: 1,
+        },
+      ],
+    };
+
+    render(<UsageScreen mcpId="notes-id" />);
+
+    expect(await recentCallsTable()).toEqual([
+      ['Date', 'Action', 'Result', 'Duration', 'Version'],
+      ['Oct 26, 2026, 14:02', 'List notes', 'Succeeded', '420 ms', '2'],
+      ['Oct 26, 2026, 10:45', 'Create a note', 'Failed (404)', '87 ms', '1'],
+    ]);
+  });
+
+  it('words each of the six results as decided (D4)', async () => {
+    const results = [
+      { kind: 'succeeded' },
+      { kind: 'failed', status: 500 },
+      { kind: 'api_unreachable' },
+      { kind: 'invalid_request' },
+      { kind: 'not_available' },
+      { kind: 'slice_error' },
+    ];
+    server.usages['notes-id'] = {
+      ...NOTES_USED,
+      recentCalls: results.map((result) => ({
+        calledAt: '2026-10-26T13:02:00.000Z',
+        action: 'list_notes',
+        label: 'List notes',
+        result,
+        durationMs: 10,
+        version: 1,
+      })),
+    };
+
+    render(<UsageScreen mcpId="notes-id" />);
+
+    const [, ...calls] = await recentCallsTable();
+    expect(calls.map((cells) => cells[2])).toEqual([
+      'Succeeded',
+      'Failed (500)',
+      'API unreachable',
+      'Invalid request',
+      'Not available',
+      'SLICE error',
+    ]);
+  });
+
+  it('shows a duration in milliseconds under a second, in seconds from a second on (contract 10, D11)', async () => {
+    server.usages['notes-id'] = {
+      ...NOTES_USED,
+      recentCalls: [420, 1_200].map((durationMs) => ({
+        calledAt: '2026-10-26T13:02:00.000Z',
+        action: 'list_notes',
+        label: 'List notes',
+        result: { kind: 'succeeded' },
+        durationMs,
+        version: 1,
+      })),
+    };
+
+    render(<UsageScreen mcpId="notes-id" />);
+
+    const [, ...calls] = await recentCallsTable();
+    expect(calls.map((cells) => cells[3])).toEqual(['420 ms', '1.2 s']);
+  });
+
+  it("keeps a call's date and duration on one line, as its action may wrap (D11)", async () => {
+    server.usages['notes-id'] = {
+      ...NOTES_USED,
+      recentCalls: [
+        {
+          calledAt: '2026-10-26T13:02:00.000Z',
+          action: 'list_notes',
+          label: 'List notes',
+          result: { kind: 'succeeded' },
+          durationMs: 1_200,
+          version: 1,
+        },
+      ],
+    };
+
+    render(<UsageScreen mcpId="notes-id" />);
+
+    const table = await screen.findByRole('table', { name: 'Recent calls' });
+    const call = within(table).getAllByRole('row')[1]!;
+    const [date, , , duration] = Array.from(call.children);
+    expect({
+      date: date?.classList.contains('whitespace-nowrap'),
+      duration: duration?.classList.contains('whitespace-nowrap'),
+    }).toEqual({ date: true, duration: true });
+  });
+
+  it('says "No calls in the last 30 days." for an MCP without any call, every action "Never called" (contract 12, D10)', async () => {
+    server.usages['notion-id'] = NOTION_UNUSED;
+
+    render(<UsageScreen mcpId="notion-id" />);
+
+    const [, ...actions] = await actionsTable();
+    expect({
+      message: screen.queryByText('No calls in the last 30 days.') !== null,
+      recentCalls: screen.queryByRole('table', { name: 'Recent calls' }) !== null,
+      actions,
+    }).toEqual({
+      message: true,
+      recentCalls: false,
+      actions: [
+        ['Search', 'Never called'],
+        ['Get a page', 'Never called'],
+      ],
+    });
+  });
+});

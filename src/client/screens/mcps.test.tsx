@@ -150,6 +150,21 @@ describe('My MCPs', () => {
     expect(row.getByRole('link', { name: 'History' })).toHaveAttribute('href', '/mcps/notion-id/history');
   });
 
+  it("opens an MCP's usage from its row, at /mcps/<id>/usage, next to Edit actions and History (contract 11, D12)", async () => {
+    server.mcps = [NOTION];
+
+    renderPage();
+
+    const row = within(await screen.findByRole('listitem', { name: 'Notion API' }));
+    expect(
+      row.getAllByRole('link').map((link) => [link.textContent, link.getAttribute('href')])
+    ).toEqual([
+      ['Edit actions', '/mcps/notion-id/edit'],
+      ['History', '/mcps/notion-id/history'],
+      ['Usage', '/mcps/notion-id/usage'],
+    ]);
+  });
+
   it('offers "Edit actions" on each row, at /mcps/<id>/edit, as the only way to change an MCP (contract 2, D3, D10)', async () => {
     server.mcps = [NOTION];
 

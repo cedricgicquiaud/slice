@@ -17,6 +17,7 @@ The browser front end uses the `/api/*` routes; AI agents use the hosted runtime
 | `POST` | `/api/mcps/:id/versions` | Save a new selection of actions as the next version, active at once | Yes |
 | `POST` | `/api/mcps/:id/versions/:number/restore` | Make an existing version the active one again | Yes |
 | `GET` | `/api/mcps/:id/selection` | Read every action of an MCP's API and those of its active version | Yes |
+| `GET` | `/api/mcps/:id/usage` | Read what agents did with one of the signed-in account's hosted MCPs over the last 30 days | Yes |
 | `DELETE` | `/api/mcps/:id` | Delete one of the signed-in account's hosted MCPs | Yes |
 | any | `/m/:id` | Hosted MCP runtime (MCP Streamable HTTP, stateless) | No |
 
@@ -687,6 +688,100 @@ its active version.
 |---|---|---|
 | 401 | `UNAUTHORIZED` | No live session |
 | 404 | `NOT_FOUND` | No MCP under this id in the account's workspace. Message: "Unknown MCP id." The same answer whether the id does not exist or belongs to another account |
+| 429 | (none) | Rate limit exceeded |
+| 503 | `SERVICE_UNAVAILABLE` | The database is unreachable |
+
+---
+
+## `GET /api/mcps/:id/usage`
+
+Reads what agents did with one hosted MCP of the signed-in account over the last 30 days (the 30 × 24 hours before
+the request), from the notes of its action calls (see [`ANY /m/:id`](#any-mid)). A call older than that counts nowhere.
+The notes keep neither the values the agent sent, nor the API's response, nor the token: the answer holds none either.
+There is no other period, and nothing updates by itself: reading again gives the latest calls.
+
+**Response `200`**
+
+```json
+{
+  "apiName": "Notes API",
+  "actions": [
+    {
+      "name": "list_notes",
+      "label": "List notes",
+      "available": true,
+      "calls": 3,
+      "succeeded": 2,
+      "averageDurationMs": 300,
+      "lastCalledAt": "2026-10-26T12:00:00.000Z"
+    },
+    {
+      "name": "create_note",
+      "label": "Create a note",
+      "available": true,
+      "calls": 0,
+      "succeeded": 0,
+      "averageDurationMs": null,
+      "lastCalledAt": null
+    },
+    {
+      "name": "empty_trash",
+      "label": "Empty the trash",
+      "available": false,
+      "calls": 1,
+      "succeeded": 0,
+      "averageDurationMs": null,
+      "lastCalledAt": "2026-10-26T09:00:00.000Z"
+    }
+  ],
+  "cappedDays": [],
+  "recentCalls": [
+    {
+      "calledAt": "2026-10-26T12:00:00.000Z",
+      "action": "list_notes",
+      "label": "List notes",
+      "result": { "kind": "succeeded" },
+      "durationMs": 400,
+      "version": 1
+    },
+    {
+      "calledAt": "2026-10-26T09:00:00.000Z",
+      "action": "empty_trash",
+      "label": "Empty the trash",
+      "result": { "kind": "not_available" },
+      "durationMs": 3,
+      "version": 1
+    }
+  ]
+}
+```
+
+| Field | Description |
+|---|---|
+| `apiName` | The MCP's name, as [`GET /api/mcps`](#get-apimcps) gives it |
+| `actions` | One line per action of the active version, in its order, called or not; then one line per other action of the API called in the period, in the order of the API's description |
+| `actions[].name` | The action's tool name |
+| `actions[].label` | The action's label |
+| `actions[].available` | `true` for an action of the active version; `false` for another action of the API, which the MCP's URL no longer serves |
+| `actions[].calls` | The number of calls in the period, whatever their result |
+| `actions[].succeeded` | The number of those whose result is `succeeded` |
+| `actions[].averageDurationMs` | The average duration of the succeeded calls, in milliseconds, rounded; `null` without any |
+| `actions[].lastCalledAt` | Date of the last call in the period, ISO 8601; `null` without any |
+| `cappedDays` | The days of the period (`YYYY-MM-DD`, days of UTC) on which 10,000 calls of the MCP were noted, oldest first. At most 10,000 calls are noted per MCP and per day: the later calls of such a day count nowhere |
+| `recentCalls` | The 50 most recent calls of the period, newest first; empty without any call |
+| `recentCalls[].calledAt` | Date the call arrived at SLICE, ISO 8601 |
+| `recentCalls[].action` | The action's tool name |
+| `recentCalls[].label` | The action's label, else its tool name |
+| `recentCalls[].result` | `{ "kind": … }`, one of the six results of [`ANY /m/:id`](#any-mid); a `failed` result also carries the API's `status` code, for example `{ "kind": "failed", "status": 404 }` |
+| `recentCalls[].durationMs` | The call's duration in milliseconds, from its arrival to the end of its handling by SLICE |
+| `recentCalls[].version` | The number of the version active when the call arrived |
+
+**Errors**
+
+| HTTP | `code` | Cause |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | No live session |
+| 404 | `NOT_FOUND` | No MCP under this id in the account's workspace. Message: "Unknown MCP id." The same answer whether the id does not exist or belongs to another account, so an id reveals nothing |
 | 429 | (none) | Rate limit exceeded |
 | 503 | `SERVICE_UNAVAILABLE` | The database is unreachable |
 

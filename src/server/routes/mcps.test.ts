@@ -1,11 +1,13 @@
 // WAT-103/104/105 — `GET /api/mcps` and `DELETE /api/mcps/:id`: an account's own MCPs, never another's.
 // WAT-148/149 — `POST /api/mcps/:id/versions/:number/restore`: an existing version of one's own MCP, active again.
+// WAT-161/162 — `GET /api/mcps/:id/usage`: the calls agents made to one's own MCP, never another's.
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import type { Server } from 'node:http';
+import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { createApp } from '../app';
 import { createAccountMcps } from '../services/account-mcps';
 import { createHostedStore, type HostedStore } from '../services/hosted-store';
+import { createMcpCalls } from '../services/mcp-calls';
 import type { HostedMcpConfig } from '../services/hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
@@ -78,6 +80,7 @@ async function startApp(): Promise<{ url: string; close(): Promise<void> }> {
   const server = createApp({
     nodeEnv: 'test',
     hostedStore: store,
+    mcpCalls: createMcpCalls(database),
     accountMcps: createAccountMcps(database),
     auth: account.auth,
   }).listen(0);
@@ -562,6 +565,138 @@ describe('POST /api/mcps/:id/versions/:number/restore', () => {
     expect({ status: res.status, served: (await store.get(id))?.endpoints.map((action) => action.name) }).toEqual({
       status: 403,
       served: ['list_notes'],
+    });
+  });
+});
+
+describe('GET /api/mcps/:id/usage', () => {
+  let usage: { url: string; close(): Promise<void> };
+  /** The Notes API itself: lists notes with a 200. */
+  let notesApi: Server;
+  let notesApiUrl: string;
+  beforeAll(async () => {
+    usage = await startApp();
+    notesApi = createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('{"notes":["API-RESPONSE-BODY"]}');
+    }).listen(0);
+    await new Promise<void>((r) => notesApi.once('listening', r));
+    notesApiUrl = `http://127.0.0.1:${(notesApi.address() as AddressInfo).port}`;
+  });
+  afterAll(async () => {
+    await usage?.close();
+    await new Promise<void>((r) => (notesApi ? notesApi.close(() => r()) : r()));
+  });
+
+  it("shows the owner an agent's call of an action at the MCP's address, among the recent calls and in its action's line (contract 1, D13)", async () => {
+    const { id } = await store.put({ ...NOTES, baseUrl: notesApiUrl }, account.workspaceId, CREATED);
+    const asked = Date.now();
+    const agent = new Client({ name: 'agent', version: '0.0.0' });
+    await agent.connect(new StreamableHTTPClientTransport(new URL(`${usage.url}/m/${id}`)));
+    await agent.callTool({ name: 'list_notes', arguments: {} });
+    await agent.close();
+    const answered = Date.now();
+
+    // The note is written once the agent has its answer: it shows up a moment later.
+    const read = await vi.waitFor(async () => {
+      const res = await fetch(`${usage.url}/api/mcps/${id}/usage`, { headers: { cookie: account.cookie } });
+      const body = (await res.json()) as { recentCalls: Array<{ calledAt: string }> };
+      expect(body.recentCalls).toHaveLength(1);
+      return { status: res.status, body };
+    });
+
+    const calledAt = Date.parse(read.body.recentCalls[0]!.calledAt);
+    expect({ ...read, calledDuringTheCall: asked <= calledAt && calledAt <= answered }).toEqual({
+      status: 200,
+      body: {
+        apiName: 'Notes API',
+        actions: [
+          {
+            name: 'list_notes',
+            label: 'List notes',
+            available: true,
+            calls: 1,
+            succeeded: 1,
+            averageDurationMs: expect.any(Number),
+            lastCalledAt: read.body.recentCalls[0]!.calledAt,
+          },
+          { name: 'create_note', label: 'Create a note', available: true, calls: 0, succeeded: 0, averageDurationMs: null, lastCalledAt: null },
+        ],
+        cappedDays: [],
+        recentCalls: [
+          {
+            calledAt: read.body.recentCalls[0]!.calledAt,
+            action: 'list_notes',
+            label: 'List notes',
+            result: { kind: 'succeeded' },
+            durationMs: expect.any(Number),
+            version: 1,
+          },
+        ],
+      },
+      calledDuringTheCall: true,
+    });
+  });
+
+  it("reads back neither the values the agent sent, nor the API's response, nor the token (contract 17)", async () => {
+    const withAValue: HostedMcpConfig = {
+      ...NOTES,
+      baseUrl: notesApiUrl,
+      endpoints: [
+        {
+          name: 'list_notes',
+          label: 'List notes',
+          description: 'List notes',
+          method: 'GET',
+          path: '/notes',
+          params: [{ name: 'q', in: 'query', type: 'string', required: false }],
+        },
+      ],
+    };
+    const { id } = await store.put(withAValue, account.workspaceId, CREATED);
+    const agent = new Client({ name: 'agent', version: '0.0.0' });
+    await agent.connect(
+      new StreamableHTTPClientTransport(new URL(`${usage.url}/m/${id}`), {
+        requestInit: { headers: { Authorization: 'Bearer AGENT-TOKEN' } },
+      })
+    );
+    await agent.callTool({ name: 'list_notes', arguments: { q: 'AGENT-VALUE' } });
+    await agent.close();
+
+    const read = await vi.waitFor(async () => {
+      const res = await fetch(`${usage.url}/api/mcps/${id}/usage`, { headers: { cookie: account.cookie } });
+      const text = await res.text();
+      expect(text).toContain('"recentCalls":[{');
+      return text;
+    });
+
+    expect(['AGENT-TOKEN', 'AGENT-VALUE', 'API-RESPONSE-BODY'].filter((secret) => read.includes(secret))).toEqual([]);
+  });
+
+  it("answers another account's MCP exactly as an unknown id (contract 21, D13)", async () => {
+    const other = await createTestAccount({ database, email: 'neighbour-usage@example.com' });
+    const { id } = await store.put(NOTES, other.workspaceId, CREATED);
+
+    const theirs = await fetch(`${usage.url}/api/mcps/${id}/usage`, { headers: { cookie: account.cookie } });
+    const unknown = await fetch(`${usage.url}/api/mcps/no-such-mcp-id/usage`, { headers: { cookie: account.cookie } });
+
+    expect({
+      theirs: { status: theirs.status, body: await theirs.text() },
+      unknown: { status: unknown.status, body: await unknown.text() },
+    }).toEqual({
+      theirs: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+      unknown: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+    });
+  });
+
+  it("answers 401 to an MCP's usage without a session (contract 22, D13)", async () => {
+    const { id } = await store.put(NOTES, account.workspaceId, CREATED);
+
+    const res = await fetch(`${usage.url}/api/mcps/${id}/usage`);
+
+    expect({ status: res.status, body: await res.json() }).toEqual({
+      status: 401,
+      body: { code: 'UNAUTHORIZED', message: 'Sign in to continue.' },
     });
   });
 });

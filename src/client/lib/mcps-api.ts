@@ -33,6 +33,54 @@ export interface McpHistory {
   versions: McpVersion[];
 }
 
+/** The calls of one action over the last 30 days (D10). */
+export interface ActionUsage {
+  name: string;
+  label: string;
+  /** Whether the action is one of the active version's. */
+  available: boolean;
+  calls: number;
+  succeeded: number;
+  /** The average duration of the succeeded calls, in milliseconds; `null` without any. */
+  averageDurationMs: number | null;
+  /** ISO date of the last call, `null` without any. */
+  lastCalledAt: string | null;
+}
+
+/** What became of an action call (D4); a failure keeps the API's status code. */
+export type CallResult =
+  | { kind: 'succeeded' }
+  | { kind: 'failed'; status: number }
+  | { kind: 'api_unreachable' }
+  | { kind: 'invalid_request' }
+  | { kind: 'not_available' }
+  | { kind: 'slice_error' };
+
+/** One of the recent calls (D10). */
+export interface RecentCall {
+  /** ISO date the call arrived at SLICE. */
+  calledAt: string;
+  action: string;
+  /** The action's label, else its name. */
+  label: string;
+  result: CallResult;
+  durationMs: number;
+  /** The number of the version active when the call arrived. */
+  version: number;
+}
+
+/** An MCP's usage over the last 30 days, as `GET /api/mcps/:id/usage` reads it (D10). */
+export interface McpUsage {
+  /** The API's name as read in its description, else its domain. */
+  apiName: string;
+  /** The active version's actions, in their order, then the API's other actions called in the period. */
+  actions: ActionUsage[];
+  /** The days of the period (`YYYY-MM-DD`, UTC) on which 10,000 calls were noted (D8). */
+  cappedDays: string[];
+  /** The 50 most recent calls, newest first. */
+  recentCalls: RecentCall[];
+}
+
 /** What "Edit actions" shows, as `GET /api/mcps/:id/selection` reads it (D2). */
 export interface McpSelection {
   /** The API's name as read in its description, else its domain. */
@@ -58,6 +106,13 @@ export async function getMcpHistory(id: string): Promise<McpHistory> {
   const res = await fetch(`/api/mcps/${id}/versions`);
   if (!res.ok) await throwRefusal(res);
   return (await res.json()) as McpHistory;
+}
+
+/** The usage of one of the account's MCPs over the last 30 days (D10). */
+export async function getMcpUsage(id: string): Promise<McpUsage> {
+  const res = await fetch(`/api/mcps/${id}/usage`);
+  if (!res.ok) await throwRefusal(res);
+  return (await res.json()) as McpUsage;
 }
 
 /** The selection of one of the account's MCPs, for "Edit actions" (D2). */
