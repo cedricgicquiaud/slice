@@ -3,7 +3,7 @@
  * the version active when it arrived, its date, its result and its duration;
  * never the values the agent sent, the API's response or error message, nor the token.
  */
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, eq, lt, sql } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { connectorApiActions, connectorCalls, connectors } from '../db/schema';
 
@@ -31,11 +31,16 @@ export interface CallNote {
 /** At most 10,000 calls are noted per MCP and per day (D8). */
 const DAILY_CAP = 10_000;
 
+/** The notes of calls are kept 30 days (D9). */
+const KEPT_MS = 30 * 24 * 3_600_000;
+
 export interface McpCalls {
   /** Write the notes of calls made to the connector `connectorId`. */
   write(connectorId: string, notes: CallNote[]): Promise<void>;
   /** The notes of the connector's calls, oldest first. */
   of(connectorId: string): Promise<CallNote[]>;
+  /** Delete the notes of the calls that arrived more than 30 days before `now`, whatever their MCP (D9). */
+  purgeOld(now: Date): Promise<void>;
 }
 
 export function createMcpCalls(database: Database): McpCalls {
@@ -101,6 +106,9 @@ export function createMcpCalls(database: Database): McpCalls {
         result: result === 'failed' ? { kind: result, status: status! } : { kind: result },
         durationMs,
       }));
+    },
+    async purgeOld(now) {
+      await db.delete(connectorCalls).where(lt(connectorCalls.calledAt, new Date(now.getTime() - KEPT_MS)));
     },
   };
 }

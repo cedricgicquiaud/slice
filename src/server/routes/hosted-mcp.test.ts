@@ -672,6 +672,7 @@ describe('what is never noted', () => {
         return real.write(connectorId, notes);
       },
       of: real.of,
+      purgeOld: real.purgeOld,
     };
     const noting = createApp({ nodeEnv: 'test', hostedStore: store, mcpCalls: recording, now, auth: account.auth }).listen(0);
     await new Promise<void>((r) => noting.once('listening', r));
@@ -752,6 +753,7 @@ describe('noting a call', () => {
         return new Promise<void>((resolve) => (finishWrites = resolve));
       },
       of: () => Promise.resolve([]),
+      purgeOld: () => Promise.resolve(),
     };
     const noting = await appNotingWith(slow);
     try {
@@ -810,6 +812,7 @@ describe('noting a call', () => {
         written();
       },
       of: (connectorId) => calls.of(connectorId),
+      purgeOld: (now) => calls.purgeOld(now),
     });
     try {
       const agent = await connectAgent(`${noting.base}/m/${id}`, 'TOKEN');
