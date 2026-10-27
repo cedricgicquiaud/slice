@@ -335,6 +335,18 @@ describe('an action whose API takes its time (D5)', () => {
     }
   });
 
+  it('tells the agent that the API did not answer within the delay', async () => {
+    answerAfterMs = Infinity;
+    const { agent, close } = await agentOfSlowApi(200);
+    try {
+      const answer = await agent.callTool({ name: 'list_things', arguments: {} });
+
+      expect(answer.content).toEqual([{ type: 'text', text: 'The API did not answer within 0.2 seconds.' }]);
+    } finally {
+      await close();
+    }
+  });
+
   it('is told "API unreachable" when it is abandoned (D4)', async () => {
     answerAfterMs = Infinity;
     const { agent, told, close } = await agentOfSlowApi(200);
