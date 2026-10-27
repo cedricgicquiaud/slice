@@ -56,10 +56,16 @@ export function createMcpCalls(database: Database): McpCalls {
       // (D8). In one statement, whatever the number of calls: the notes travel as a single JSON value, far
       // from PostgreSQL's limit on parameters, and each day's notes are counted once.
       await db.execute(sql`
-        with note as (
+        with call as (
           select *, date_trunc('day', called_at at time zone 'UTC') as utc_day
           from jsonb_to_recordset(${JSON.stringify(rows)}::jsonb)
-            as note(position int, version int, action text, called_at timestamptz, result text, status int, duration_ms int)
+            as call(position int, version int, action text, called_at timestamptz, result text, status int, duration_ms int)
+          where exists (
+            select 1 from ${connectorApiActions} where connector_id = ${connectorId} and name = call.action
+          )
+        ),
+        note as (
+          select *, row_number() over (partition by utc_day order by position) as rank from call
         ),
         day as (
           select utc_day, (
@@ -73,10 +79,7 @@ export function createMcpCalls(database: Database): McpCalls {
         insert into ${connectorCalls} (connector_id, version, action, called_at, result, status, duration_ms)
         select ${connectorId}, note.version, note.action, note.called_at, note.result::call_result, note.status, note.duration_ms
         from note join day using (utc_day)
-        where exists (
-          select 1 from ${connectorApiActions} where connector_id = ${connectorId} and name = note.action
-        )
-        and day.noted < ${DAILY_CAP}
+        where note.rank <= ${DAILY_CAP} - day.noted
         -- Written in the order of the calls: those of one request share their date (D6).
         order by note.position`);
     },
