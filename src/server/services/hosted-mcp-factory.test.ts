@@ -1,7 +1,7 @@
 // Core of the shared hosted runtime (Pivot-4): build an McpServer in-memory
 // from a stored config, serve it, and relay the caller's token to the upstream
 // — proving one engine can BE any MCP from data, at request time.
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -253,9 +253,12 @@ describe('an action whose API takes its time (D5)', () => {
   let slowApiUrl: string;
   /** How long the API waits before it answers; `Infinity` never answers. */
   let answerAfterMs = Infinity;
+  /** Settled once the API received a call. */
+  let reached: () => void = () => {};
 
   beforeAll(async () => {
     slowApi = createServer((_req, res) => {
+      reached();
       if (answerAfterMs === Infinity) return;
       setTimeout(() => {
         res.writeHead(200, { 'content-type': 'application/json' });
@@ -276,7 +279,7 @@ describe('an action whose API takes its time (D5)', () => {
    * and what the engine told of each action call.
    */
   async function agentOfSlowApi(
-    upstreamTimeoutMs: number
+    upstreamTimeoutMs: number | undefined
   ): Promise<{ agent: Client; told: CallResult[]; close(): Promise<void> }> {
     const told: CallResult[] = [];
     const srv = buildHostedMcpServer(
@@ -335,6 +338,24 @@ describe('an action whose API takes its time (D5)', () => {
 
       expect(told).toEqual([{ kind: 'api_unreachable' }]);
     } finally {
+      await close();
+    }
+  });
+
+  it('is served normally when the API answers in 29 seconds, the delay being 30 seconds by default', async () => {
+    answerAfterMs = 29_000;
+    const { agent, told, close } = await agentOfSlowApi(undefined);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const arrived = new Promise<void>((resolve) => (reached = resolve));
+      const answering = agent.callTool({ name: 'list_things', arguments: {} });
+      await arrived;
+      await vi.advanceTimersByTimeAsync(29_000);
+      const answer = await answering;
+
+      expect({ agentError: answer.isError ?? false, told }).toEqual({ agentError: false, told: [{ kind: 'succeeded' }] });
+    } finally {
+      vi.useRealTimers();
       await close();
     }
   });
