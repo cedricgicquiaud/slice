@@ -789,6 +789,42 @@ describe('noting a call', () => {
 
     await vi.waitFor(async () => expect((await calls.of(id)).map((note) => note.result)).toEqual([{ kind: 'succeeded' }]));
   });
+
+  it("gives the agent the API's answer once its MCP has 10,000 notes that day, and notes nothing more (contract 19, D8)", async () => {
+    const { id } = await store.put(withApiActions(threeActions()), account.workspaceId, CREATED);
+    await calls.write(
+      id,
+      Array.from({ length: 10_000 }, (_, n) => ({
+        action: 'list_things',
+        version: 1,
+        calledAt: new Date(CREATED.getTime() - n),
+        result: { kind: 'succeeded' as const },
+        durationMs: 120,
+      }))
+    );
+    let written = () => {};
+    const writeDone = new Promise<void>((resolve) => (written = resolve));
+    const noting = await appNotingWith({
+      write: async (connectorId, notes) => {
+        await calls.write(connectorId, notes);
+        written();
+      },
+      of: (connectorId) => calls.of(connectorId),
+    });
+    try {
+      const agent = await connectAgent(`${noting.base}/m/${id}`, 'TOKEN');
+      const answer = await agent.callTool({ name: 'list_things', arguments: {} });
+      await agent.close();
+      await writeDone;
+
+      expect({ answer, notes: (await calls.of(id)).length }).toEqual({
+        answer: { content: [{ type: 'text', text: '{\n  "ok": true\n}' }] },
+        notes: 10_000,
+      });
+    } finally {
+      await noting.close();
+    }
+  });
 });
 
 const ACTION_GONE_TEXT =
