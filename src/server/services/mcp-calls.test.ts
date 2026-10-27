@@ -144,6 +144,32 @@ describe('the notes kept (D9)', () => {
       vi.useRealTimers();
     }
   });
+
+  it('are cleaned up again an hour after a cleanup failed on an unreachable database, the failure only logged (D7)', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const downDb = await createTestDatabase();
+    const down = openDatabase(downDb.config);
+    await migrateDatabase(down);
+    await down.close();
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const cleanup = startCallsCleanup(createMcpCalls(down), { now: () => NOW });
+    try {
+      await vi.waitFor(() => expect(logged).toHaveBeenCalledTimes(1));
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+
+      await vi.waitFor(() =>
+        expect(logged.mock.calls).toEqual([
+          ['[mcp-calls] cleanup failed:', expect.any(String)],
+          ['[mcp-calls] cleanup failed:', expect.any(String)],
+        ])
+      );
+    } finally {
+      cleanup.stop();
+      logged.mockRestore();
+      vi.useRealTimers();
+      await downDb.dispose();
+    }
+  });
 });
 
 /** `count` calls of `list_contacts` a millisecond apart, from `from` on. */
