@@ -159,6 +159,26 @@ describe('the notes of a day (D8)', () => {
     expect((await calls.of(id)).length).toBe(10_000);
   });
 
+  it('stop at 10,000 when the two requests that reach the limit are noted at once', async () => {
+    // A real race on PostgreSQL only (`DATABASE_URL`): PGlite's single connection runs the two one after the other.
+    // Played twenty times: without a lock, a single run would pass part of the time.
+    const store = createHostedStore(database);
+    const calls = createMcpCalls(database);
+    const counts: number[] = [];
+    for (let round = 0; round < 20; round += 1) {
+      const { id } = await store.put(contacts, workspaceId, NOW);
+      await calls.write(id, callsFrom(NOW, 9_999));
+
+      await Promise.all([
+        calls.write(id, callsFrom(new Date('2026-10-26T18:00:00.000Z'), 1)),
+        calls.write(id, callsFrom(new Date('2026-10-26T19:00:00.000Z'), 1)),
+      ]);
+      counts.push((await calls.of(id)).length);
+    }
+
+    expect(counts).toEqual(Array.from({ length: 20 }, () => 10_000));
+  });
+
   it('start again the next day, at midnight UTC', async () => {
     const { id } = await createHostedStore(database).put(contacts, workspaceId, NOW);
     const calls = createMcpCalls(database);
