@@ -8,6 +8,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { buildHostedMcpServer, relayStore, type HostedMcpConfig } from './hosted-mcp-factory';
+import type { CallResult } from './mcp-calls';
 
 function freePort(): Promise<number> {
   return new Promise((resolve) => {
@@ -270,8 +271,14 @@ describe('an action whose API takes its time (D5)', () => {
     await new Promise<void>((r) => slowApi.close(() => r()));
   });
 
-  /** An agent connected to an MCP of the slow API, whose engine waits `upstreamTimeoutMs` at most. */
-  async function agentOfSlowApi(upstreamTimeoutMs: number): Promise<{ agent: Client; close(): Promise<void> }> {
+  /**
+   * An agent connected to an MCP of the slow API, whose engine waits `upstreamTimeoutMs` at most,
+   * and what the engine told of each action call.
+   */
+  async function agentOfSlowApi(
+    upstreamTimeoutMs: number
+  ): Promise<{ agent: Client; told: CallResult[]; close(): Promise<void> }> {
+    const told: CallResult[] = [];
     const srv = buildHostedMcpServer(
       {
         name: 'slow',
@@ -284,7 +291,8 @@ describe('an action whose API takes its time (D5)', () => {
     const tr = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID() });
     await srv.connect(tr);
     const http = createServer((req, res) => {
-      relayStore.run({ authorization: 'Bearer USERTOKEN' }, () => {
+      const onActionResult = (_requestId: string | number, result: CallResult) => told.push(result);
+      relayStore.run({ authorization: 'Bearer USERTOKEN', onActionResult }, () => {
         void tr.handleRequest(req, res);
       });
     });
@@ -293,6 +301,7 @@ describe('an action whose API takes its time (D5)', () => {
     await agent.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${(http.address() as { port: number }).port}/`)));
     return {
       agent,
+      told,
       async close() {
         await agent.close();
         http.closeAllConnections();
@@ -313,6 +322,18 @@ describe('an action whose API takes its time (D5)', () => {
         agentError: true,
         abandonedInTime: true,
       });
+    } finally {
+      await close();
+    }
+  });
+
+  it('is told "API unreachable" when it is abandoned (D4)', async () => {
+    answerAfterMs = Infinity;
+    const { agent, told, close } = await agentOfSlowApi(200);
+    try {
+      await agent.callTool({ name: 'list_things', arguments: {} });
+
+      expect(told).toEqual([{ kind: 'api_unreachable' }]);
     } finally {
       await close();
     }
