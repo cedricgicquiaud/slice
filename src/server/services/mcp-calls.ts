@@ -118,7 +118,11 @@ const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
 /** Delete the notes of more than 30 days now, then every hour, until stopped (D9). */
 export function startCallsCleanup(calls: McpCalls, options: { now: () => Date }): { stop(): void } {
   const run = () => {
-    void calls.purgeOld(options.now());
+    calls.purgeOld(options.now()).catch((err: unknown) => {
+      // The next run retries; an unreachable database must not bring the server down.
+      // eslint-disable-next-line no-console
+      console.error('[mcp-calls] cleanup failed:', err instanceof Error ? err.message : String(err));
+    });
   };
   run();
   const timer = setInterval(run, CLEANUP_INTERVAL_MS);
