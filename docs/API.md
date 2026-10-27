@@ -875,7 +875,7 @@ midnight UTC; the other MCPs of the account are noted as before. Two requests no
 the limit.
 
 The notes are kept 30 days. A cleanup, run when the server starts and then every hour, deletes the notes of the calls
-that arrived more than 30 days before. A cleanup the database fails only reaches the server's log
+that arrived more than 30 days before. A cleanup that fails (database out of reach) only reaches the server's log
 (`[mcp-calls] cleanup failed:`); the next one tries again.
 
 **No expiry:** a configuration is served whatever its age, and no cleanup deletes it. `SLICE_HOSTED_TTL_HOURS` is
