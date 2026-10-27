@@ -5,7 +5,7 @@
  */
 import { asc, eq, sql } from 'drizzle-orm';
 import type { Database } from '../db/client';
-import { connectorApiActions, connectorCalls } from '../db/schema';
+import { connectorApiActions, connectorCalls, connectors } from '../db/schema';
 
 /** What became of an action call (D4); a failure keeps the API's status code. */
 export type CallResult =
@@ -52,36 +52,40 @@ export function createMcpCalls(database: Database): McpCalls {
         status: result.kind === 'failed' ? result.status : null,
         duration_ms: durationMs,
       }));
-      // Only a call of one of the API's actions is noted (D2), while its UTC day has room left under the
-      // cap (D8), in the order of the calls. In one statement, whatever the number of calls: the notes
-      // travel as a single JSON value, far from PostgreSQL's limit on parameters.
-      await db.execute(sql`
-        with call as (
-          select *, date_trunc('day', called_at at time zone 'UTC') as utc_day
-          from jsonb_to_recordset(${JSON.stringify(rows)}::jsonb)
-            as call(position int, version int, action text, called_at timestamptz, result text, status int, duration_ms int)
-          where exists (
-            select 1 from ${connectorApiActions} where connector_id = ${connectorId} and name = call.action
+      await db.transaction(async (tx) => {
+        // Locked until the end: two writes of the same MCP count its notes one after the other (D8).
+        await tx.select({ id: connectors.id }).from(connectors).where(eq(connectors.id, connectorId)).for('update');
+        // Only a call of one of the API's actions is noted (D2), while its UTC day has room left under the
+        // cap (D8), in the order of the calls. In one statement, whatever the number of calls: the notes
+        // travel as a single JSON value, far from PostgreSQL's limit on parameters.
+        await tx.execute(sql`
+          with call as (
+            select *, date_trunc('day', called_at at time zone 'UTC') as utc_day
+            from jsonb_to_recordset(${JSON.stringify(rows)}::jsonb)
+              as call(position int, version int, action text, called_at timestamptz, result text, status int, duration_ms int)
+            where exists (
+              select 1 from ${connectorApiActions} where connector_id = ${connectorId} and name = call.action
+            )
+          ),
+          note as (
+            select *, row_number() over (partition by utc_day order by position) as rank from call
+          ),
+          day as (
+            select utc_day, (
+              select count(*) from ${connectorCalls}
+              where connector_id = ${connectorId}
+                and called_at >= utc_day at time zone 'UTC'
+                and called_at < (utc_day + interval '1 day') at time zone 'UTC'
+            ) as noted
+            from (select distinct utc_day from note) as days
           )
-        ),
-        note as (
-          select *, row_number() over (partition by utc_day order by position) as rank from call
-        ),
-        day as (
-          select utc_day, (
-            select count(*) from ${connectorCalls}
-            where connector_id = ${connectorId}
-              and called_at >= utc_day at time zone 'UTC'
-              and called_at < (utc_day + interval '1 day') at time zone 'UTC'
-          ) as noted
-          from (select distinct utc_day from note) as days
-        )
-        insert into ${connectorCalls} (connector_id, version, action, called_at, result, status, duration_ms)
-        select ${connectorId}, note.version, note.action, note.called_at, note.result::call_result, note.status, note.duration_ms
-        from note join day using (utc_day)
-        where note.rank <= ${DAILY_CAP} - day.noted
-        -- Written in the order of the calls: those of one request share their date (D6).
-        order by note.position`);
+          insert into ${connectorCalls} (connector_id, version, action, called_at, result, status, duration_ms)
+          select ${connectorId}, note.version, note.action, note.called_at, note.result::call_result, note.status, note.duration_ms
+          from note join day using (utc_day)
+          where note.rank <= ${DAILY_CAP} - day.noted
+          -- Written in the order of the calls: those of one request share their date (D6).
+          order by note.position`);
+      });
     },
     async of(connectorId) {
       const rows = await db
