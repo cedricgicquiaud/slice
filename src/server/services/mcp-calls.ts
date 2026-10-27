@@ -43,7 +43,8 @@ export function createMcpCalls(database: Database): McpCalls {
   return {
     async write(connectorId, notes) {
       if (notes.length === 0) return;
-      const rows = notes.map(({ action, version, calledAt, result, durationMs }) => ({
+      const rows = notes.map(({ action, version, calledAt, result, durationMs }, position) => ({
+        position,
         action,
         version,
         called_at: calledAt.toISOString(),
@@ -51,22 +52,33 @@ export function createMcpCalls(database: Database): McpCalls {
         status: result.kind === 'failed' ? result.status : null,
         duration_ms: durationMs,
       }));
-      // Only a call of one of the API's actions is noted (D2). In one statement, whatever the
-      // number of calls: the notes travel as a single JSON value, far from PostgreSQL's limit on parameters.
+      // Only a call of one of the API's actions is noted (D2), on a UTC day the MCP has not reached its cap
+      // (D8). In one statement, whatever the number of calls: the notes travel as a single JSON value, far
+      // from PostgreSQL's limit on parameters, and each day's notes are counted once.
       await db.execute(sql`
+        with note as (
+          select *, date_trunc('day', called_at at time zone 'UTC') as utc_day
+          from jsonb_to_recordset(${JSON.stringify(rows)}::jsonb)
+            as note(position int, version int, action text, called_at timestamptz, result text, status int, duration_ms int)
+        ),
+        day as (
+          select utc_day, (
+            select count(*) from ${connectorCalls}
+            where connector_id = ${connectorId}
+              and called_at >= utc_day at time zone 'UTC'
+              and called_at < (utc_day + interval '1 day') at time zone 'UTC'
+          ) as noted
+          from (select distinct utc_day from note) as days
+        )
         insert into ${connectorCalls} (connector_id, version, action, called_at, result, status, duration_ms)
         select ${connectorId}, note.version, note.action, note.called_at, note.result::call_result, note.status, note.duration_ms
-        from jsonb_to_recordset(${JSON.stringify(rows)}::jsonb)
-          as note(version int, action text, called_at timestamptz, result text, status int, duration_ms int)
+        from note join day using (utc_day)
         where exists (
           select 1 from ${connectorApiActions} where connector_id = ${connectorId} and name = note.action
         )
-        and (
-          select count(*) from ${connectorCalls}
-          where connector_id = ${connectorId}
-            and called_at >= date_trunc('day', note.called_at at time zone 'UTC') at time zone 'UTC'
-            and called_at < (date_trunc('day', note.called_at at time zone 'UTC') + interval '1 day') at time zone 'UTC'
-        ) < ${DAILY_CAP}`);
+        and day.noted < ${DAILY_CAP}
+        -- Written in the order of the calls: those of one request share their date (D6).
+        order by note.position`);
     },
     async of(connectorId) {
       const rows = await db
