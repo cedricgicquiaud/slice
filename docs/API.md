@@ -843,6 +843,8 @@ goes out without a credential, and the upstream API's own error comes back to th
   conversation to get the current list of actions." The same holds for each call of a JSON-RPC batch (several
   messages in one request): the others are served. An agent connected before a change keeps its old list until its
   next conversation; SLICE does not notify it.
+- An upstream call waits at most 30 seconds for the API, its response body included. Past that it is abandoned, its
+  request to the API closed, and the agent reads a tool error: "The API did not answer within 30 seconds."
 - A non-2xx upstream response becomes a tool error carrying the upstream status and response body.
 - A JSON response is returned as pretty-printed JSON text; anything else is returned as text.
 
@@ -857,7 +859,7 @@ noted. The result is one of:
 |---|---|
 | `succeeded` | The API answered with a 2xx code |
 | `failed` | The API answered with another code, kept with the note (for example 404) |
-| `api_unreachable` | The API did not answer: network failure, or its address refused by the SSRF guard at the time of the call |
+| `api_unreachable` | The API did not answer within 30 seconds, or not at all: network failure, or its address refused by the SSRF guard at the time of the call |
 | `invalid_request` | The call was refused before the API: values the action's schema refuses, or a request the MCP protocol refuses |
 | `not_available` | The action is not in the active version (answered with the message above) |
 | `slice_error` | SLICE itself failed during the call; the API is never blamed for it |
@@ -866,6 +868,15 @@ The note is written after the response has left: the agent never waits for it, a
 reaches the server's log (`[hosted-mcp] noting calls failed:`), never the agent. An agent that leaves before the answer
 gets its call noted with the result it would have read. A note still unwritten when the server stops is lost. Deleting
 an MCP, or the account that owns it, deletes its notes. The downloadable kit notes nothing.
+
+At most 10,000 calls are noted per MCP and per day (a day of UTC, as `cappedDays` of
+[`GET /api/mcps/:id/usage`](#get-apimcpsidusage) reads it). Past that, the calls are served as usual but not noted until
+midnight UTC; the other MCPs of the account are noted as before. Two requests noted at the same moment never go past
+the limit.
+
+The notes are kept 30 days. A cleanup, run when the server starts and then every hour, deletes the notes of the calls
+that arrived more than 30 days before. A cleanup the database fails only reaches the server's log
+(`[mcp-calls] cleanup failed:`); the next one tries again.
 
 **No expiry:** a configuration is served whatever its age, and no cleanup deletes it. `SLICE_HOSTED_TTL_HOURS` is
 ignored.
