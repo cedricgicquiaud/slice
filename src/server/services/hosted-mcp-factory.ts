@@ -14,6 +14,7 @@ import type { EndpointParam, HttpMethod, UpstreamAuth } from '@shared/types';
 import { type ZodSchemaShape, schemaShapeForParam } from './zod-schema-builder';
 import { SsrfError, assertPublicUrl } from './ssrf-guard';
 import type { CallResult } from './mcp-calls';
+import type { McpApiKey } from './mcp-api-key';
 
 /** Knobs for the hosted engine. `allowPrivateHosts` is for tests/dev only. */
 export interface HostedMcpOptions {
@@ -74,6 +75,8 @@ export interface HostedMcpConfig {
 /** What one request tells the engine, and how the engine tells what became of its action calls. */
 export interface RelayContext {
   authorization: string;
+  /** The key saved on SLICE for this MCP, read once at the request's arrival (D6); none without one. */
+  savedKey?: McpApiKey;
   /** Told the result of each action call the engine handled, by its JSON-RPC id (WAT-155). */
   onActionResult?: (requestId: string | number, result: CallResult) => void;
 }
@@ -94,6 +97,12 @@ export function relayedToken(): string | undefined {
   const raw = relayStore.getStore()?.authorization ?? '';
   const match = /^Bearer\s+([\x21-\x7e]+)\s*$/i.exec(raw.trim());
   return match?.[1];
+}
+
+/** The value of the key saved on SLICE for the MCP the request is for, if it has one. */
+function savedKey(): string | undefined {
+  const saved = relayStore.getStore()?.savedKey;
+  return saved && 'key' in saved ? saved.key : undefined;
 }
 
 /**
@@ -236,7 +245,7 @@ async function callUpstream(
     const value = args[p.name];
     if (value !== undefined && value !== null) headers[p.name] = String(value);
   }
-  const token = relayedToken();
+  const token = relayedToken() ?? savedKey();
   if (token) {
     // oauth2 is relayed exactly like bearer here: the hosted runtime never runs
     // the client_credentials flow (no secret on SLICE Cloud) — the agent's own

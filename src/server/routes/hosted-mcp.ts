@@ -22,6 +22,7 @@ import {
 import { buildHostedMcpServer, relayStore, type HostedMcpConfig } from '../services/hosted-mcp-factory';
 import type { HostedStore } from '../services/hosted-store';
 import type { CallNote, CallResult, McpCalls } from '../services/mcp-calls';
+import type { McpApiKey, McpApiKeys } from '../services/mcp-api-key';
 import { isDatabaseUnreachable } from '../db/errors';
 
 export interface HostedMcpRouterOptions {
@@ -29,6 +30,8 @@ export interface HostedMcpRouterOptions {
   store: HostedStore;
   /** Where the notes of action calls are written. Without it, no call is noted. */
   calls?: McpCalls;
+  /** The keys saved on SLICE for the MCPs. Without them, every call relays the agent's key only. */
+  apiKeys?: McpApiKeys;
   /** Clock that dates the arrival of a call. Defaults to the system clock. */
   now?: () => Date;
   /** Forwarded to the engine — disables the SSRF guard (tests/dev only). */
@@ -144,8 +147,11 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
     const arrival = { calledAt: now(), startedAt: performance.now() };
     const responded = new Promise<number>((resolve) => res.once('close', () => resolve(res.statusCode)));
     let config: HostedMcpConfig | undefined;
+    let savedKey: McpApiKey | undefined;
     try {
       config = await options.store.get(req.params.id);
+      // Read once, at the arrival: the whole request is served with this key (D6).
+      if (config) savedKey = await options.apiKeys?.keyOf(req.params.id);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[hosted-mcp] reading the connector failed:', err instanceof Error ? err.message : err);
@@ -191,7 +197,7 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
         const position = delivered++;
         const onActionResult = (_requestId: string | number, result: CallResult) => tellCall?.(position, result);
         // The engine, and the SDK's answer, tell this call's result through the context it runs in.
-        if (served.has(call.name)) return relayStore.run({ authorization, onActionResult }, () => deliver?.(message, extra));
+        if (served.has(call.name)) return relayStore.run({ authorization, savedKey, onActionResult }, () => deliver?.(message, extra));
         onActionResult(call.id, { kind: 'not_available' });
         transport
           .send({ jsonrpc: '2.0', id: call.id, result: { content: [{ type: 'text', text: ACTION_GONE }], isError: true } })
@@ -208,7 +214,7 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
         }
         return send(message, sendOptions);
       };
-      await relayStore.run({ authorization }, async () => {
+      await relayStore.run({ authorization, savedKey }, async () => {
         await transport.handleRequest(req, res, req.body);
       });
     } catch (err) {

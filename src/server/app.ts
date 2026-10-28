@@ -134,7 +134,15 @@ export function createApp(options: CreateAppOptions = {}): Express {
       allowPrivateHosts,
     };
     app.use('/api/host', createHostRouter(hosted));
-    app.use('/m', createHostedMcpRouter({ ...hosted, calls: options.mcpCalls, upstreamTimeoutMs: options.upstreamTimeoutMs }));
+    app.use(
+      '/m',
+      createHostedMcpRouter({
+        ...hosted,
+        calls: options.mcpCalls,
+        apiKeys: options.mcpApiKeys,
+        upstreamTimeoutMs: options.upstreamTimeoutMs,
+      })
+    );
   }
 
   if (nodeEnv === 'production') {
