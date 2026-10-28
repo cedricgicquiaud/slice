@@ -170,6 +170,12 @@ export async function saveMcpApiKey(id: string, apiKey: string): Promise<McpApiK
   return saved;
 }
 
+/** Remove the API key of one of the account's MCPs: it is erased (D3). */
+export async function removeMcpApiKey(id: string): Promise<void> {
+  const res = await fetch(`/api/mcps/${id}/api-key`, { method: 'DELETE' });
+  if (!res.ok) await throwRefusal(res);
+}
+
 /** Delete one of the account's MCPs, at once (D10). */
 export async function deleteMcp(id: string): Promise<void> {
   const res = await fetch(`/api/mcps/${id}`, { method: 'DELETE' });
