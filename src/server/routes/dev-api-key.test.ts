@@ -104,4 +104,16 @@ describe('POST /api/dev/mcps/:id/api-key/garble', () => {
       state: { savedAt: SAVED, readable: true },
     });
   });
+
+  it('answers 404 for my MCP without a key, and saves none (D17)', async () => {
+    const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+
+    const garbled = await request(sliceApp()).post(`/api/dev/mcps/${id}/api-key/garble`).set('cookie', account.cookie);
+
+    expect({ status: garbled.status, body: garbled.body, state: await apiKeys.stateOf(id) }).toEqual({
+      status: 404,
+      body: { code: 'NOT_FOUND', message: 'This MCP has no API key.' },
+      state: undefined,
+    });
+  });
 });
