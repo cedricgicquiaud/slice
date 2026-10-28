@@ -119,8 +119,9 @@ export function createApp(options: CreateAppOptions = {}): Express {
     app.use('/api/mcps', createMcpsRouter(options.accountMcps, { apiKeys: options.mcpApiKeys, now }));
   }
   // Recette primer: an unreadable key, so mounted only where NODE_ENV says development or test (D17).
-  if (options.mcpApiKeys && options.mcpApiKeysUnderAnotherKey && (declaredEnv === 'development' || declaredEnv === 'test')) {
-    app.post('/api/dev/mcps/:id/api-key/garble', devGarbleApiKey(options.mcpApiKeys, options.mcpApiKeysUnderAnotherKey));
+  const { accountMcps, mcpApiKeys, mcpApiKeysUnderAnotherKey } = options;
+  if (accountMcps && mcpApiKeys && mcpApiKeysUnderAnotherKey && (declaredEnv === 'development' || declaredEnv === 'test')) {
+    app.post('/api/dev/mcps/:id/api-key/garble', devGarbleApiKey(accountMcps, mcpApiKeys, mcpApiKeysUnderAnotherKey));
   }
 
   // Pivot-4 — SLICE Cloud. POST /api/host stores a config and returns a URL;
