@@ -498,4 +498,12 @@ describe('the key an action call sends to the API', () => {
 
     expect(heard.map((headers) => headers['x-api-key'])).toEqual(['agent-key-0173']);
   });
+
+  it('is the saved key when the agent sends the example text of the snippets, Bearer PASTE_YOUR_TOKEN_HERE (contract 4, D6)', async () => {
+    heard = [];
+
+    await callWith(API_KEY, { authorization: 'Bearer PASTE_YOUR_TOKEN_HERE', savedKey: { key: 'saved-key-0173' } });
+
+    expect(heard.map((headers) => headers['x-api-key'])).toEqual(['saved-key-0173']);
+  });
 });
