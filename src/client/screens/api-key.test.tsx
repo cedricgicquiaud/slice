@@ -125,4 +125,20 @@ describe('API key', () => {
 
     expect({ greyedDuringTheCall, saves: server.saved.length }).toEqual({ greyedDuringTheCall: true, saves: 1 });
   });
+
+  it('never shows the key once saved, neither in the field nor anywhere on the page (contract 14, D3)', async () => {
+    server.mcps = [NOTION];
+    const user = userEvent.setup();
+    render(<ApiKeyScreen mcpId="notion-id" />);
+
+    await user.click(await screen.findByLabelText('API key'));
+    await user.paste('secret_ntn_1234');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await screen.findByText('Saved on Oct 28, 2026');
+
+    expect({
+      inThePage: document.body.innerHTML.includes('secret_ntn_1234'),
+      inAField: Array.from(document.querySelectorAll('input'), (input) => input.value).includes('secret_ntn_1234'),
+    }).toEqual({ inThePage: false, inAField: false });
+  });
 });
