@@ -16,6 +16,7 @@ import { migrateDatabase } from './db/migrate';
 import { createTestAccount, TEST_AUTH_SECRET, type TestAccount } from './db/test-account';
 import { DATABASE_TEST_TIMEOUTS } from './db/test-database';
 import { startTestProcess, stopTestProcess } from './test-processes';
+import viteConfig from '../../vite.config';
 
 vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
@@ -179,4 +180,10 @@ describe('the server started with BETTER_AUTH_URL (D5, D16)', () => {
       rmSync(scratch, { recursive: true, force: true });
     }
   }, 30_000);
+});
+
+describe('the Vite page in development (D16)', () => {
+  it('relays /m to the API server as it relays /api, so an MCP at http://localhost:5173/m/<id> answers', () => {
+    expect(viteConfig.server?.proxy?.['/m']).toEqual({ target: 'http://localhost:3001', changeOrigin: true });
+  });
 });
