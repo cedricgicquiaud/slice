@@ -16,6 +16,7 @@ import { Check, Copy } from 'lucide-react';
 import type { SliceConfig } from '@shared/types';
 import { ConnectionTabs } from '../components/connection-tabs';
 import { useDownload } from '../hooks/use-download';
+import { takesApiKey } from './mcps';
 
 export interface SuccessScreenProps {
   config: SliceConfig;
@@ -26,6 +27,8 @@ export interface SuccessScreenProps {
   zipBlob?: Blob;
   /** Hosted flow — the live MCP URL. Absent in the bundle flow. */
   hostedUrl?: string;
+  /** Hosted flow — the MCP's id, for its "API key" page. Absent in the bundle flow. */
+  hostedId?: string;
   onRestart: () => void;
   onBackToSelection: () => void;
 }
@@ -36,6 +39,7 @@ export function SuccessScreen({
   economySnapshot,
   zipBlob,
   hostedUrl,
+  hostedId,
   onRestart,
   onBackToSelection,
 }: SuccessScreenProps) {
@@ -104,6 +108,11 @@ export function SuccessScreen({
               with the token of your target API. We relay it on every call — it&apos;s never stored.
             </p>
           ))}
+        {hosted && hostedId && takesApiKey(config.upstreamAuth.type) && (
+          <a href={`/mcps/${hostedId}/api-key`} className="text-sm font-medium text-primary hover:underline">
+            Add your API key
+          </a>
+        )}
         <ConnectionTabs config={config} hostedUrl={hostedUrl} />
       </section>
 
