@@ -10,7 +10,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { z, type ZodTypeAny } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
-import type { EndpointParam, HttpMethod, UpstreamAuth } from '@shared/types';
+import { PASTE_YOUR_TOKEN_HERE, type EndpointParam, type HttpMethod, type UpstreamAuth } from '@shared/types';
 import { type ZodSchemaShape, schemaShapeForParam } from './zod-schema-builder';
 import { SsrfError, assertPublicUrl } from './ssrf-guard';
 import type { CallResult } from './mcp-calls';
@@ -97,6 +97,12 @@ export function relayedToken(): string | undefined {
   const raw = relayStore.getStore()?.authorization ?? '';
   const match = /^Bearer\s+([\x21-\x7e]+)\s*$/i.exec(raw.trim());
   return match?.[1];
+}
+
+/** The key the agent sent of its own (D6): the example text of the snippets is none. */
+function agentKey(): string | undefined {
+  const token = relayedToken();
+  return token === PASTE_YOUR_TOKEN_HERE ? undefined : token;
 }
 
 /** The value of the key saved on SLICE for the MCP the request is for, if it has one. */
@@ -245,7 +251,7 @@ async function callUpstream(
     const value = args[p.name];
     if (value !== undefined && value !== null) headers[p.name] = String(value);
   }
-  const token = relayedToken() ?? savedKey();
+  const token = agentKey() ?? savedKey();
   if (token) {
     // oauth2 is relayed exactly like bearer here: the hosted runtime never runs
     // the client_credentials flow (no secret on SLICE Cloud) — the agent's own
