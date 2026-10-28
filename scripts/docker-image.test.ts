@@ -90,4 +90,8 @@ describe('the files kept out', () => {
   it('keeps .env and data/ out of the image', () => {
     expect(patternsOf(read('.dockerignore'))).toEqual(expect.arrayContaining(['.env', 'data/']));
   });
+
+  it('keeps .env out of the repository', () => {
+    expect(patternsOf(read('.gitignore'))).toContain('.env');
+  });
 });
