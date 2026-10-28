@@ -16,6 +16,7 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState<McpApiKey | null>(null);
   const [pasted, setPasted] = useState('');
+  const [replacing, setReplacing] = useState(false);
   // "Save" stays greyed during the call: a double click saves once.
   const [saving, setSaving] = useState(false);
 
@@ -25,6 +26,7 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
     try {
       setApiKey(await saveMcpApiKey(mcpId, pasted));
       setPasted('');
+      setReplacing(false);
     } finally {
       setSaving(false);
     }
@@ -69,17 +71,27 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
           <p className="mt-2 text-sm text-muted-foreground">
             Anyone with this MCP&apos;s address acts with your key. Keep the address private.
           </p>
-          {apiKey ? (
+          {apiKey && (
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <p className="text-sm text-foreground">Saved on {CREATED.format(new Date(apiKey.savedAt))}</p>
-              <Button type="button" variant="outline" size="sm">
-                Replace
-              </Button>
-              <Button type="button" variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive">
-                Remove
-              </Button>
+              {!replacing && (
+                <>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setReplacing(true)}>
+                    Replace
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    Remove
+                  </Button>
+                </>
+              )}
             </div>
-          ) : (
+          )}
+          {(!apiKey || replacing) && (
             <form
               className="mt-8 flex flex-col gap-3"
               onSubmit={(event) => {
