@@ -1078,6 +1078,55 @@ dont le nom est cité.
   `src/server/services/mcp-api-key.test.ts` (`.github/workflows/ci.yml`) ; le test « saved twice at once leaves a single
   key, played twenty times » y joue une vraie course.
 
+**J'enregistre, remplace et retire la clé d'un MCP par l'API, et je vois si elle existe, jamais sa valeur (WAT-170)**
+
+Préparer : lancer `pnpm dev`, ouvrir http://localhost:5173, coller dans la console du navigateur l'amorce
+`.pilot/recette/amorce-history.js` (elle ouvre une session pour `recette@slice.local` et crée le MCP « Recette
+Notes », à jeton), puis recharger la page. L'identifiant du MCP est dans l'adresse :
+`http://localhost:5173/mcps/<identifiant>/history`. Les commandes ci-dessous se collent dans la console de cette page
+(remplacer `<identifiant>`) ; la clé de recette fait 40 caractères : `slice-recette-key-0123456789abcdefghijkl`.
+
+- [ ] « Save » : `await (await fetch('/api/mcps/<identifiant>/api-key', { method: 'PUT', headers: { 'content-type':
+  'application/json' }, body: JSON.stringify({ apiKey: 'slice-recette-key-0123456789abcdefghijkl' }) })).json()` rend
+  `{ apiKey: { savedAt: "<maintenant, en UTC>", readable: true } }`. Puis
+  `await (await fetch('/api/mcps/<identifiant>/api-key')).json()` rend la même chose : la date, l'état lisible, jamais
+  la clé.
+- [ ] « Replace » : refaire le `PUT` une minute plus tard avec `slice-recette-key-ZYXWVUTSRQ9876543210abcd` : la réponse
+  porte la nouvelle date. « Remove » : `(await fetch('/api/mcps/<identifiant>/api-key', { method: 'DELETE' })).status`
+  rend `204`, puis le `GET` rend `{ apiKey: null }`.
+- [ ] Clé illisible : refaire le `PUT`, puis
+  `(await fetch('/api/dev/mcps/<identifiant>/api-key/garble', { method: 'POST' })).status` rend `204` (cette route de
+  recette chiffre la clé sous une autre clé de chiffrement, comme si `SLICE_ENCRYPTION_KEY` avait changé). Le `GET`
+  rend alors `readable: false`, avec la date du `PUT`. Même chose, par le vrai serveur redémarré avec une autre
+  `SLICE_ENCRYPTION_KEY` : test « keeps the key of an MCP under its SLICE_ENCRYPTION_KEY: readable after a restart with
+  it, unreadable with another » (`src/server/index.test.ts`).
+- [ ] `await (await fetch('/api/mcps')).json()` : chaque MCP porte `upstreamAuthType` ; « Recette Notes » porte
+  `"bearer"`. Les quatre types (`none`, `apiKey`, `bearer`, `oauth2`) : test « tells the access of each MCP to its API:
+  none, API key, bearer token or OAuth2 » (`src/server/routes/mcps.test.ts`).
+- [ ] Refus : aucune réponse ne contient la clé. Après un `PUT` de `slice-recette-key-0123456789abcdefghijkl`, lire
+  `/api/mcps/<identifiant>/api-key`, `/api/mcps`, `/api/mcps/<identifiant>/versions` et `/api/mcps/<identifiant>/usage`
+  avec `await (await fetch('<chemin>')).text()`, et chercher `0123456789abcdefghijkl` dans chaque texte : absent
+  partout, réponse du `PUT` comprise.
+- [ ] Refus : aucune ligne des journaux du serveur ne contient la clé à l'enregistrement. Après les `PUT` ci-dessus,
+  chercher `slice-recette-key` dans le terminal de `pnpm dev` (Cmd+F) : aucun résultat. Preuve aussi par le test
+  « writes the key of my MCP in no line of the server logs while saving and replacing it ».
+- [ ] Refus : le MCP d'un autre compte répond comme un MCP inconnu. Ouvrir une fenêtre de navigation privée sur
+  http://localhost:5173, se connecter par code e-mail avec `voisin@example.com` (le code s'affiche dans le terminal de
+  `pnpm dev`), puis, dans sa console, faire le `GET`, le `PUT` et le `DELETE` ci-dessus sur `<identifiant>` (celui de
+  « Recette Notes ») : chacun répond `404` avec `{"code":"NOT_FOUND","message":"Unknown MCP id."}`, exactement comme
+  sur `/api/mcps/nexistepas/api-key`. Dans la première fenêtre, le `GET` montre la clé de « Recette Notes » toujours là,
+  à sa date.
+- [ ] Refus : sans session, ces demandes répondent 401. Dans un terminal :
+  `curl -s -X PUT http://localhost:3001/api/mcps/<identifiant>/api-key -H 'content-type: application/json' -d '{"apiKey":"x"}'`
+  affiche `{"code":"UNAUTHORIZED","message":"Sign in to continue."}` ; de même avec `curl -s` (lecture) et
+  `curl -s -X DELETE` sur la même adresse. La clé de « Recette Notes » ne bouge pas.
+- [ ] Refus : la route de recette n'existe pas en production. Preuve par le test « does not exist when
+  NODE_ENV=production: the key stays readable » (`src/server/routes/dev-api-key.test.ts`) : la demande répond `404`
+  et la clé reste lisible.
+- [ ] La clé n'est jamais essayée auprès de l'API à l'enregistrement : le `PUT` répond aussitôt, alors que l'API de
+  « Recette Notes » (`https://api.example.com/v1`) n'existe pas. Preuve par le test « saves the key of my MCP without
+  trying it on the MCP's API » : une API locale ne reçoit aucune requête pendant l'enregistrement.
+
 ### Livraison 2 — Le MCP appelle l'API avec la clé enregistrée
 
 _Section écrite par la livraison 2._
