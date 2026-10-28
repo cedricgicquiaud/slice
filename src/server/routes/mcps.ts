@@ -10,7 +10,7 @@
  */
 import { Router } from 'express';
 import type { ApiErrorPayload } from '@shared/types';
-import { mcpSelectionChangeSchema } from '@shared/config-schema';
+import { mcpApiKeySchema, mcpSelectionChangeSchema } from '@shared/config-schema';
 import type { AccountMcps } from '../services/account-mcps';
 import type { McpApiKeys, McpApiKeyState } from '../services/mcp-api-key';
 import type { SaveRefusal } from '../services/mcp-selection';
@@ -139,6 +139,12 @@ export function createMcpsRouter(accountMcps: AccountMcps, { apiKeys, now }: Mcp
     });
 
     router.put('/:id/api-key', async (req, res) => {
+      // An unusable key is refused before anything is saved: the key before stays (D9, D17).
+      const sent = mcpApiKeySchema.safeParse(req.body);
+      if (!sent.success) {
+        res.status(400).json({ code: 'INVALID_KEY', message: sent.error.issues[0]?.message ?? 'Invalid key.' });
+        return;
+      }
       await apiKeys.save(req.params.id, req.body.apiKey, now());
       res.json(apiKeyPayload(await apiKeys.stateOf(req.params.id)));
     });

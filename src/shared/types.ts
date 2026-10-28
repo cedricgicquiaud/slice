@@ -244,6 +244,7 @@ export class ParseError extends Error {
  *   also reserved, with 404 `NOT_FOUND`, for the account's own MCPs
  * - 400 `INVALID_SELECTION` — "Save" on "Edit actions" sent something else than a selection of the API's actions
  * - 409 `CONFLICT` — "Save" started from a version that is no longer the active one
+ * - 400 `INVALID_KEY` — the API key sent for an MCP cannot be used, nothing is saved
  */
 export type ApiErrorCode =
   | 'UNAUTHORIZED'
@@ -251,6 +252,7 @@ export type ApiErrorCode =
   | 'NOT_FOUND'
   | 'INVALID_SPEC'
   | 'INVALID_SELECTION'
+  | 'INVALID_KEY'
   | 'CONFLICT'
   | 'NO_ENDPOINT_SELECTED'
   | 'PAYLOAD_TOO_LARGE'

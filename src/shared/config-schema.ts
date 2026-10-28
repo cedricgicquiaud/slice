@@ -129,3 +129,11 @@ export const mcpSelectionChangeSchema = z.strictObject(
     error: (issue) => (issue.code === 'unrecognized_keys' ? 'Only the selection of actions can be changed.' : undefined),
   }
 );
+
+/**
+ * The API key of an MCP, as "Save" on its "API key" page sends it (D9): the
+ * spaces and line breaks a copy-paste leaves at its ends are dropped first.
+ */
+export const mcpApiKeySchema = z.object({
+  apiKey: z.string().trim().min(1, "This key can't be used: it is empty."),
+});
