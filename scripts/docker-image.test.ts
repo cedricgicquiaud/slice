@@ -42,3 +42,16 @@ describe('the Dockerfile', () => {
     expect(lastStage.map((i) => `${i.keyword} ${i.args}`)).toContain('COPY --from=build /app/dist ./dist');
   });
 });
+
+/** The patterns of an ignore file, comments and blank lines dropped. */
+const patternsOf = (ignoreFile: string): string[] =>
+  ignoreFile
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('#'));
+
+describe('the files kept out', () => {
+  it('keeps .env and data/ out of the image', () => {
+    expect(patternsOf(read('.dockerignore'))).toEqual(expect.arrayContaining(['.env', 'data/']));
+  });
+});
