@@ -1033,6 +1033,24 @@ describe('/api/mcps/:id/api-key', () => {
       });
     });
 
+    it.each([
+      ['without access to its API', { type: 'none' }],
+      ['in OAuth2', { type: 'oauth2', tokenUrl: 'https://auth.example.com/token', scopes: [] }],
+    ] as Array<[string, HostedMcpConfig['upstreamAuth']]>)(
+      'refuses the key of an MCP %s with INVALID_KEY, and saves nothing (contract 16, D8)',
+      async (_what, upstreamAuth) => {
+        const { id } = await store.put({ ...NOTION, upstreamAuth }, account.workspaceId, CREATED);
+
+        const res = await put(id, { apiKey: randomApiKey() });
+
+        expect({ status: res.status, body: await res.json(), kept: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
+          status: 400,
+          body: { code: 'INVALID_KEY', message: 'This MCP takes no API key.' },
+          kept: undefined,
+        });
+      }
+    );
+
     it('saves a key of 4,096 characters exactly (D9)', async () => {
       const { id } = await store.put(NOTION, account.workspaceId, CREATED);
       const apiKey = 'k'.repeat(4096);
