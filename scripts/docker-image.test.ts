@@ -26,7 +26,39 @@ function instructionsOf(dockerfile: string): Instruction[] {
     });
 }
 
+/** Production secrets: given to the container when it starts, never to the image (D11). */
+const SECRETS = [
+  'DATABASE_URL',
+  'BETTER_AUTH_SECRET',
+  'SLICE_ENCRYPTION_KEY',
+  'RESEND_API_KEY',
+  'GOOGLE_CLIENT_SECRET',
+  'MICROSOFT_CLIENT_SECRET',
+];
+
+/** The variables an ARG or ENV instruction declares: `ARG A=1`, `ENV A=1 B=2`, or `ENV A 1`. */
+function declaredNames({ keyword, args }: Instruction): string[] {
+  if (keyword === 'ARG') return args.split(/\s+/).map((arg) => arg.split('=')[0]);
+  if (keyword !== 'ENV') return [];
+  const assigned = [...args.matchAll(/(?:^|\s)([A-Za-z_][A-Za-z0-9_]*)=/g)].map((m) => m[1]);
+  return assigned.length > 0 ? assigned : [args.split(/\s+/)[0]];
+}
+
+const secretsDeclaredIn = (dockerfile: string): string[] =>
+  instructionsOf(dockerfile)
+    .flatMap(declaredNames)
+    .filter((name) => SECRETS.includes(name));
+
 describe('the Dockerfile', () => {
+  it('declares none of the production secrets, neither as ARG nor as ENV', () => {
+    expect(secretsDeclaredIn(read('Dockerfile'))).toEqual([]);
+  });
+
+  it('would be caught declaring ARG DATABASE_URL or ENV BETTER_AUTH_SECRET', () => {
+    const leaking = 'FROM node:22\nARG DATABASE_URL\nENV PORT=3001 BETTER_AUTH_SECRET=x\n';
+    expect(secretsDeclaredIn(leaking)).toEqual(['DATABASE_URL', 'BETTER_AUTH_SECRET']);
+  });
+
   it('builds SLICE like pnpm build, from the frozen lockfile', () => {
     const runs = instructionsOf(read('Dockerfile'))
       .filter((i) => i.keyword === 'RUN')
