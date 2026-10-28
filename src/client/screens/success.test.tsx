@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { SuccessScreen } from './success';
 import { ToastProvider } from '../components/toast';
 import type { SliceConfig } from '@shared/types';
@@ -120,6 +120,97 @@ describe('<SuccessScreen />', () => {
       );
 
       expect(document.body.textContent).not.toMatch(/stays live|2026|permanent plan/i);
+    });
+  });
+});
+
+// WAT-179 — the end of the creation leads to the "API key" page of an MCP by API key or by token.
+describe('hosted MCP that takes a saved key', () => {
+  function setupHostedAs(upstreamAuth: SliceConfig['upstreamAuth']) {
+    URL.createObjectURL = vi.fn(() => 'blob:fake');
+    URL.revokeObjectURL = vi.fn();
+    render(
+      <ToastProvider>
+        <SuccessScreen
+          config={{ ...CONFIG, upstreamAuth }}
+          endpointCount={23}
+          economySnapshot={74}
+          hostedUrl="https://slice.test/m/abc123"
+          hostedId="abc123"
+          onRestart={vi.fn()}
+          onBackToSelection={vi.fn()}
+        />
+      </ToastProvider>
+    );
+  }
+
+  it('links an MCP by API key to its API key page with "Add your API key" (contract 8, D1)', () => {
+    setupHostedAs({ type: 'apiKey', headerName: 'X-Shopify-Access-Token' });
+
+    expect(screen.getByRole('link', { name: 'Add your API key' })).toHaveAttribute('href', '/mcps/abc123/api-key');
+  });
+
+  it('says the token may be saved once in SLICE, kept encrypted, followed by the link (contract 10, D15)', () => {
+    setupHostedAs({ type: 'bearer' });
+
+    const link = screen.getByRole('link', { name: 'Add your API key' });
+    expect(link.previousElementSibling?.textContent).toBe(
+      'Paste the snippet below into your agent, then replace PASTE_YOUR_TOKEN_HERE with the token of your target API, ' +
+        'or save it once in SLICE: we keep it encrypted.'
+    );
+  });
+
+  it('never says "never stored", whatever the access, and links an MCP by API key or by token only (contract 10, 16, D8, D15)', () => {
+    const accesses: SliceConfig['upstreamAuth'][] = [
+      { type: 'apiKey', headerName: 'X-Shopify-Access-Token' },
+      { type: 'bearer' },
+      { type: 'oauth2', tokenUrl: 'https://auth.example.com/token', scopes: [] },
+      { type: 'none' },
+    ];
+
+    const seen = accesses.map((access) => {
+      setupHostedAs(access);
+      const page = {
+        neverStored: /never stored/i.test(document.body.textContent ?? ''),
+        link: screen.queryByRole('link', { name: 'Add your API key' }) !== null,
+      };
+      cleanup();
+      return page;
+    });
+
+    expect(seen).toEqual([
+      { neverStored: false, link: true },
+      { neverStored: false, link: true },
+      { neverStored: false, link: false },
+      { neverStored: false, link: false },
+    ]);
+  });
+
+  // The snippets are delivery 2's: what counts here is that the link to the key leaves them as they were.
+  it('leaves the configuration snippets as they were without the link (D16)', () => {
+    const snippets = () => screen.getByRole('tablist', { name: 'Connection snippets' }).parentElement?.textContent;
+    URL.createObjectURL = vi.fn(() => 'blob:fake');
+    URL.revokeObjectURL = vi.fn();
+    render(
+      <ToastProvider>
+        <SuccessScreen
+          config={CONFIG}
+          endpointCount={23}
+          economySnapshot={74}
+          hostedUrl="https://slice.test/m/abc123"
+          onRestart={vi.fn()}
+          onBackToSelection={vi.fn()}
+        />
+      </ToastProvider>
+    );
+    const withoutTheLink = snippets();
+    cleanup();
+
+    setupHostedAs(CONFIG.upstreamAuth);
+
+    expect({ link: screen.queryByRole('link', { name: 'Add your API key' }) !== null, snippets: snippets() }).toEqual({
+      link: true,
+      snippets: withoutTheLink,
     });
   });
 });

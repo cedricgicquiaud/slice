@@ -16,6 +16,7 @@ import { Check, Copy } from 'lucide-react';
 import type { SliceConfig } from '@shared/types';
 import { ConnectionTabs } from '../components/connection-tabs';
 import { useDownload } from '../hooks/use-download';
+import { takesApiKey } from './mcps';
 
 export interface SuccessScreenProps {
   config: SliceConfig;
@@ -26,6 +27,8 @@ export interface SuccessScreenProps {
   zipBlob?: Blob;
   /** Hosted flow — the live MCP URL. Absent in the bundle flow. */
   hostedUrl?: string;
+  /** Hosted flow — the MCP's id, for its "API key" page. Absent in the bundle flow. */
+  hostedId?: string;
   onRestart: () => void;
   onBackToSelection: () => void;
 }
@@ -36,6 +39,7 @@ export function SuccessScreen({
   economySnapshot,
   zipBlob,
   hostedUrl,
+  hostedId,
   onRestart,
   onBackToSelection,
 }: SuccessScreenProps) {
@@ -101,9 +105,18 @@ export function SuccessScreen({
             <p className="text-sm text-muted-foreground">
               Paste the snippet below into your agent, then replace{' '}
               <code className="rounded bg-muted px-1.5 py-0.5 text-xs">PASTE_YOUR_TOKEN_HERE</code>{' '}
-              with the token of your target API. We relay it on every call — it&apos;s never stored.
+              with the token of your target API
+              {/* A key or a token can also be saved in SLICE (D15); an OAuth2 token is only relayed. */}
+              {takesApiKey(config.upstreamAuth.type)
+                ? ', or save it once in SLICE: we keep it encrypted.'
+                : '. We relay it on every call.'}
             </p>
           ))}
+        {hosted && hostedId && takesApiKey(config.upstreamAuth.type) && (
+          <a href={`/mcps/${hostedId}/api-key`} className="text-sm font-medium text-primary hover:underline">
+            Add your API key
+          </a>
+        )}
         <ConnectionTabs config={config} hostedUrl={hostedUrl} />
       </section>
 

@@ -51,7 +51,7 @@ describe('<ConfigScreen> (phase 06)', () => {
   it('exposes the 3 auth options when the spec did not declare any', () => {
     renderConfig({ spec: SPEC_NO_AUTH, selectedIds: ['GET /a'], onGenerate: () => {} });
     expect(screen.getByRole('button', { name: /none\s+public api/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /api key/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^api key/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /bearer/i })).toBeInTheDocument();
   });
 
@@ -65,10 +65,21 @@ describe('<ConfigScreen> (phase 06)', () => {
   // RC1.2 — the transport question is replaced by the hosting question.
   it('shows the two hosting cards and drops the old transport cards', () => {
     renderConfig({ spec: SPEC, selectedIds: ['GET /a'], onGenerate: () => {} });
-    expect(screen.getByRole('button', { name: /we host it and relay/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /we host it and use your api key/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /prefer to run it yourself/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /on my machine/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /on a remote/i })).not.toBeInTheDocument();
+  });
+
+  // WAT-179 (D15) — the key is relayed or saved once, encrypted: no longer "never stored".
+  it('says SLICE Cloud uses the API key relayed from the agent or saved once and kept encrypted (contract 10, D15)', () => {
+    renderConfig({ spec: SPEC, selectedIds: ['GET /a'], onGenerate: () => {} });
+    expect({
+      card: screen.queryByText(
+        'We host it and use your API key: relayed from your agent, or saved once and kept encrypted. You get a URL to paste into your agent.'
+      ) !== null,
+      neverStored: /never stored/i.test(document.body.textContent ?? ''),
+    }).toEqual({ card: true, neverStored: false });
   });
 
   // RC1.3 — cloud pre-selected by default, label adapts when switching.
@@ -79,7 +90,7 @@ describe('<ConfigScreen> (phase 06)', () => {
     await userEvent.click(screen.getByRole('button', { name: /prefer to run it yourself/i }));
     expect(screen.getByRole('button', { name: /download the kit/i })).toBeEnabled();
 
-    await userEvent.click(screen.getByRole('button', { name: /we host it and relay/i }));
+    await userEvent.click(screen.getByRole('button', { name: /we host it and use your api key/i }));
     expect(screen.getByRole('button', { name: /deploy to slice cloud/i })).toBeEnabled();
   });
 
@@ -91,7 +102,7 @@ describe('<ConfigScreen> (phase 06)', () => {
 
   it('disables the action when the form is invalid even after choosing hosting', async () => {
     renderConfig({ spec: SPEC, selectedIds: ['GET /a'], onGenerate: () => {} });
-    await userEvent.click(screen.getByRole('button', { name: /we host it and relay/i }));
+    await userEvent.click(screen.getByRole('button', { name: /we host it and use your api key/i }));
     const name = screen.getByDisplayValue('shopify');
     await userEvent.clear(name);
     await userEvent.type(name, 'Bad Name');
@@ -101,7 +112,7 @@ describe('<ConfigScreen> (phase 06)', () => {
   it('calls onGenerate with the final config incl. hosting when the action is clicked', async () => {
     const onGenerate = vi.fn();
     renderConfig({ spec: SPEC, selectedIds: ['GET /a'], onGenerate });
-    await userEvent.click(screen.getByRole('button', { name: /we host it and relay/i }));
+    await userEvent.click(screen.getByRole('button', { name: /we host it and use your api key/i }));
     await userEvent.click(screen.getByRole('button', { name: /deploy to slice cloud/i }));
     expect(onGenerate).toHaveBeenCalledOnce();
     const arg = onGenerate.mock.calls[0][0];

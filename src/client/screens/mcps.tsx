@@ -1,11 +1,13 @@
 /**
  * "My MCPs", at `/mcps` (D9): the signed-in account's MCPs, newest first, each
  * with its API's name, action count, creation date and address, and a way to
- * its actions, its history (D10) and its usage (D12). Deleting one asks for confirmation, then
- * takes effect at once (D10). Only its selection of actions can change (D3).
+ * its actions, its history (D10), its usage (D12) and, for an MCP by API key or
+ * by token, its API key. Deleting one asks for confirmation, then takes effect
+ * at once (D10). Only its selection of actions can change (D3).
  */
 import { useEffect, useId, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
+import type { UpstreamAuthType } from '@shared/types';
 import { Button } from '../components/ui/button';
 import {
   Dialog,
@@ -22,6 +24,11 @@ import { deleteMcp, listMcps, type Mcp } from '../lib/mcps-api';
 
 /** The day an MCP or one of its versions was created, e.g. "Oct 21, 2026". */
 export const CREATED = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+
+/** Whether an MCP reaching its API this way takes a key saved in SLICE: by API key or by token (D8). */
+export function takesApiKey(type: UpstreamAuthType): boolean {
+  return type === 'apiKey' || type === 'bearer';
+}
 
 /** "1 action", "3 actions". */
 export function countOfActions(count: number): string {
@@ -109,6 +116,11 @@ function McpRow({ mcp, onDelete }: { mcp: Mcp; onDelete: () => Promise<void> }) 
         <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
           <a href={`/mcps/${mcp.id}/usage`}>Usage</a>
         </Button>
+        {takesApiKey(mcp.upstreamAuthType) && (
+          <Button asChild variant="ghost" size="sm" className="text-muted-foreground">
+            <a href={`/mcps/${mcp.id}/api-key`}>API key</a>
+          </Button>
+        )}
         <Dialog>
           <DialogTrigger asChild>
             <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive">

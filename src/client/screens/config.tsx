@@ -264,7 +264,7 @@ export function ConfigScreen({ spec, selectedIds, onGenerate }: ConfigScreenProp
                 active={config.hosting === 'cloud'}
                 onSelect={(v) => setField('hosting', v)}
                 title="SLICE Cloud"
-                blurb="We host it and relay your token — never stored. You get a URL to paste into your agent."
+                blurb="We host it and use your API key: relayed from your agent, or saved once and kept encrypted. You get a URL to paste into your agent."
                 apps={['Claude', 'n8n', 'Airia']}
                 transport="hosted"
                 recommended

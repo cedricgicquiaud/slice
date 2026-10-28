@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   deleteMcp,
+  getMcpApiKey,
   getMcpHistory,
   getMcpSelection,
   getMcpUsage,
   listMcps,
+  removeMcpApiKey,
   restoreMcpVersion,
+  saveMcpApiKey,
   saveMcpSelection,
 } from './mcps-api';
 
@@ -250,5 +253,63 @@ describe('restoreMcpVersion', () => {
       code: 'NOT_FOUND',
       message: 'Unknown version of this MCP.',
     });
+  });
+});
+
+describe('getMcpApiKey', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("returns the date and the readability of the MCP's saved key, read from GET /api/mcps/:id/api-key", async () => {
+    const fetchMock = serverAnswers(200, { apiKey: { savedAt: '2026-10-27T09:30:00.000Z', readable: true } });
+
+    expect({ apiKey: await getMcpApiKey('notion-id'), asked: fetchMock.mock.calls }).toEqual({
+      apiKey: { savedAt: '2026-10-27T09:30:00.000Z', readable: true },
+      asked: [['/api/mcps/notion-id/api-key']],
+    });
+  });
+});
+
+describe('saveMcpApiKey', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("puts the key to PUT /api/mcps/:id/api-key, and returns the saved key's date and readability", async () => {
+    const fetchMock = serverAnswers(200, { apiKey: { savedAt: '2026-10-28T09:30:00.000Z', readable: true } });
+
+    const saved = await saveMcpApiKey('notion-id', 'secret_ntn_1234');
+
+    expect({ saved, asked: fetchMock.mock.calls }).toEqual({
+      saved: { savedAt: '2026-10-28T09:30:00.000Z', readable: true },
+      asked: [
+        [
+          '/api/mcps/notion-id/api-key',
+          { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{"apiKey":"secret_ntn_1234"}' },
+        ],
+      ],
+    });
+  });
+});
+
+describe('removeMcpApiKey', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("asks the server to remove the MCP's key with DELETE /api/mcps/:id/api-key", async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await removeMcpApiKey('notion-id');
+
+    expect(fetchMock.mock.calls).toEqual([['/api/mcps/notion-id/api-key', { method: 'DELETE' }]]);
   });
 });

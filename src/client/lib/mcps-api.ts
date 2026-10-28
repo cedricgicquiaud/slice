@@ -1,4 +1,4 @@
-import type { EndpointGroup, McpSelectionChange } from '@shared/types';
+import type { EndpointGroup, McpSelectionChange, UpstreamAuthType } from '@shared/types';
 import { ApiError, type ApiErrorBody } from './api';
 import { refreshSession } from './auth-client';
 
@@ -8,6 +8,8 @@ export interface Mcp {
   /** The API's name as read in its description, else its domain. */
   apiName: string;
   actionCount: number;
+  /** How the MCP reaches its API, set at its creation: only `apiKey` and `bearer` take a saved key (D8). */
+  upstreamAuthType: UpstreamAuthType;
   /** ISO creation date. */
   createdAt: string;
   /** The MCP's address, to paste into the agent. */
@@ -93,6 +95,14 @@ export interface McpSelection {
   selectedIds: string[];
 }
 
+/** An MCP's saved API key, as `GET /api/mcps/:id/api-key` tells it: never the key itself (D3). */
+export interface McpApiKey {
+  /** ISO date of the last "Save" or "Replace". */
+  savedAt: string;
+  /** `false` when SLICE can no longer read the key: it must be replaced (D3). */
+  readable: boolean;
+}
+
 /** The MCPs of the signed-in account, newest first. */
 export async function listMcps(): Promise<Mcp[]> {
   const res = await fetch('/api/mcps');
@@ -140,6 +150,32 @@ export async function restoreMcpVersion(id: string, number: number): Promise<str
   if (!res.ok) await throwRefusal(res);
   const { activeSince } = (await res.json()) as { activeSince: string };
   return activeSince;
+}
+
+/** The saved API key of one of the account's MCPs, `null` without any (D3). */
+export async function getMcpApiKey(id: string): Promise<McpApiKey | null> {
+  const res = await fetch(`/api/mcps/${id}/api-key`);
+  if (!res.ok) await throwRefusal(res);
+  const { apiKey } = (await res.json()) as { apiKey: McpApiKey | null };
+  return apiKey;
+}
+
+/** Save the API key of one of the account's MCPs, replacing the one before (D3); returns its state, never the key. */
+export async function saveMcpApiKey(id: string, apiKey: string): Promise<McpApiKey> {
+  const res = await fetch(`/api/mcps/${id}/api-key`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiKey }),
+  });
+  if (!res.ok) await throwRefusal(res);
+  const { apiKey: saved } = (await res.json()) as { apiKey: McpApiKey };
+  return saved;
+}
+
+/** Remove the API key of one of the account's MCPs: it is erased (D3). */
+export async function removeMcpApiKey(id: string): Promise<void> {
+  const res = await fetch(`/api/mcps/${id}/api-key`, { method: 'DELETE' });
+  if (!res.ok) await throwRefusal(res);
 }
 
 /** Delete one of the account's MCPs, at once (D10). */

@@ -11,6 +11,7 @@ import { McpsScreen } from './screens/mcps';
 import { HistoryScreen } from './screens/history';
 import { EditActionsScreen } from './screens/edit-actions';
 import { UsageScreen } from './screens/usage';
+import { ApiKeyScreen } from './screens/api-key';
 import { DeleteAccountScreen } from './screens/delete-account';
 import { useTheme } from './hooks/use-theme';
 import { ApiError, apiGenerate, apiHost } from './lib/api';
@@ -23,6 +24,8 @@ const HISTORY_PATH = /^\/mcps\/([^/]+)\/history$/;
 const EDIT_PATH = /^\/mcps\/([^/]+)\/edit$/;
 /** An MCP's usage (D10): `/mcps/<id>/usage`. */
 const USAGE_PATH = /^\/mcps\/([^/]+)\/usage$/;
+/** An MCP's API key (D1): `/mcps/<id>/api-key`. */
+const API_KEY_PATH = /^\/mcps\/([^/]+)\/api-key$/;
 
 interface SuccessState {
   config: SliceConfig;
@@ -30,6 +33,8 @@ interface SuccessState {
   zipBlob?: Blob;
   /** Hosted (SLICE Cloud) flow — the live MCP URL. Absent in the bundle flow. */
   hostedUrl?: string;
+  /** Hosted (SLICE Cloud) flow — the MCP's id, for its "API key" page. Absent in the bundle flow. */
+  hostedId?: string;
   endpointCount: number;
   economySnapshot: number;
 }
@@ -96,10 +101,11 @@ function AppInner() {
       if (config.hosting === 'cloud') {
         // SLICE Cloud — the server stores the config and returns a live URL.
         // No bundle is downloaded; the success screen shows the URL + snippet.
-        const { url } = await apiHost(request);
+        const { id, url } = await apiHost(request);
         setSuccess({
           config,
           hostedUrl: url,
+          hostedId: id,
           endpointCount: selectedIds.length,
           economySnapshot: economy.percent,
         });
@@ -129,6 +135,7 @@ function AppInner() {
   const historyOf = HISTORY_PATH.exec(path)?.[1];
   const editOf = EDIT_PATH.exec(path)?.[1];
   const usageOf = USAGE_PATH.exec(path)?.[1];
+  const apiKeyOf = API_KEY_PATH.exec(path)?.[1];
   const offStepsPage =
     path === '/mcps' ? (
       <McpsScreen />
@@ -138,6 +145,8 @@ function AppInner() {
       <EditActionsScreen mcpId={editOf} />
     ) : usageOf ? (
       <UsageScreen mcpId={usageOf} />
+    ) : apiKeyOf ? (
+      <ApiKeyScreen mcpId={apiKeyOf} />
     ) : path === '/account/delete' ? (
       <DeleteAccountScreen />
     ) : null;
@@ -180,6 +189,7 @@ function AppInner() {
                 economySnapshot={success.economySnapshot}
                 zipBlob={success.zipBlob}
                 hostedUrl={success.hostedUrl}
+                hostedId={success.hostedId}
                 onRestart={handleReset}
                 onBackToSelection={() => setScreen(2)}
               />

@@ -34,7 +34,7 @@ Anything left unticked does not exist for the agent.
 
 - **Two delivery modes** — download the generated TypeScript server, or use a hosted URL to paste into the agent.
 - **Upstream authentication** — OAuth2 client credentials, bearer token, API key. In hosted mode the user's token
-  is relayed, never stored.
+  is relayed from the agent, or an API key or bearer token is saved once in SLICE and kept encrypted.
 - **Works with any MCP client** — stdio and Streamable HTTP transports.
 
 ## Getting started
@@ -81,7 +81,7 @@ flowchart LR
     C --> D[Endpoint selection<br/>in the UI]
     D --> E{Delivery}
     E -->|download| F[Ready-to-run kit<br/>TypeScript + Docker]
-    E -->|hosted| G[Hosted MCP URL<br/>token relayed, never stored]
+    E -->|hosted| G[Hosted MCP URL<br/>token relayed, or saved encrypted]
 ```
 
 Key decisions:
