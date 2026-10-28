@@ -149,6 +149,12 @@ export function createMcpsRouter(accountMcps: AccountMcps, { apiKeys, now }: Mcp
         res.status(400).json(invalidKey(sent.error.issues[0]?.message ?? 'Invalid key.'));
         return;
       }
+      // Only an API key or a bearer token takes a saved key (D8).
+      const access = await accountMcps.upstreamAuthTypeOf(res.locals.workspaceId, req.params.id);
+      if (access !== 'apiKey' && access !== 'bearer') {
+        res.status(400).json(invalidKey('This MCP takes no API key.'));
+        return;
+      }
       await apiKeys.save(req.params.id, sent.data.apiKey, now());
       res.json(apiKeyPayload(await apiKeys.stateOf(req.params.id)));
     });

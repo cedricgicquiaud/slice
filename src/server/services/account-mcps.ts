@@ -31,6 +31,8 @@ export interface AccountMcps {
   delete(workspaceId: string, id: string): Promise<boolean>;
   /** Whether `workspaceId` has the MCP `id`: `false` for an unknown id as for another account's MCP. */
   owns(workspaceId: string, id: string): Promise<boolean>;
+  /** How the MCP `id` of `workspaceId` reaches its API (D8), or `undefined` when there is no such MCP. */
+  upstreamAuthTypeOf(workspaceId: string, id: string): Promise<UpstreamAuthType | undefined>;
   /** The versions of the MCP `id` of `workspaceId` (D8), or `undefined` when there is no such MCP. */
   history(workspaceId: string, id: string): Promise<McpHistory | undefined>;
   /** The selection of the MCP `id` of `workspaceId`, for "Edit actions" (D2), or `undefined` when there is no such MCP. */
@@ -93,6 +95,13 @@ export function createAccountMcps(database: Database): AccountMcps {
         .from(connectors)
         .where(and(eq(connectors.id, id), eq(connectors.workspaceId, workspaceId)));
       return owned !== undefined;
+    },
+    async upstreamAuthTypeOf(workspaceId, id) {
+      const [owned] = await db
+        .select({ upstreamAuthType: connectors.upstreamAuthType })
+        .from(connectors)
+        .where(and(eq(connectors.id, id), eq(connectors.workspaceId, workspaceId)));
+      return owned?.upstreamAuthType;
     },
     history: (workspaceId, id) => readMcpHistory(database, workspaceId, id),
     selection: (workspaceId, id) => readMcpSelection(database, workspaceId, id),
