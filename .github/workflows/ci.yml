@@ -106,10 +106,13 @@ jobs:
     needs: gate
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    # At job level: a step's `if` reads the job's env, never a secret directly.
+    env:
+      COOLIFY_DEPLOY_WEBHOOK: ${{ secrets.COOLIFY_DEPLOY_WEBHOOK }}
+      COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
     steps:
+      # Skipped, and the run stays green, until the secret exists.
       - name: Call the Coolify deploy webhook
+        if: env.COOLIFY_DEPLOY_WEBHOOK != ''
         run: |
           curl -fsS -H "Authorization: Bearer $COOLIFY_API_TOKEN" "$COOLIFY_DEPLOY_WEBHOOK"
-        env:
-          COOLIFY_DEPLOY_WEBHOOK: ${{ secrets.COOLIFY_DEPLOY_WEBHOOK }}
-          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
