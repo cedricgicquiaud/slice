@@ -88,4 +88,19 @@ describe('API key', () => {
       sent: server.saved,
     }).toEqual({ saved: true, replace: true, remove: true, sent: ['secret_ntn_1234'] });
   });
+
+  it('reopens at /mcps/<id>/api-key in the state it was left, as when reloaded there: the key saved, no field, no steps (contract 7, D1)', async () => {
+    server.mcps = [NOTION];
+    server.keys['notion-id'] = { savedAt: '2026-10-27T09:30:00.000Z', readable: true };
+    window.history.pushState({}, '', '/mcps/notion-id/api-key');
+
+    render(<App />);
+
+    expect({
+      saved: (await screen.findByText('Saved on Oct 27, 2026')) !== null,
+      field: screen.queryByLabelText('API key') !== null,
+      back: screen.getByRole('link', { name: 'Back to My MCPs' }).getAttribute('href'),
+      steps: screen.queryByRole('navigation', { name: /steps/i }) !== null,
+    }).toEqual({ saved: true, field: false, back: '/mcps', steps: false });
+  });
 });
