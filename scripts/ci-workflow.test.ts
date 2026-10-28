@@ -71,4 +71,12 @@ describe('the deployment', () => {
     expect(deploy?.needs).toBe('gate');
     expect(deploy?.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/main'");
   });
+
+  it('reads the Coolify deploy webhook from a GitHub secret, and writes no address down', () => {
+    const [step] = deploy?.steps ?? [];
+    expect({ ...deploy?.env, ...step?.env }).toMatchObject({
+      COOLIFY_DEPLOY_WEBHOOK: '${{ secrets.COOLIFY_DEPLOY_WEBHOOK }}',
+    });
+    expect(JSON.stringify(deploy)).not.toMatch(/https?:\/\//);
+  });
 });
