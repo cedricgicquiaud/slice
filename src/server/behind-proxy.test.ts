@@ -4,7 +4,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import request from 'supertest';
 import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { createServer } from 'node:net';
+import { createServer, type AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +17,7 @@ import { migrateDatabase } from './db/migrate';
 import { createTestAccount, TEST_AUTH_SECRET, type TestAccount } from './db/test-account';
 import { DATABASE_TEST_TIMEOUTS } from './db/test-database';
 import { startTestProcess, stopTestProcess } from './test-processes';
-import type { UserConfig } from 'vite';
+import { createServer as createViteServer } from 'vite';
 
 vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
@@ -282,10 +282,20 @@ describe('the server started with BETTER_AUTH_URL (D5, D16)', () => {
 });
 
 describe('the Vite page in development (D16)', () => {
-  it('relays /m to the API server as it relays /api, so an MCP at http://localhost:5173/m/<id> answers', async () => {
-    // Outside the server project's sources: loaded by its path, which the type check does not follow.
-    const { default: viteConfig } = (await import(path.join(ROOT, 'vite.config.ts'))) as { default: UserConfig };
-
-    expect(viteConfig.server?.proxy?.['/m']).toEqual({ target: 'http://localhost:3001', changeOrigin: true });
+  it('relays /m/<id> to the API server, and keeps showing its own pages at /mcps', async () => {
+    const vite = await createViteServer({ configFile: path.join(ROOT, 'vite.config.ts'), logLevel: 'silent', server: { port: 0 } });
+    await vite.listen();
+    const page = `http://localhost:${(vite.httpServer!.address() as AddressInfo).port}`;
+    // Asked for a web page: unrelayed, Vite answers with SLICE's page (whatever the API server is doing).
+    const visit = async (route: string) =>
+      (await (await fetch(`${page}${route}`, { headers: { accept: 'text/html' } })).text()).includes('<div id="root">');
+    try {
+      expect({ myMcps: await visit('/mcps'), mcp: await visit('/m/Q2xhdWRlIGlzIG5vdCBoZXJl') }).toEqual({
+        myMcps: true,
+        mcp: false,
+      });
+    } finally {
+      await vite.close();
+    }
   });
 });
