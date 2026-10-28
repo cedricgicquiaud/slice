@@ -1,13 +1,17 @@
 // WAT-103/104/105 — `GET /api/mcps` and `DELETE /api/mcps/:id`: an account's own MCPs, never another's.
 // WAT-148/149 — `POST /api/mcps/:id/versions/:number/restore`: an existing version of one's own MCP, active again.
 // WAT-161/162 — `GET /api/mcps/:id/usage`: the calls agents made to one's own MCP, never another's.
+// WAT-170 — `GET`/`PUT`/`DELETE /api/mcps/:id/api-key`: the key of one's own MCP, saved, told, never shown.
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { createApp } from '../app';
+import { randomBytes } from 'node:crypto';
+import { createApp, type CreateAppOptions } from '../app';
 import { createAccountMcps } from '../services/account-mcps';
 import { createHostedStore, type HostedStore } from '../services/hosted-store';
 import { createMcpCalls } from '../services/mcp-calls';
+import { createMcpApiKeys } from '../services/mcp-api-key';
+import { createKeyCipher } from '../services/key-cipher';
 import type { HostedMcpConfig } from '../services/hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
@@ -76,13 +80,14 @@ beforeAll(async () => {
  * Another server on the same database, for a block of tests: each keeps its own
  * count of requests, so the files' tests stay under the rate limit of `/api/*`.
  */
-async function startApp(): Promise<{ url: string; close(): Promise<void> }> {
+async function startApp(options: CreateAppOptions = {}): Promise<{ url: string; close(): Promise<void> }> {
   const server = createApp({
     nodeEnv: 'test',
     hostedStore: store,
     mcpCalls: createMcpCalls(database),
     accountMcps: createAccountMcps(database),
     auth: account.auth,
+    ...options,
   }).listen(0);
   await new Promise<void>((r) => server.once('listening', r));
   return {
@@ -697,6 +702,52 @@ describe('GET /api/mcps/:id/usage', () => {
     expect({ status: res.status, body: await res.json() }).toEqual({
       status: 401,
       body: { code: 'UNAUTHORIZED', message: 'Sign in to continue.' },
+    });
+  });
+});
+
+describe('/api/mcps/:id/api-key', () => {
+  const SAVED = new Date('2026-10-28T09:30:00.000Z');
+  const cipher = createKeyCipher(randomBytes(32));
+  let keys: { url: string; close(): Promise<void> };
+  beforeAll(async () => {
+    keys = await startApp({ mcpApiKeys: createMcpApiKeys(database, cipher), now: () => SAVED });
+  });
+  afterAll(async () => {
+    await keys?.close();
+  });
+
+  /** A key of 40 characters drawn at random: found only where it was written. */
+  function randomApiKey(): string {
+    return randomBytes(30).toString('base64url');
+  }
+
+  /** "Save" on the "API key" page, as the signed-in account; without a session when `cookie` is `null`. */
+  function saveKey(id: string, apiKey: string, cookie: string | null = account.cookie) {
+    return fetch(`${keys.url}/api/mcps/${id}/api-key`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', ...(cookie && { cookie }) },
+      body: JSON.stringify({ apiKey }),
+    });
+  }
+
+  /** What the "API key" page reads of the key, as the signed-in account; without a session when `cookie` is `null`. */
+  function readKey(id: string, cookie: string | null = account.cookie) {
+    return fetch(`${keys.url}/api/mcps/${id}/api-key`, { headers: cookie ? { cookie } : {} });
+  }
+
+  it('saves the key of my MCP: it is then told saved on its date, readable, never shown (contract 14, D3)', async () => {
+    const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+
+    const saved = await saveKey(id, randomApiKey());
+    const read = await readKey(id);
+
+    expect({
+      saved: { status: saved.status, body: await saved.json() },
+      read: { status: read.status, body: await read.json() },
+    }).toEqual({
+      saved: { status: 200, body: { apiKey: { savedAt: '2026-10-28T09:30:00.000Z', readable: true } } },
+      read: { status: 200, body: { apiKey: { savedAt: '2026-10-28T09:30:00.000Z', readable: true } } },
     });
   });
 });
