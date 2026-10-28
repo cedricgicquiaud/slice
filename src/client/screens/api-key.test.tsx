@@ -358,4 +358,16 @@ describe('An MCP that takes no key', () => {
       buttons: screen.queryAllByRole('button', { name: /save|replace|remove/i }).length,
     }).toEqual({ message: true, field: false, buttons: 0 });
   });
+
+  it('says an MCP in OAuth2 gets its access from the agent on every call, with neither field nor button (contract 16, D17)', async () => {
+    server.mcps = [{ ...NOTION, id: 'stripe-id', apiName: 'Stripe API', upstreamAuthType: 'oauth2' }];
+
+    render(<ApiKeyScreen mcpId="stripe-id" />);
+
+    expect({
+      message: (await screen.findByText('This MCP gets its access from your agent on every call.')) !== null,
+      field: screen.queryByLabelText('API key') !== null,
+      buttons: screen.queryAllByRole('button', { name: /save|replace|remove/i }).length,
+    }).toEqual({ message: true, field: false, buttons: 0 });
+  });
 });
