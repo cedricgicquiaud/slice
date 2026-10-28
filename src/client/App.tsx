@@ -33,6 +33,8 @@ interface SuccessState {
   zipBlob?: Blob;
   /** Hosted (SLICE Cloud) flow — the live MCP URL. Absent in the bundle flow. */
   hostedUrl?: string;
+  /** Hosted (SLICE Cloud) flow — the MCP's id, for its "API key" page. Absent in the bundle flow. */
+  hostedId?: string;
   endpointCount: number;
   economySnapshot: number;
 }
@@ -99,10 +101,11 @@ function AppInner() {
       if (config.hosting === 'cloud') {
         // SLICE Cloud — the server stores the config and returns a live URL.
         // No bundle is downloaded; the success screen shows the URL + snippet.
-        const { url } = await apiHost(request);
+        const { id, url } = await apiHost(request);
         setSuccess({
           config,
           hostedUrl: url,
+          hostedId: id,
           endpointCount: selectedIds.length,
           economySnapshot: economy.percent,
         });
@@ -186,6 +189,7 @@ function AppInner() {
                 economySnapshot={success.economySnapshot}
                 zipBlob={success.zipBlob}
                 hostedUrl={success.hostedUrl}
+                hostedId={success.hostedId}
                 onRestart={handleReset}
                 onBackToSelection={() => setScreen(2)}
               />
