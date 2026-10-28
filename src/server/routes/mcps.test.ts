@@ -1010,5 +1010,19 @@ describe('/api/mcps/:id/api-key', () => {
         kept: { key: before },
       });
     });
+
+    it('refuses a key of 4,097 characters with INVALID_KEY, and keeps the key before (contract 15, D9, D17)', async () => {
+      const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+      const before = randomApiKey();
+      await createMcpApiKeys(database, cipher).save(id, before, SAVED);
+
+      const res = await put(id, { apiKey: 'k'.repeat(4097) });
+
+      expect({ status: res.status, body: await res.json(), kept: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
+        status: 400,
+        body: { code: 'INVALID_KEY', message: "This key can't be used: it is longer than 4,096 characters." },
+        kept: { key: before },
+      });
+    });
   });
 });
