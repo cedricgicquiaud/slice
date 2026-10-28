@@ -6,6 +6,7 @@ import { migrateDatabase } from './db/migrate';
 import { createHostedStore } from './services/hosted-store';
 import { createAccountMcps } from './services/account-mcps';
 import { createMcpCalls, startCallsCleanup } from './services/mcp-calls';
+import { encryptionKeyFromEnv } from './services/key-cipher';
 
 const PORT = Number(process.env.PORT ?? 3001);
 const NODE_ENV = process.env.NODE_ENV ?? 'development';
@@ -14,6 +15,8 @@ try {
   const databaseConfig = databaseConfigFromEnv(process.env);
   const authSecret = authSecretFromEnv(process.env);
   const authBaseUrl = authBaseUrlFromEnv(process.env);
+  // Read before anything opens, so a server without it never starts (D11); WAT-169 hands it to the MCPs' keys.
+  encryptionKeyFromEnv(process.env);
   const database = openDatabase(databaseConfig);
   await migrateDatabase(database);
 
