@@ -4,11 +4,14 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { randomBytes } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { createApp } from '../app';
 import { createHostedStore, type HostedStore } from '../services/hosted-store';
 import { createAccountMcps } from '../services/account-mcps';
 import { createMcpCalls, type McpCalls } from '../services/mcp-calls';
+import { createMcpApiKeys } from '../services/mcp-api-key';
+import { createKeyCipher } from '../services/key-cipher';
 import type { HostedMcpConfig } from '../services/hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
@@ -43,6 +46,8 @@ let calls: McpCalls;
 let account: TestAccount;
 let app: Server;
 let baseUrl: string;
+/** The encryption key of the file's app: a key saved under another one is unreadable to it. */
+const cipher = createKeyCipher(randomBytes(32));
 
 const CREATED = new Date('2026-10-24T09:00:00.000Z');
 /** The servers' clock: every app of this file reads it, tests move it. */
@@ -94,6 +99,7 @@ beforeAll(async () => {
     hostedStore: store,
     mcpCalls: calls,
     accountMcps: createAccountMcps(database),
+    mcpApiKeys: createMcpApiKeys(database, cipher),
     now,
     auth: account.auth,
   }).listen(0);
@@ -108,11 +114,12 @@ afterAll(async () => {
   await testDb?.dispose();
 });
 
-async function connectAgent(url: string, token: string): Promise<Client> {
+/** An agent connected to `url`, sending `token` as its own key; none without it. */
+async function connectAgent(url: string, token?: string): Promise<Client> {
   const client = new Client({ name: 'agent', version: '0.0.0' });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(url), {
-      requestInit: { headers: { Authorization: `Bearer ${token}` } },
+      requestInit: { headers: token === undefined ? {} : { Authorization: `Bearer ${token}` } },
     })
   );
   return client;
@@ -283,6 +290,39 @@ describe('hosted connector served from the database', () => {
     );
     expect(new Set(everything.map((r) => r.kind))).toEqual(new Set(['connector', 'version', 'action', 'api action']));
     expect(everything.filter((r) => /feedface|AGENT-SECRET|openapi: 3\.0\.3|info: \{ title/.test(r.row))).toEqual([]);
+  });
+});
+
+/** "Save" on the "API key" page of the MCP `id`, as the signed-in account. */
+async function saveKey(id: string, apiKey: string): Promise<void> {
+  const res = await fetch(`${baseUrl}/api/mcps/${id}/api-key`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: account.cookie },
+    body: JSON.stringify({ apiKey }),
+  });
+  expect(res.status).toBe(200);
+}
+
+const withApiKeyHeader = (config: HostedMcpConfig): HostedMcpConfig => ({
+  ...config,
+  upstreamAuth: { type: 'apiKey', headerName: 'X-Api-Key' },
+});
+
+// WAT-172 — the key saved on SLICE serves when the agent sends none, for its own MCP only.
+describe('an MCP whose key is saved on SLICE', () => {
+  it('calls the API with the saved key in the header named at its creation, the agent sending none, and gives the agent the answer (contract 2, D7)', async () => {
+    const { id } = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    await saveKey(id, 'saved-key-0172');
+    received = [];
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`);
+    const answer = await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    expect({ answer, apiKeys: received.map((r) => r.apiKey) }).toEqual({
+      answer: { content: [{ type: 'text', text: '{\n  "ok": true\n}' }] },
+      apiKeys: ['saved-key-0172'],
+    });
   });
 });
 
