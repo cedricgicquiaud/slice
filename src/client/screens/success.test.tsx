@@ -185,4 +185,32 @@ describe('hosted MCP that takes a saved key', () => {
       { neverStored: false, link: false },
     ]);
   });
+
+  // The snippets are delivery 2's: what counts here is that the link to the key leaves them as they were.
+  it('leaves the configuration snippets as they were without the link (D16)', () => {
+    const snippets = () => screen.getByRole('tablist', { name: 'Connection snippets' }).parentElement?.textContent;
+    URL.createObjectURL = vi.fn(() => 'blob:fake');
+    URL.revokeObjectURL = vi.fn();
+    render(
+      <ToastProvider>
+        <SuccessScreen
+          config={CONFIG}
+          endpointCount={23}
+          economySnapshot={74}
+          hostedUrl="https://slice.test/m/abc123"
+          onRestart={vi.fn()}
+          onBackToSelection={vi.fn()}
+        />
+      </ToastProvider>
+    );
+    const withoutTheLink = snippets();
+    cleanup();
+
+    setupHostedAs(CONFIG.upstreamAuth);
+
+    expect({ link: screen.queryByRole('link', { name: 'Add your API key' }) !== null, snippets: snippets() }).toEqual({
+      link: true,
+      snippets: withoutTheLink,
+    });
+  });
 });
