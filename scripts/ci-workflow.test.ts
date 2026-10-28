@@ -26,14 +26,20 @@ const ROOT = resolve(import.meta.dirname, '..');
 const workflow = yaml.load(readFileSync(resolve(ROOT, '.github/workflows/ci.yml'), 'utf8')) as Workflow;
 const gate = workflow.jobs.gate;
 
-/** The gate's step whose command starts with `command`. */
+/** The gate's step with a line of its script that starts with `command`. */
 const stepRunning = (command: string): Step | undefined =>
-  gate.steps.find((step) => step.run?.trim().startsWith(command));
+  gate.steps.find((step) => step.run?.split('\n').some((line) => line.trim().startsWith(command)));
 
 describe('the CI', () => {
   it('builds the image of the Dockerfile on every pull request and every push to main', () => {
     expect(workflow.on.pull_request).not.toBeUndefined();
     expect(workflow.on.push?.branches).toEqual(['main']);
     expect(stepRunning('docker build')).not.toBeUndefined();
+  });
+
+  it('gives the image its start-up settings when it runs', () => {
+    const settings = ['DATABASE_URL', 'BETTER_AUTH_SECRET', 'BETTER_AUTH_URL', 'SLICE_ENCRYPTION_KEY'];
+    const passed = stepRunning('docker run')?.run?.match(/-e\s+[A-Z_]+/g) ?? [];
+    expect(passed.map((flag) => flag.split(/\s+/)[1])).toEqual(expect.arrayContaining(settings));
   });
 });
