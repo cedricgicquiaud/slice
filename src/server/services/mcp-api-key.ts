@@ -14,6 +14,8 @@ export interface McpApiKeys {
   keyOf(connectorId: string): Promise<{ key: string } | undefined>;
   /** What can be told of the key of the connector `connectorId`, never its value (D3); `undefined` without one. */
   stateOf(connectorId: string): Promise<McpApiKeyState | undefined>;
+  /** Erase the key of the connector `connectorId` (D3). */
+  remove(connectorId: string): Promise<void>;
 }
 
 export interface McpApiKeyState {
@@ -46,6 +48,9 @@ export function createMcpApiKeys(database: Database, cipher: KeyCipher): McpApiK
         .from(connectorKeys)
         .where(eq(connectorKeys.connectorId, connectorId));
       return line && { savedAt: line.savedAt, readable: true };
+    },
+    async remove(connectorId) {
+      await db.delete(connectorKeys).where(eq(connectorKeys.connectorId, connectorId));
     },
   };
 }
