@@ -9,9 +9,18 @@ const ALGORITHM = 'aes-256-gcm';
 const NONCE_BYTES = 12;
 const TAG_BYTES = 16;
 
+/** A sealed value SLICE cannot open: sealed under another encryption key, or altered since. */
+export class UnreadableKeyError extends Error {
+  constructor() {
+    super('This value was sealed under another encryption key, or altered since.');
+    this.name = 'UnreadableKeyError';
+  }
+}
+
 export interface KeyCipher {
   /** The value sealed in base64: a fresh nonce, the authentication tag, then the ciphertext. */
   encrypt(value: string): string;
+  /** Throws an UnreadableKeyError when the authentication tag does not match: never a wrong text. */
   decrypt(sealed: string): string;
 }
 
@@ -25,9 +34,13 @@ export function createKeyCipher(encryptionKey: Buffer): KeyCipher {
     },
     decrypt(sealed) {
       const bytes = Buffer.from(sealed, 'base64');
-      const decipher = createDecipheriv(ALGORITHM, encryptionKey, bytes.subarray(0, NONCE_BYTES));
-      decipher.setAuthTag(bytes.subarray(NONCE_BYTES, NONCE_BYTES + TAG_BYTES));
-      return Buffer.concat([decipher.update(bytes.subarray(NONCE_BYTES + TAG_BYTES)), decipher.final()]).toString('utf8');
+      try {
+        const decipher = createDecipheriv(ALGORITHM, encryptionKey, bytes.subarray(0, NONCE_BYTES));
+        decipher.setAuthTag(bytes.subarray(NONCE_BYTES, NONCE_BYTES + TAG_BYTES));
+        return Buffer.concat([decipher.update(bytes.subarray(NONCE_BYTES + TAG_BYTES)), decipher.final()]).toString('utf8');
+      } catch {
+        throw new UnreadableKeyError();
+      }
     },
   };
 }
