@@ -59,6 +59,10 @@ describe('the Dockerfile', () => {
     expect(secretsDeclaredIn(leaking)).toEqual(['DATABASE_URL', 'BETTER_AUTH_SECRET']);
   });
 
+  it('needs no build argument to build', () => {
+    expect(instructionsOf(read('Dockerfile')).filter((i) => i.keyword === 'ARG')).toEqual([]);
+  });
+
   it('builds SLICE like pnpm build, from the frozen lockfile', () => {
     const runs = instructionsOf(read('Dockerfile'))
       .filter((i) => i.keyword === 'RUN')
