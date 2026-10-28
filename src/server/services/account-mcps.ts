@@ -27,6 +27,8 @@ export interface AccountMcps {
    * `false` when `workspaceId` has no such MCP, whoever else owns it (contract 17).
    */
   delete(workspaceId: string, id: string): Promise<boolean>;
+  /** Whether `workspaceId` has the MCP `id`: `false` for an unknown id as for another account's MCP. */
+  owns(workspaceId: string, id: string): Promise<boolean>;
   /** The versions of the MCP `id` of `workspaceId` (D8), or `undefined` when there is no such MCP. */
   history(workspaceId: string, id: string): Promise<McpHistory | undefined>;
   /** The selection of the MCP `id` of `workspaceId`, for "Edit actions" (D2), or `undefined` when there is no such MCP. */
@@ -80,6 +82,13 @@ export function createAccountMcps(database: Database): AccountMcps {
         .where(and(eq(connectors.id, id), eq(connectors.workspaceId, workspaceId)))
         .returning();
       return deleted.length > 0;
+    },
+    async owns(workspaceId, id) {
+      const [owned] = await db
+        .select({ id: connectors.id })
+        .from(connectors)
+        .where(and(eq(connectors.id, id), eq(connectors.workspaceId, workspaceId)));
+      return owned !== undefined;
     },
     history: (workspaceId, id) => readMcpHistory(database, workspaceId, id),
     selection: (workspaceId, id) => readMcpSelection(database, workspaceId, id),

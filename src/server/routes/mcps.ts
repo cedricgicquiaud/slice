@@ -126,6 +126,15 @@ export function createMcpsRouter(accountMcps: AccountMcps, options: McpsRouterOp
   });
 
   if (apiKeys) {
+    // Another account's MCP answers like a missing one, before its key is read or touched (D13).
+    router.all('/:id/api-key', async (req, res, next) => {
+      if (!(await accountMcps.owns(res.locals.workspaceId, req.params.id))) {
+        res.status(404).json(UNKNOWN_MCP);
+        return;
+      }
+      next();
+    });
+
     router.get('/:id/api-key', async (req, res) => {
       res.json(apiKeyPayload(await apiKeys.stateOf(req.params.id)));
     });
