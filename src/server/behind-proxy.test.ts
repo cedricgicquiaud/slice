@@ -125,28 +125,31 @@ describe("an MCP's address behind the proxy (D5)", () => {
 });
 
 /**
- * A request of the visitor at `ip`, as the proxy forwards it: it adds that address to `X-Forwarded-For`,
- * after whatever the visitor wrote there himself (`written`).
+ * The `X-Forwarded-For` the proxy hands SLICE for the visitor at `ip`: it adds that address
+ * after whatever the visitor wrote there themselves (`written`).
  */
+function forwardedFor(ip: string, written?: string): string {
+  return written ? `${written}, ${ip}` : ip;
+}
+
+/** A request of the visitor at `ip`, as the proxy forwards it. */
 function fromVisitor(app: ReturnType<typeof createApp>, ip: string, written?: string) {
-  return request(app)
-    .get('/api/mcps')
-    .set('x-forwarded-for', written ? `${written}, ${ip}` : ip);
+  return request(app).get('/api/mcps').set('x-forwarded-for', forwardedFor(ip, written));
 }
 
 describe('thirty requests a minute for each visitor behind the proxy (D6)', () => {
-  it("refuses a visitor's thirty-first request, and only his (contract 5)", async () => {
+  it("refuses a visitor's thirty-first request, and only theirs (contract 5)", async () => {
     const app = createApp({ nodeEnv: 'test' });
     for (let i = 0; i < 30; i++) await fromVisitor(app, '203.0.113.7');
 
-    const his = await fromVisitor(app, '203.0.113.7');
+    const theirs = await fromVisitor(app, '203.0.113.7');
     const another = await fromVisitor(app, '198.51.100.4');
 
     // Without a session, a request under the limit is refused for that: 401.
-    expect({ his: his.status, another: another.status }).toEqual({ his: 429, another: 401 });
+    expect({ theirs: theirs.status, another: another.status }).toEqual({ theirs: 429, another: 401 });
   });
 
-  it('counts a visitor who writes a false X-Forwarded-For on his real address (contract 14)', async () => {
+  it('counts a visitor who writes a false X-Forwarded-For on their real address (contract 14)', async () => {
     const app = createApp({ nodeEnv: 'test' });
     for (let i = 1; i <= 30; i++) await fromVisitor(app, '203.0.113.7', `10.0.0.${i}`);
 
@@ -155,7 +158,7 @@ describe('thirty requests a minute for each visitor behind the proxy (D6)', () =
     expect(res.status).toBe(429);
   });
 
-  it("leaves a visitor his thirty requests when another passes himself off as him (contract 14)", async () => {
+  it('leaves a visitor their thirty requests when another passes for them (contract 14)', async () => {
     const app = createApp({ nodeEnv: 'test' });
     for (let i = 0; i < 30; i++) await fromVisitor(app, '192.0.2.66', '203.0.113.7');
 
@@ -178,16 +181,16 @@ function sliceSendingCodes() {
   return { app: createApp({ nodeEnv: 'test', auth }), sentTo };
 }
 
-/** "Email me a code" for `email`, from the visitor at `ip`, as the proxy forwards it (see `fromVisitor`). */
+/** "Email me a code" for `email`, from the visitor at `ip`, as the proxy forwards it. */
 function askForCodeFrom(app: ReturnType<typeof createApp>, ip: string, email: string, written?: string) {
   return request(app)
     .post('/api/auth/email-otp/send-verification-otp')
-    .set('x-forwarded-for', written ? `${written}, ${ip}` : ip)
+    .set('x-forwarded-for', forwardedFor(ip, written))
     .send({ email, type: 'sign-in' });
 }
 
 describe('ten sign-in codes an hour for each visitor behind the proxy (D6)', () => {
-  it("still sends a visitor's code when another visitor has had his ten (contract 5)", async () => {
+  it("still sends a visitor's code when another visitor has had their ten (contract 5)", async () => {
     const { app, sentTo } = sliceSendingCodes();
     for (let i = 1; i <= 10; i++) await askForCodeFrom(app, '203.0.113.7', `office${i}@example.com`);
 
@@ -196,7 +199,7 @@ describe('ten sign-in codes an hour for each visitor behind the proxy (D6)', () 
     expect({ status: res.status, sent: sentTo.length }).toEqual({ status: 200, sent: 11 });
   });
 
-  it('counts a visitor who writes a false X-Forwarded-For on his real address (contract 14)', async () => {
+  it('counts a visitor who writes a false X-Forwarded-For on their real address (contract 14)', async () => {
     const { app, sentTo } = sliceSendingCodes();
     for (let i = 1; i <= 10; i++) await askForCodeFrom(app, '203.0.113.7', `forger${i}@example.com`, `10.0.0.${i}`);
 
@@ -209,7 +212,7 @@ describe('ten sign-in codes an hour for each visitor behind the proxy (D6)', () 
     });
   });
 
-  it('leaves a visitor his ten codes when another passes himself off as him (contract 14)', async () => {
+  it('leaves a visitor their ten codes when another passes for them (contract 14)', async () => {
     const { app, sentTo } = sliceSendingCodes();
     for (let i = 1; i <= 10; i++) await askForCodeFrom(app, '192.0.2.66', `impostor${i}@example.com`, '203.0.113.7');
 
