@@ -19,6 +19,11 @@ export default defineConfig({
         target: 'http://localhost:3001',
         changeOrigin: true,
       },
+      // The MCPs' addresses start with BETTER_AUTH_URL, this page in development (D16).
+      '/m': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
     },
   },
   build: {
