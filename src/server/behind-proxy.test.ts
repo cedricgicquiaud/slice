@@ -82,4 +82,19 @@ describe("an MCP's address behind the proxy (D5)", () => {
 
     expect(res.body.mcps.find((mcp: { id: string }) => mcp.id === id)?.url).toBe(`https://slice.example.com/m/${id}`);
   });
+
+  it('ignores a Host header written by the visitor, at creation and in My MCPs', async () => {
+    const app = sliceAt('https://slice.example.com');
+
+    const created = await deploy(app).set('host', 'evil.example.com');
+    const listed = await request(app).get('/api/mcps').set('cookie', account.cookie).set('host', 'evil.example.com');
+
+    expect({
+      created: created.body.url,
+      listed: listed.body.mcps.find((mcp: { id: string }) => mcp.id === created.body.id)?.url,
+    }).toEqual({
+      created: `https://slice.example.com/m/${created.body.id}`,
+      listed: `https://slice.example.com/m/${created.body.id}`,
+    });
+  });
 });
