@@ -63,6 +63,9 @@ export function createApp(options: CreateAppOptions = {}): Express {
   // `BETTER_AUTH_URL` may end with a slash: an MCP's address never holds `//m/`.
   const publicUrl = options.publicUrl?.replace(/\/+$/, '');
   const app = express();
+  // D6: one proxy in front of SLICE, Coolify's. `req.ip` is the last address of `X-Forwarded-For`,
+  // the one that proxy adds; whatever the visitor wrote before it is ignored.
+  app.set('trust proxy', 1);
 
   // Agents may call a hosted MCP from anywhere; the API answers SLICE's own page only (D16).
   app.use('/m', cors());
