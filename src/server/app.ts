@@ -60,6 +60,8 @@ export function createApp(options: CreateAppOptions = {}): Express {
   const declaredEnv = options.nodeEnv ?? process.env.NODE_ENV;
   const nodeEnv = declaredEnv ?? 'development';
   const allowPrivateHosts = options.allowPrivateHosts ?? nodeEnv !== 'production';
+  // `BETTER_AUTH_URL` may end with a slash: an MCP's address never holds `//m/`.
+  const publicUrl = options.publicUrl?.replace(/\/+$/, '');
   const app = express();
 
   // Agents may call a hosted MCP from anywhere; the API answers SLICE's own page only (D16).
@@ -121,7 +123,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   // GET /api/mcps, DELETE /api/mcps/:id — the account's own MCPs (D9, D10), and their API keys (D3).
   if (options.accountMcps) {
     const now = options.now ?? (() => new Date());
-    app.use('/api/mcps', createMcpsRouter(options.accountMcps, { apiKeys: options.mcpApiKeys, now, publicUrl: options.publicUrl }));
+    app.use('/api/mcps', createMcpsRouter(options.accountMcps, { apiKeys: options.mcpApiKeys, now, publicUrl }));
   }
   // Recette primer: an unreadable key, so mounted only where NODE_ENV says development or test (D17).
   const { accountMcps, mcpApiKeys, mcpApiKeysUnderAnotherKey } = options;
@@ -138,7 +140,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
       now: options.now ?? (() => new Date()),
       allowPrivateHosts,
     };
-    app.use('/api/host', createHostRouter({ ...hosted, publicUrl: options.publicUrl }));
+    app.use('/api/host', createHostRouter({ ...hosted, publicUrl }));
     app.use(
       '/m',
       createHostedMcpRouter({
