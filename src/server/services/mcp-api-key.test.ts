@@ -91,4 +91,18 @@ describe('the key of an MCP', () => {
 
     expect({ state: await keys.stateOf(id), lines: (await rawLinesOf(id)).length }).toEqual({ state: undefined, lines: 0 });
   });
+
+  it('is read for its MCP only, never for another MCP of the same account (contract 19, D4)', async () => {
+    const store = createHostedStore(database);
+    const withKey = await store.put(notion, workspaceId, NOW);
+    const withoutKey = await store.put(notion, workspaceId, NOW);
+    const keys = createMcpApiKeys(database, createKeyCipher(randomBytes(32)));
+
+    await keys.save(withKey.id, 'secret_ntn_first', NOW);
+
+    expect({ key: await keys.keyOf(withoutKey.id), state: await keys.stateOf(withoutKey.id) }).toEqual({
+      key: undefined,
+      state: undefined,
+    });
+  });
 });
