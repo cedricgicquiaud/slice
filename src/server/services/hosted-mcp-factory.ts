@@ -240,16 +240,17 @@ async function callUpstream(
   const qs = search.toString();
   const url = `${config.baseUrl}${path}${qs ? `?${qs}` : ''}`;
 
-  const headers: Record<string, string> = {
+  // Header names ignore case: setting one replaces it whatever case it was written in.
+  const headers = new Headers({
     Accept: 'application/json',
     'Content-Type': 'application/json',
-  };
+  });
   // Forward `in: header` params the agent supplied (e.g. Notion-Version, which
   // the upstream requires on every call). Applied before the auth relay so a
   // header param can never clobber the relayed token.
   for (const p of endpoint.params.filter((x) => x.in === 'header')) {
     const value = args[p.name];
-    if (value !== undefined && value !== null) headers[p.name] = String(value);
+    if (value !== undefined && value !== null) headers.set(p.name, String(value));
   }
   const token = agentKey() ?? savedKey();
   if (token) {
@@ -257,9 +258,9 @@ async function callUpstream(
     // the client_credentials flow (no secret on SLICE Cloud) — the agent's own
     // access token is forwarded. The auto flow lives only in the self-host kit.
     if (config.upstreamAuth.type === 'bearer' || config.upstreamAuth.type === 'oauth2') {
-      headers.Authorization = `Bearer ${token}`;
+      headers.set('Authorization', `Bearer ${token}`);
     } else if (config.upstreamAuth.type === 'apiKey' && config.upstreamAuth.headerName) {
-      headers[config.upstreamAuth.headerName] = token;
+      headers.set(config.upstreamAuth.headerName, token);
     }
   }
 
