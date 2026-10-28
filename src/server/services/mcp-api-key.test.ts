@@ -105,4 +105,16 @@ describe('the key of an MCP', () => {
       state: undefined,
     });
   });
+
+  it('encrypted under another encryption key is told unreadable, never decrypted into a wrong text (contract 21, D3)', async () => {
+    const { id } = await createHostedStore(database).put(notion, workspaceId, NOW);
+    await createMcpApiKeys(database, createKeyCipher(randomBytes(32))).save(id, 'secret_ntn_first', NOW);
+
+    const keys = createMcpApiKeys(database, createKeyCipher(randomBytes(32)));
+
+    expect({ key: await keys.keyOf(id), state: await keys.stateOf(id) }).toEqual({
+      key: { unreadable: true },
+      state: { savedAt: NOW, readable: false },
+    });
+  });
 });
