@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp, type CreateAppOptions } from './app';
+import { createAuth } from './auth/auth';
 import { createHostedStore } from './services/hosted-store';
 import { createAccountMcps } from './services/account-mcps';
 import { openDatabase } from './db/client';
@@ -161,6 +162,42 @@ describe('thirty requests a minute for each visitor behind the proxy (D6)', () =
     const res = await fromVisitor(app, '203.0.113.7');
 
     expect(res.status).toBe(401);
+  });
+});
+
+/** SLICE sending its sign-in codes, with the addresses it sent them to. */
+function sliceSendingCodes() {
+  const sentTo: string[] = [];
+  const auth = createAuth({
+    database: account.database,
+    secret: TEST_AUTH_SECRET,
+    sendCode: async (email) => {
+      sentTo.push(email);
+    },
+  });
+  return { app: createApp({ nodeEnv: 'test', auth }), sentTo };
+}
+
+/** "Email me a code" for `email`, from the visitor at `ip`, as the proxy forwards it (see `fromVisitor`). */
+function askForCodeFrom(app: ReturnType<typeof createApp>, ip: string, email: string, written?: string) {
+  return request(app)
+    .post('/api/auth/email-otp/send-verification-otp')
+    .set('x-forwarded-for', written ? `${written}, ${ip}` : ip)
+    .send({ email, type: 'sign-in' });
+}
+
+describe('ten sign-in codes an hour for each visitor behind the proxy (D6)', () => {
+  it('counts a visitor who writes a false X-Forwarded-For on his real address (contract 14)', async () => {
+    const { app, sentTo } = sliceSendingCodes();
+    for (let i = 1; i <= 10; i++) await askForCodeFrom(app, '203.0.113.7', `forger${i}@example.com`, `10.0.0.${i}`);
+
+    const res = await askForCodeFrom(app, '203.0.113.7', 'forger11@example.com');
+
+    expect({ status: res.status, code: res.body.code, sent: sentTo.length }).toEqual({
+      status: 429,
+      code: 'too_many_codes_from_ip',
+      sent: 10,
+    });
   });
 });
 
