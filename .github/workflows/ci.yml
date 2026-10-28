@@ -70,3 +70,16 @@ jobs:
       # argument: no secret ever goes into it.
       - name: Build the image
         run: docker build -t slice:ci .
+
+      # Started as the deployment starts it: the settings go to `docker run`,
+      # never to the build. The keys are drawn at random for this run only.
+      - name: Start the image
+        run: |
+          export BETTER_AUTH_SECRET="$(openssl rand -hex 32)"
+          export SLICE_ENCRYPTION_KEY="$(openssl rand -base64 32)"
+          docker run -d --name slice --network host \
+            -e DATABASE_URL -e BETTER_AUTH_SECRET -e BETTER_AUTH_URL -e SLICE_ENCRYPTION_KEY \
+            slice:ci
+        env:
+          DATABASE_URL: postgres://postgres:ci-throwaway@localhost:5432/postgres
+          BETTER_AUTH_URL: http://localhost:3001
