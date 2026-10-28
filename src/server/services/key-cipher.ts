@@ -35,7 +35,8 @@ export function createKeyCipher(encryptionKey: Buffer): KeyCipher {
     decrypt(sealed) {
       const bytes = Buffer.from(sealed, 'base64');
       try {
-        const decipher = createDecipheriv(ALGORITHM, encryptionKey, bytes.subarray(0, NONCE_BYTES));
+        // A full tag only: GCM otherwise accepts one cut down to 4 bytes, far easier to forge.
+        const decipher = createDecipheriv(ALGORITHM, encryptionKey, bytes.subarray(0, NONCE_BYTES), { authTagLength: TAG_BYTES });
         decipher.setAuthTag(bytes.subarray(NONCE_BYTES, NONCE_BYTES + TAG_BYTES));
         return Buffer.concat([decipher.update(bytes.subarray(NONCE_BYTES + TAG_BYTES)), decipher.final()]).toString('utf8');
       } catch {
