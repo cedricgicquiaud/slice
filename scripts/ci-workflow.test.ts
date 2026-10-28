@@ -42,4 +42,11 @@ describe('the CI', () => {
     const passed = stepRunning('docker run')?.run?.match(/-e\s+[A-Z_]+/g) ?? [];
     expect(passed.map((flag) => flag.split(/\s+/)[1])).toEqual(expect.arrayContaining(settings));
   });
+
+  it('fails unless the image it started answers 200 to GET / and GET /api/health', () => {
+    const started = gate.steps.indexOf(stepRunning('docker run')!);
+    const check = gate.steps.slice(started + 1).find((step) => step.run?.includes('localhost:3001'))?.run ?? '';
+    expect(check).toContain('for path in /api/health /; do');
+    expect(check).toContain('[ "$status" = 200 ] || { docker logs slice; exit 1; }');
+  });
 });
