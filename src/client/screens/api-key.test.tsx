@@ -1,6 +1,7 @@
 // WAT-176 — "API key", at /mcps/<id>/api-key: I paste my key, "Save", and never see it again.
 // WAT-177 — I replace or remove my key; a key SLICE can no longer read asks to be replaced.
 // WAT-178 — an unusable key is refused under the field; an MCP that takes no key has no field.
+// WAT-179 — I reach the page from the end of the creation.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -18,6 +19,24 @@ const NOTION: Mcp = {
   url: 'http://localhost:5173/m/notion-id',
 };
 
+/** The description of an API reached by an API key in a header, as the server reads it. */
+const SHOPIFY_SPEC = vi.hoisted(() => ({
+  apiName: 'Shopify',
+  apiVersion: '2024-04',
+  baseUrl: 'https://api.shopify.com/v1',
+  authType: 'apiKey',
+  authHeader: 'X-API-Key',
+  groups: [
+    { tag: 'Products', endpoints: [{ id: 'GET /products', method: 'GET', path: '/products', label: 'List products', params: [] }] },
+  ],
+  defaultConfig: {
+    mcpName: 'shopify',
+    baseUrl: 'https://api.shopify.com/v1',
+    upstreamAuth: { type: 'apiKey', headerName: 'X-API-Key' },
+    mcpServerToken: 'a'.repeat(32),
+  },
+}));
+
 /**
  * SLICE's API as this page sees it: `GET /api/mcps` answers the account's MCPs
  * (`mcps`); `GET /api/mcps/:id/api-key` answers the key kept in `keys` under
@@ -26,7 +45,8 @@ const NOTION: Mcp = {
  * sent in `saved` and answers, once `held` resolves when set, the key saved on
  * Oct 28, 2026; `DELETE /api/mcps/:id/api-key` is kept in `removed` and, once
  * `held` resolves when set, removes the key; a `PUT` or a `DELETE` answers
- * `refusal` instead when set; any other call is
+ * `refusal` instead when set; `POST /api/upload-url` answers `SHOPIFY_SPEC` and
+ * `POST /api/host` the MCP created under `shopify-id`; any other call is
  * "who is signed in?" (`session`).
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
@@ -44,6 +64,8 @@ const server = vi.hoisted(() => {
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : String(input);
+    if (url === '/api/upload-url') return json({ parsed: SHOPIFY_SPEC, raw: 'openapi: 3.0.3' });
+    if (url === '/api/host') return json({ id: 'shopify-id', url: 'http://localhost:5173/m/shopify-id' });
     if (url === '/api/mcps') return json({ mcps: state.mcps });
     const asked = /^\/api\/mcps\/([^/]+)\/api-key$/.exec(url);
     if (!asked) return json(state.session);
@@ -419,5 +441,24 @@ describe('An MCP that takes no key', () => {
       field: screen.queryByLabelText('API key') !== null,
       buttons: screen.queryAllByRole('button', { name: /save|replace|remove/i }).length,
     }).toEqual({ message: true, field: false, buttons: 0 });
+  });
+});
+
+describe('Reaching the API key page', () => {
+  it('links the end of the creation of an MCP by API key to the page of the MCP just created (contract 8, D1)', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: 'Paste a URL' }));
+    await user.type(screen.getByPlaceholderText('https://api.example.com/openapi.json'), 'https://api.shopify.com/openapi.yaml');
+    await user.click(screen.getByRole('button', { name: 'Fetch' }));
+    await user.click(await screen.findByText('List products'));
+    await user.click(screen.getByRole('button', { name: /^continue/i }));
+    await user.click(await screen.findByRole('button', { name: /deploy to slice cloud/i }));
+
+    expect(await screen.findByRole('link', { name: 'Add your API key' })).toHaveAttribute(
+      'href',
+      '/mcps/shopify-id/api-key'
+    );
   });
 });
