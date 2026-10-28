@@ -92,6 +92,12 @@ export interface EndpointGroup {
 
 export type UpstreamAuthType = 'none' | 'apiKey' | 'bearer' | 'oauth2';
 
+/**
+ * The text the configuration snippets show in place of the API's token: an
+ * agent sending it has sent no key of its own (D6).
+ */
+export const PASTE_YOUR_TOKEN_HERE = 'PASTE_YOUR_TOKEN_HERE';
+
 export interface UpstreamAuth {
   type: UpstreamAuthType;
   /** Only meaningful for `apiKey`. */
