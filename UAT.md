@@ -1384,3 +1384,94 @@ stored » (WAT-179)**
 - [ ] Les amorces font apparaître les cinq états : après chacune des amorces `amorce-api-key-empty.js`, `-saved.js`,
   `-unreadable.js`, `-oauth2.js` et `-none.js`, la page ouverte montre respectivement le champ vide, « Saved on
   <date> », « This key can no longer be read. Replace it. », le texte OAuth2 et « This MCP needs no API key. ».
+
+## SLICE — L'application en ligne
+
+_Feature P-WAT-39. Une section par livraison, ajoutée par chaque PR._
+
+### Livraison 1 — SLICE se construit en image sans secret ; seul un main vert part en ligne
+
+Cette livraison n'a pas d'écran : tout se constate dans le terminal et sur la page de la CI de la PR (onglet
+« Checks »). Une image est la boîte qui contient SLICE et tout ce qu'il faut pour le lancer ; Coolify la lancera en
+ligne (livraison 4).
+
+**Préparer la recette**
+
+- Docker Desktop lancé. Un PostgreSQL jetable :
+  `docker run --rm -d --name slice-uat-pg -p 54329:5432 -e POSTGRES_PASSWORD=smoke postgres:16`.
+- Arrêter `pnpm dev` s'il tourne : l'image écoute, elle aussi, sur le port 3001.
+
+**L'image de SLICE se construit depuis le dépôt, sans aucun secret (WAT-185)**
+
+- [ ] Depuis la racine du dépôt, `docker build -t slice:recette .` finit sans erreur, sans aucun `--build-arg`. Le
+  terminal montre `pnpm build` à l'œuvre : les lignes `> slice@0.1.0 build:client` puis `> slice@0.1.0 build:server`.
+- [ ] L'image lancée démarre SLICE comme `pnpm start` :
+  `docker run --rm --name slice-uat -p 3001:3001 -e DATABASE_URL=postgres://postgres:smoke@host.docker.internal:54329/postgres -e BETTER_AUTH_SECRET=$(openssl rand -hex 32) -e BETTER_AUTH_URL=http://localhost:3001 -e SLICE_ENCRYPTION_KEY=$(openssl rand -base64 32) slice:recette`
+  affiche `> NODE_ENV=production node dist/server/server/index.js`, puis
+  `SLICE server running on http://localhost:3001 (production)`. http://localhost:3001/api/health montre
+  `"ok":true` et `"env":"production"` ; http://localhost:3001/ montre la page de connexion de SLICE. Arrêter avec
+  `docker stop slice-uat`.
+- [ ] Refus : l'image ne porte aucun secret. `docker image inspect slice:recette --format '{{json .Config.Env}}'` ne
+  nomme ni `DATABASE_URL`, ni `BETTER_AUTH_SECRET`, ni `SLICE_ENCRYPTION_KEY`, ni `RESEND_API_KEY` (seulement `PATH`,
+  les versions de Node et de Yarn, et deux réglages `COREPACK_…`). Preuve aussi par les tests « declares none of the
+  production secrets, neither as ARG nor as ENV » et « would be caught declaring ARG DATABASE_URL or ENV
+  BETTER_AUTH_SECRET » (`scripts/docker-image.test.ts`).
+- [ ] Refus : le `Dockerfile` n'a besoin d'aucune variable de construction. `grep -n "^ARG" Dockerfile` ne montre
+  rien, et la construction ci-dessus s'est faite sans argument. Preuve aussi par le test « needs no build argument to
+  build ».
+- [ ] Refus : aucun fichier local de secrets n'entre dans l'image, même quand un `.env` et un dossier `data/` existent
+  à la racine. `docker run --rm --entrypoint ls slice:recette -a /app` ne liste que `dist`, `node_modules`,
+  `package.json` et `pnpm-lock.yaml` (plus `.` et `..`) : ni `.env`, ni `data`. Preuve aussi par le test « keeps .env
+  and data/ out of the image ».
+- [ ] Refus : le dépôt ignore `.env`. `git check-ignore .env` répond `.env`. Preuve aussi par le test « keeps .env out
+  of the repository ».
+- [ ] `docs/configuration.md` (section « Production ») ne dit plus « ships no Dockerfile » : il dit que le `Dockerfile`
+  construit SLICE comme `pnpm build`, le lance comme `pnpm start`, et ne contient aucun secret.
+- [ ] Ce cahier porte le titre « SLICE — L'application en ligne », cette section, et les titres « Livraison 2 » à
+  « Livraison 4 » ci-dessous, chacun avec la ligne « À venir. ».
+
+**La CI construit l'image et la voit démarrer (WAT-186)**
+
+- [ ] Sur la CI de la PR, le job « typecheck + tests + prod smoke + image » est vert, et ses étapes « Build the
+  image », « Start the image » et « The image answers GET / and GET /api/health » aussi. La dernière affiche
+  `GET /api/health: 200` puis `GET /: 200`. Chaque PR et chaque push sur `main` lancent ce job : preuve par le test
+  « builds the image of the Dockerfile on every pull request and every push to main » (`scripts/ci-workflow.test.ts`).
+- [ ] Les secrets de test sont donnés au lancement, jamais à la construction : dans l'étape « Start the image », ils
+  passent par `docker run -e …`. `grep -n "build-arg" .github/workflows/ci.yml` ne montre rien. Preuve aussi par les
+  tests « gives the image its start-up settings when it runs » et « hands no build argument to the image ».
+- [ ] Refus : une image qui ne démarre pas fait échouer la CI. Lancer la commande `docker run` de WAT-185 sans
+  `-e SLICE_ENCRYPTION_KEY=…` : le conteneur s'arrête aussitôt sur
+  `SLICE server cannot start: SLICE_ENCRYPTION_KEY is required (…)`. Face à ce conteneur, l'étape de la CI affiche
+  `GET /api/health: 000`, puis le journal du conteneur, et échoue (essai joué en local pendant la production). Preuve
+  aussi par le test « fails unless the image it started answers 200 to GET / and GET /api/health ».
+- [ ] `pnpm prod:smoke` reste dans la CI, inchangé : l'étape « Prod smoke (compiled bundle) » est toujours là, et
+  verte. Preuve aussi par le test « still runs pnpm prod:smoke on the compiled bundle ».
+
+**Seul un main dont la CI est verte est mis en ligne (WAT-187)**
+
+- [ ] Après le merge, le run de la CI sur `main` (onglet « Actions ») montre le job « deploy to Coolify » qui démarre
+  une fois le gate vert. Tant que le secret `COOLIFY_DEPLOY_WEBHOOK` n'existe pas, son étape « Call the Coolify deploy
+  webhook » est grisée (sautée) et le run reste vert. Le jour où le secret est posé (guide de la livraison 4), l'étape
+  appelle Coolify.
+- [ ] Le lien de déploiement n'est écrit nulle part dans le dépôt : `grep -n "secrets\." .github/workflows/ci.yml`
+  montre `secrets.COOLIFY_DEPLOY_WEBHOOK` et `secrets.COOLIFY_API_TOKEN`, et le job « deploy to Coolify » ne contient
+  aucune adresse `http`. Preuve aussi par les tests « reads the Coolify deploy webhook from a GitHub secret, and writes
+  no address down » et « skips the call while the deploy webhook secret is not set ».
+- [ ] Refus : une PR ne déclenche jamais le déploiement. Sur la CI de cette PR, « deploy to Coolify » apparaît sauté
+  (« skipped »). Une autre branche que `main` n'est pas poussée en CI hors PR. Preuve aussi par le test « runs only
+  after a green gate, on a push to main ».
+- [ ] Refus : un `main` dont un test, `prod:smoke` ou l'image échoue n'est jamais déployé. Le déploiement attend le
+  job « typecheck + tests + prod smoke + image » (`needs: gate`), qui porte les trois : s'il est rouge, « deploy to
+  Coolify » est sauté. Preuve par le même test (aucun `main` rouge n'est provoqué pour la recette).
+
+### Livraison 2 — Derrière le proxy, chaque visiteur a son plafond ; les MCP sont en https
+
+À venir.
+
+### Livraison 3 — SLICE est sur invitation, et ne montre Google et Microsoft que s'ils sont réglés
+
+À venir.
+
+### Livraison 4 — SLICE répond à son adresse publique en suivant le guide, base sauvegardée
+
+À venir.
