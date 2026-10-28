@@ -289,6 +289,51 @@ describe('server entry point', () => {
     }
   }, 30_000);
 
+  it('keeps the key of an MCP under its SLICE_ENCRYPTION_KEY: readable after a restart with it, unreadable with another (contract 21, D11)', async () => {
+    const scratch = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    const readKey = async (server: RunningServer, id: string, cookie: string) =>
+      (await (await fetch(`${server.baseUrl}/api/mcps/${id}/api-key`, { headers: { cookie } })).json()) as {
+        apiKey: { readable: boolean } | null;
+      };
+    try {
+      const database = openDatabase({ driver: 'pglite', dataDir: path.join(scratch, 'pglite') });
+      await migrateDatabase(database);
+      const { cookie, workspaceId } = await createTestAccount({ database });
+      const { id } = await createHostedStore(database).put(
+        { name: 'keyed', baseUrl: 'https://api.example.com', upstreamAuth: { type: 'bearer' }, endpoints: [] },
+        workspaceId,
+        new Date()
+      );
+      await database.close();
+
+      const first = await startServer(ROOT, { SLICE_DATA_DIR: scratch });
+      let saved: number;
+      try {
+        saved = (
+          await fetch(`${first.baseUrl}/api/mcps/${id}/api-key`, {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json', cookie },
+            body: JSON.stringify({ apiKey: randomBytes(30).toString('base64url') }),
+          })
+        ).status;
+      } finally {
+        await first.stop();
+      }
+      const sameKey = await startServer(ROOT, { SLICE_DATA_DIR: scratch });
+      const readWithIt = await readKey(sameKey, id, cookie).finally(() => sameKey.stop());
+      const otherKey = await startServer(ROOT, { SLICE_DATA_DIR: scratch, SLICE_ENCRYPTION_KEY: randomBytes(32).toString('base64') });
+      const readWithAnother = await readKey(otherKey, id, cookie).finally(() => otherKey.stop());
+
+      expect({ saved, readWithIt: readWithIt.apiKey?.readable, readWithAnother: readWithAnother.apiKey?.readable }).toEqual({
+        saved: 200,
+        readWithIt: true,
+        readWithAnother: false,
+      });
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it('refuses to start when its migrations fail, and says why', async () => {
     const scratch = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
     try {
