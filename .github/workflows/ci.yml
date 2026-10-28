@@ -53,7 +53,7 @@ jobs:
       # The same storage tests, against the real PostgreSQL service (each test
       # file creates and drops its own throwaway database).
       - name: Storage tests (PostgreSQL)
-        run: pnpm vitest run src/server/db src/server/services/hosted-store.test.ts src/server/services/mcp-selection.test.ts src/server/services/mcp-versions.test.ts src/server/services/mcp-calls.test.ts
+        run: pnpm vitest run src/server/db src/server/services/hosted-store.test.ts src/server/services/mcp-selection.test.ts src/server/services/mcp-versions.test.ts src/server/services/mcp-calls.test.ts src/server/services/mcp-api-key.test.ts
         env:
           DATABASE_URL: postgres://postgres:ci-throwaway@localhost:5432/postgres
 
