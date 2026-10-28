@@ -101,6 +101,12 @@ export function SuccessScreen({
               This API is public — paste the snippet below into your agent and you&apos;re live.
               No token needed.
             </p>
+          ) : takesApiKey(config.upstreamAuth.type) ? (
+            <p className="text-sm text-muted-foreground">
+              Paste the snippet below into your agent, then replace{' '}
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">PASTE_YOUR_TOKEN_HERE</code>{' '}
+              with the token of your target API, or save it once in SLICE: we keep it encrypted.
+            </p>
           ) : (
             <p className="text-sm text-muted-foreground">
               Paste the snippet below into your agent, then replace{' '}
