@@ -9,5 +9,9 @@ export function encryptionKeyFromEnv(env: NodeJS.ProcessEnv): Buffer {
   if (!env.SLICE_ENCRYPTION_KEY) {
     throw new Error('SLICE_ENCRYPTION_KEY is required (32 bytes in base64, `openssl rand -base64 32`): it encrypts the MCPs\' API keys.');
   }
-  return Buffer.from(env.SLICE_ENCRYPTION_KEY, 'base64');
+  const key = Buffer.from(env.SLICE_ENCRYPTION_KEY, 'base64');
+  if (key.length !== 32) {
+    throw new Error('SLICE_ENCRYPTION_KEY must be 32 bytes in base64 (`openssl rand -base64 32`).');
+  }
+  return key;
 }
