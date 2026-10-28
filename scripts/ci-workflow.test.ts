@@ -63,3 +63,12 @@ describe('the CI', () => {
     });
   });
 });
+
+describe('the deployment', () => {
+  const deploy = workflow.jobs.deploy;
+
+  it('runs only after a green gate, on a push to main', () => {
+    expect(deploy?.needs).toBe('gate');
+    expect(deploy?.if).toBe("github.event_name == 'push' && github.ref == 'refs/heads/main'");
+  });
+});
