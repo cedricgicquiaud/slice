@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
 import { execFileSync, type ChildProcess } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -52,6 +53,8 @@ paths:
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const TSX = path.join(ROOT, 'node_modules/.bin/tsx');
 const ENTRY = path.join(ROOT, 'src/server/index.ts');
+/** The servers this file starts encrypt with a key of their own: the repository holds none (D11). */
+const ENCRYPTION_KEY = randomBytes(32).toString('base64');
 
 async function freePort(): Promise<number> {
   const probe = createServer();
@@ -74,7 +77,14 @@ async function startServer(cwd: string, env: Record<string, string>): Promise<Ru
   const { DATABASE_URL: _ignored, ...inherited } = process.env;
   const child: ChildProcess = startTestProcess(TSX, ['--tsconfig', path.join(ROOT, 'tsconfig.server.json'), ENTRY], {
     cwd,
-    env: { ...inherited, NODE_ENV: 'development', PORT: String(port), BETTER_AUTH_SECRET: TEST_AUTH_SECRET, ...env },
+    env: {
+      ...inherited,
+      NODE_ENV: 'development',
+      PORT: String(port),
+      BETTER_AUTH_SECRET: TEST_AUTH_SECRET,
+      SLICE_ENCRYPTION_KEY: ENCRYPTION_KEY,
+      ...env,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
@@ -100,7 +110,7 @@ async function runUntilExit(cwd: string, env: Record<string, string>): Promise<{
   const { DATABASE_URL: _ignored, ...inherited } = process.env;
   const child = startTestProcess(TSX, ['--tsconfig', path.join(ROOT, 'tsconfig.server.json'), ENTRY], {
     cwd,
-    env: { ...inherited, PORT: String(await freePort()), ...env },
+    env: { ...inherited, PORT: String(await freePort()), SLICE_ENCRYPTION_KEY: ENCRYPTION_KEY, ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
@@ -303,6 +313,18 @@ describe('server entry point', () => {
 
       expect(code).toBe(1);
       expect(output).toContain('DATABASE_URL is required in production');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it('refuses to start in development without SLICE_ENCRYPTION_KEY, and names it (contract 20, D11)', async () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    try {
+      const { code, output } = await runUntilExit(cwd, { NODE_ENV: 'development', SLICE_ENCRYPTION_KEY: '' });
+
+      expect(code).toBe(1);
+      expect(output).toContain('SLICE_ENCRYPTION_KEY is required');
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }
