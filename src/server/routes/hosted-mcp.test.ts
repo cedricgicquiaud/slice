@@ -74,6 +74,12 @@ beforeAll(async () => {
       res.end(JSON.stringify({ body: 'API-RESPONSE-BODY' }));
       return;
     }
+    if (req.url === '/things/echo-key') {
+      // An API refusing the key it received, and copying it into its error.
+      res.writeHead(401, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: `Invalid API key: ${req.headers['x-api-key']}` }));
+      return;
+    }
     // `/things/404`, `/things/500`: the API answers that status code.
     const failure = /^\/things\/([45]\d\d)$/.exec(req.url ?? '');
     if (failure) {
@@ -451,6 +457,23 @@ describe('the saved key of an MCP, replaced or removed', () => {
     } finally {
       await new Promise<void>((r) => replacing.close(() => r()));
     }
+  });
+});
+
+// WAT-175 — the saved key never leaves in clear during a call.
+describe('the saved key during a call', () => {
+  it('is replaced by [hidden] in what the agent reads when the API copies it into its error (contract 22, D12)', async () => {
+    const { id } = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    await saveKey(id, 'saved-key-0175-echoed');
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`);
+    const answer = await agent.callTool({ name: 'delete_thing', arguments: { id: 'echo-key' } });
+    await agent.close();
+
+    expect(answer).toEqual({
+      isError: true,
+      content: [{ type: 'text', text: 'Upstream 401 Unauthorized: {"error":"Invalid API key: [hidden]"}' }],
+    });
   });
 });
 
