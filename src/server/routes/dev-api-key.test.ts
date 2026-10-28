@@ -84,4 +84,24 @@ describe('POST /api/dev/mcps/:id/api-key/garble', () => {
       state: { savedAt: SAVED, readable: true },
     });
   });
+
+  it("answers another account's MCP exactly as an unknown id, its key staying readable (D13)", async () => {
+    const other = await createTestAccount({ database: account.database, email: 'neighbour-garble@example.com' });
+    const { id } = await store.put(NOTION, other.workspaceId, CREATED);
+    await apiKeys.save(id, randomBytes(30).toString('base64url'), SAVED);
+    const app = sliceApp();
+
+    const theirs = await request(app).post(`/api/dev/mcps/${id}/api-key/garble`).set('cookie', account.cookie);
+    const unknown = await request(app).post('/api/dev/mcps/no-such-mcp-id/api-key/garble').set('cookie', account.cookie);
+
+    expect({
+      theirs: { status: theirs.status, body: theirs.text },
+      unknown: { status: unknown.status, body: unknown.text },
+      state: await apiKeys.stateOf(id),
+    }).toEqual({
+      theirs: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+      unknown: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+      state: { savedAt: SAVED, readable: true },
+    });
+  });
 });
