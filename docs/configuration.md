@@ -91,18 +91,24 @@ soon as the database is back, without a restart.
 
 ### Running behind a reverse proxy
 
-The app does not configure Express `trust proxy`. Behind a TLS-terminating reverse proxy this has two effects:
+SLICE expects **one** reverse proxy in front of it (in production, Coolify's), which ends HTTPS and forwards plain
+`http` requests. It trusts that proxy, and that proxy only (Express `trust proxy` set to one hop):
 
-- The rate limit counts every client under the proxy's IP address, so all users share one 30 requests-per-minute budget.
-- `POST /api/host` builds the returned URL from the request protocol and `Host` header, so it returns `http://` URLs
-  even when the public site is served over HTTPS.
+- **Each visitor is counted on their own address**, for the 30 requests a minute on `/api/*` and for the ten sign-in
+  codes an hour per IP. That address is the **last** one of `X-Forwarded-For`, the one the proxy adds. Whatever the
+  visitor wrote in that header before it is ignored: a forged `X-Forwarded-For` neither frees a visitor from their
+  quotas nor spends another visitor's. The proxy must add the client's address at the end of the header (append) or
+  replace the header with it; either way the last address is the client's.
+- **The address of a hosted MCP starts with `BETTER_AUTH_URL`**: `POST /api/host` returns, and `GET /api/mcps`
+  lists, `https://slice.example.com/m/<id>` for `BETTER_AUTH_URL=https://slice.example.com` (a trailing slash in it
+  is dropped). Neither the `http` the proxy forwards nor a `Host` header written by the visitor changes it. Outside
+  production, with `BETTER_AUTH_URL` unset, it starts with the address the request reached.
 
-Account for both when exposing an instance publicly.
+Without a proxy, or behind two, the last address of `X-Forwarded-For` is not one the proxy wrote: a visitor reaching
+SLICE directly writes it themselves. Do not publish SLICE's port; let the one proxy be the only way in.
 
-The ten sign-in codes an hour per IP are counted on the `X-Forwarded-For` header. The proxy in front of SLICE must
-**overwrite** that header with the client's address, never append to it: SLICE reads a single address only. A request
-whose header holds several addresses, or none, counts in one quota shared by every such request, so without a proxy
-that sets it every visitor shares the same ten codes an hour.
+In development, the Vite page relays `/m` to the API server as it relays `/api`: an MCP address on
+`http://localhost:5173` answers.
 
 ### Development scripts
 
