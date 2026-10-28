@@ -280,6 +280,16 @@ _Leçons des audits, ajoutées par `sync` après validation. Chaque agent les ap
   `test-setup.ts`, à la fin de chaque fichier** (comme `stopAuthClient`) : sinon sa minuterie
   tourne après la fermeture de jsdom et fait échouer le run, tests verts. *(WAT-166)*
 
+- **Un test qui prouve qu'un secret ne fuit pas le cherche en entier, avec une valeur de test longue
+  et tirée au hasard** (40 caractères), dans chaque réponse et chaque ligne de journal : une valeur
+  courte se retrouve par hasard partout, et le test ne prouve plus rien. *(PR #80 et #81)*
+- **Une variable d'environnement exigée au démarrage est donnée à chaque lanceur du vrai serveur**
+  (`index.test.ts`, `account-deletion.test.ts`, `scripts/prod-smoke.ts`) dans la même livraison : sinon
+  ils cessent de démarrer. La mission les liste tous. *(PR #80, `SLICE_ENCRYPTION_KEY`)*
+- **Les en-têtes envoyés à une API passent par `Headers`, qui ignore la casse** : avec un objet simple,
+  `X-API-Key` et `x-api-key` partaient tous les deux, et l'API pouvait lire la mauvaise clé.
+  *(PR #81)*
+
 ## Idiomes d'interface
 
 _Remarques visuelles faites au merge, ajoutées par `sync` après validation._
