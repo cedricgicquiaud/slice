@@ -14,9 +14,9 @@ jobs:
   gate:
     name: typecheck + tests + prod smoke + image
     runs-on: ubuntu-latest
-    # A real PostgreSQL for the storage tests, the prod smoke and the image; every other
-    # test file stays on in-memory PGlite. The password is a throwaway for this
-    # disposable CI container, not a secret.
+    # A real PostgreSQL for the storage tests, the prod smoke and the image;
+    # every other test file stays on in-memory PGlite. The password is a
+    # throwaway for this disposable CI container, not a secret.
     services:
       postgres:
         image: postgres:16
@@ -100,7 +100,8 @@ jobs:
           done
 
   # Only a main whose gate is green goes online: Coolify's own deployment on
-  # push is turned off (docs), and this job calls its deploy webhook instead.
+  # push is turned off (deployment guide), and this job calls its deploy
+  # webhook instead, with the API token Coolify asks for.
   deploy:
     name: deploy to Coolify
     needs: gate
