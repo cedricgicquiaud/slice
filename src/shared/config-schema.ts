@@ -139,7 +139,7 @@ const PRINTABLE_ASCII = /^[\x20-\x7e]*$/;
  */
 export const mcpApiKeySchema = z.object({
   apiKey: z
-    .string()
+    .string({ error: "This key can't be used: it is not a text." })
     .trim()
     .min(1, "This key can't be used: it is empty.")
     .max(4096, "This key can't be used: it is longer than 4,096 characters.")
