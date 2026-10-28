@@ -513,6 +513,27 @@ describe('the saved key during a call', () => {
     );
     expect(noted.filter(({ row }) => row.includes('saved-key-0175-noted'))).toEqual([]);
   });
+
+  it('is not used when it can no longer be read: the API is not called, the agent is told to replace it, the call is a SLICE error (contract 21, D17)', async () => {
+    const { id } = await store.put(withApiActions(withApiKeyHeader(threeActions())), account.workspaceId, CREATED);
+    await createMcpApiKeys(database, createKeyCipher(randomBytes(32))).save(id, 'saved-key-0175-unreadable', CREATED);
+    received = [];
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`);
+    const answer = await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    await vi.waitFor(async () =>
+      expect({ answer, upstreamCalls: received.length, results: (await calls.of(id)).map((note) => note.result) }).toEqual({
+        answer: {
+          isError: true,
+          content: [{ type: 'text', text: 'The API key saved on this MCP can no longer be read. Replace it on SLICE.' }],
+        },
+        upstreamCalls: 0,
+        results: [{ kind: 'slice_error' }],
+      })
+    );
+  });
 });
 
 /** `config`, whose API's actions are exactly its own: every call of them is noted (D2). */
