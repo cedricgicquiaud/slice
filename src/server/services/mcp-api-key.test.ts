@@ -15,6 +15,7 @@ import { createTestAccount } from '../db/test-account';
 vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
 const NOW = new Date('2026-10-28T09:00:00.000Z');
+const SLICE_PAGE = 'http://localhost:5173';
 
 const notion: HostedMcpConfig = {
   name: 'notion',
@@ -126,5 +127,21 @@ describe('the key of an MCP', () => {
     await createAccountMcps(database).delete(workspaceId, id);
 
     expect(await rawLinesOf(id)).toEqual([]);
+  });
+
+  it('leaves with the account that owns its MCP (contract 11, D14)', async () => {
+    const leaving = await createTestAccount({ database, email: 'leaving@example.com' });
+    const { id } = await createHostedStore(database).put(notion, leaving.workspaceId, NOW);
+    await createMcpApiKeys(database, createKeyCipher(randomBytes(32))).save(id, 'secret_ntn_first', NOW);
+
+    const res = await leaving.auth.handler(
+      new Request(`${SLICE_PAGE}/api/auth/delete-user`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: leaving.cookie, origin: SLICE_PAGE },
+        body: '{}',
+      })
+    );
+
+    expect({ status: res.status, lines: await rawLinesOf(id) }).toEqual({ status: 200, lines: [] });
   });
 });
