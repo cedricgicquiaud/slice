@@ -149,7 +149,7 @@ export function createMcpsRouter(accountMcps: AccountMcps, { apiKeys, now }: Mcp
         res.status(400).json(invalidKey(sent.error.issues[0]?.message ?? 'Invalid key.'));
         return;
       }
-      await apiKeys.save(req.params.id, req.body.apiKey, now());
+      await apiKeys.save(req.params.id, sent.data.apiKey, now());
       res.json(apiKeyPayload(await apiKeys.stateOf(req.params.id)));
     });
 
