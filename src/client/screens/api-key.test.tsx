@@ -343,6 +343,25 @@ describe('Refusing an unusable key', () => {
 
     expect(server.saved).toEqual(['secret_ntn_1234']);
   });
+
+  it("keeps a saved key \"Saved on <date>\" and shows the server's refusal under the field when a replacement is refused (D9)", async () => {
+    server.mcps = [NOTION];
+    server.keys['notion-id'] = { savedAt: '2026-10-27T09:30:00.000Z', readable: true };
+    server.refusal = { status: 400, code: 'INVALID_KEY', message: 'This MCP takes no API key.' };
+    const user = userEvent.setup();
+    render(<ApiKeyScreen mcpId="notion-id" />);
+
+    await user.click(await screen.findByRole('button', { name: 'Replace' }));
+    const field = screen.getByLabelText('API key');
+    await user.click(field);
+    await user.paste('secret_ntn_5678');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect({
+      message: (await screen.findByText('This MCP takes no API key.')).id === field.getAttribute('aria-describedby'),
+      saved: screen.queryByText('Saved on Oct 27, 2026') !== null,
+    }).toEqual({ message: true, saved: true });
+  });
 });
 
 describe('An MCP that takes no key', () => {
