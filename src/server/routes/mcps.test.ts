@@ -708,10 +708,13 @@ describe('GET /api/mcps/:id/usage', () => {
 
 describe('/api/mcps/:id/api-key', () => {
   const SAVED = new Date('2026-10-28T09:30:00.000Z');
+  const REPLACED = new Date('2026-10-29T16:45:00.000Z');
   const cipher = createKeyCipher(randomBytes(32));
+  /** The clock of the server: each test sets the date it saves at. */
+  let clock = SAVED;
   let keys: { url: string; close(): Promise<void> };
   beforeAll(async () => {
-    keys = await startApp({ mcpApiKeys: createMcpApiKeys(database, cipher), now: () => SAVED });
+    keys = await startApp({ mcpApiKeys: createMcpApiKeys(database, cipher), now: () => clock });
   });
   afterAll(async () => {
     await keys?.close();
@@ -737,6 +740,7 @@ describe('/api/mcps/:id/api-key', () => {
   }
 
   it('saves the key of my MCP: it is then told saved on its date, readable, never shown (contract 14, D3)', async () => {
+    clock = SAVED;
     const { id } = await store.put(NOTION, account.workspaceId, CREATED);
 
     const saved = await saveKey(id, randomApiKey());
@@ -748,6 +752,24 @@ describe('/api/mcps/:id/api-key', () => {
     }).toEqual({
       saved: { status: 200, body: { apiKey: { savedAt: '2026-10-28T09:30:00.000Z', readable: true } } },
       read: { status: 200, body: { apiKey: { savedAt: '2026-10-28T09:30:00.000Z', readable: true } } },
+    });
+  });
+
+  it('replaces the key of my MCP saved again: the new one serves, dated from its replacement (D3)', async () => {
+    clock = SAVED;
+    const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+    await saveKey(id, randomApiKey());
+    const replacement = randomApiKey();
+
+    clock = REPLACED;
+    const replaced = await saveKey(id, replacement);
+
+    expect({
+      replaced: { status: replaced.status, body: await replaced.json() },
+      served: await createMcpApiKeys(database, cipher).keyOf(id),
+    }).toEqual({
+      replaced: { status: 200, body: { apiKey: { savedAt: '2026-10-29T16:45:00.000Z', readable: true } } },
+      served: { key: replacement },
     });
   });
 });
