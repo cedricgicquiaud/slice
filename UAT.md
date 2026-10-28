@@ -1049,6 +1049,35 @@ développement. La page « API key » arrive en livraison 3.
   vérifier que l'étape « Prod smoke (compiled bundle) » de la CI de la PR est verte (en local, il faut un PostgreSQL,
   voir `docs/configuration.md`).
 
+**La clé d'un MCP est rangée chiffrée, une par MCP, et disparaît avec lui ou avec le compte (WAT-169)**
+
+Les routes qui enregistrent une clé arrivent avec WAT-170 : d'ici là, chaque case se constate par un test de
+`src/server/services/mcp-api-key.test.ts` (`pnpm vitest run src/server/services/mcp-api-key.test.ts`, 9 tests verts),
+dont le nom est cité.
+
+- [ ] Refus : après enregistrement, la valeur de la clé n'apparaît en clair nulle part en base. Une clé de 40
+  caractères tirés au hasard est enregistrée, puis la ligne de la table `connector_keys` est lue brute, toutes colonnes
+  en texte : elle ne contient pas la clé. Preuve par « is kept as one line where the key never appears in clear ».
+- [ ] Un MCP a au plus une clé : enregistrer `secret_ntn_second` après `secret_ntn_first` laisse une seule ligne en base,
+  et la clé relue est `secret_ntn_second`. Preuve par « saved again replaces the one before, which leaves the database ».
+- [ ] La date gardée est celle du dernier enregistrement : une clé enregistrée le 28/10/2026 à 09:00 UTC puis remplacée
+  le 29/10/2026 à 14:30 UTC est datée du 29/10/2026 à 14:30 UTC. Preuve par « is dated from its last saving, a
+  replacement included ».
+- [ ] Retirer la clé efface sa ligne : plus aucune ligne en base, et le MCP n'a plus de clé. Preuve par « removed leaves
+  the database, the MCP having no key any more ».
+- [ ] Refus : la clé d'un MCP n'est lue que pour ce MCP. Deux MCP du même compte, un seul avec clé : l'autre n'en a
+  aucune. Preuve par « is read for its MCP only, never for another MCP of the same account ».
+- [ ] Refus : une clé chiffrée avec une autre clé de chiffrement est rendue « illisible » (`unreadable`), avec sa date,
+  jamais déchiffrée en un texte faux. Preuve par « encrypted under another encryption key is told unreadable, never
+  decrypted into a wrong text ».
+- [ ] Supprimer un MCP supprime sa clé ; supprimer son compte supprime les clés de ses MCP. Preuve par « leaves with its
+  MCP » et « leaves with the account that owns its MCP » (la suppression passe par la vraie route
+  `POST /api/auth/delete-user`).
+- [ ] Refus : deux enregistrements simultanés sur le même MCP laissent une seule clé, joué vingt fois. Preuve sur
+  PostgreSQL : vérifier que l'étape « Storage tests (PostgreSQL) » de la CI de la PR est verte et qu'elle nomme
+  `src/server/services/mcp-api-key.test.ts` (`.github/workflows/ci.yml`) ; le test « saved twice at once leaves a single
+  key, played twenty times » y joue une vraie course.
+
 ### Livraison 2 — Le MCP appelle l'API avec la clé enregistrée
 
 _Section écrite par la livraison 2._
