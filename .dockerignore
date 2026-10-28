@@ -1,0 +1,19 @@
+# Local secrets and the development database never enter the image.
+.env
+.env.*
+data/
+
+# Rebuilt inside the image.
+node_modules/
+dist/
+
+# Not needed to build or run SLICE.
+.git/
+.github/
+.claude/
+.pilot/
+.workflow/
+coverage/
+uploads/
+generated/
+MISSION.md
