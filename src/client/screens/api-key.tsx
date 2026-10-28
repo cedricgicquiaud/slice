@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '../components/ui/button';
 import { Field } from '../components/field';
 import { ApiError } from '../lib/api';
-import { getMcpApiKey, listMcps, saveMcpApiKey, type Mcp, type McpApiKey } from '../lib/mcps-api';
+import { getMcpApiKey, listMcps, removeMcpApiKey, saveMcpApiKey, type Mcp, type McpApiKey } from '../lib/mcps-api';
 import { CREATED, messageOf } from './mcps';
 
 export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
@@ -30,6 +30,11 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleRemove() {
+    await removeMcpApiKey(mcpId);
+    setApiKey(null);
   }
 
   useEffect(() => {
@@ -83,6 +88,7 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
                     type="button"
                     variant="ghost"
                     size="sm"
+                    onClick={() => void handleRemove()}
                     className="text-muted-foreground hover:text-destructive"
                   >
                     Remove
