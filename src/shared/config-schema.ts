@@ -130,6 +130,9 @@ export const mcpSelectionChangeSchema = z.strictObject(
   }
 );
 
+/** What an HTTP header carries as is: printable ASCII, the space included. */
+const PRINTABLE_ASCII = /^[\x20-\x7e]*$/;
+
 /**
  * The API key of an MCP, as "Save" on its "API key" page sends it (D9): the
  * spaces and line breaks a copy-paste leaves at its ends are dropped first.
@@ -139,5 +142,6 @@ export const mcpApiKeySchema = z.object({
     .string()
     .trim()
     .min(1, "This key can't be used: it is empty.")
-    .max(4096, "This key can't be used: it is longer than 4,096 characters."),
+    .max(4096, "This key can't be used: it is longer than 4,096 characters.")
+    .regex(PRINTABLE_ASCII, "This key can't be used: it contains a character an API can't receive."),
 });
