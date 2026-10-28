@@ -65,3 +65,8 @@ jobs:
         run: pnpm prod:smoke
         env:
           DATABASE_URL: postgres://postgres:ci-throwaway@localhost:5432/postgres
+
+      # The image the deployment runs, built from the Dockerfile with no build
+      # argument: no secret ever goes into it.
+      - name: Build the image
+        run: docker build -t slice:ci .
