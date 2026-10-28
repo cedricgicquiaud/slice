@@ -202,4 +202,17 @@ describe('Replacing or removing the key', () => {
       removed: server.removed,
     }).toEqual({ field: '', saved: false, removed: ['notion-id'] });
   });
+
+  it('asks to replace a key SLICE can no longer read, instead of its date, and offers to replace it (contract 21, D3)', async () => {
+    server.mcps = [NOTION];
+    server.keys['notion-id'] = { savedAt: '2026-10-27T09:30:00.000Z', readable: false };
+
+    render(<ApiKeyScreen mcpId="notion-id" />);
+
+    expect({
+      unreadable: (await screen.findByText('This key can no longer be read. Replace it.')) !== null,
+      saved: screen.queryByText(/^Saved on/) !== null,
+      replace: screen.queryByRole('button', { name: 'Replace' }) !== null,
+    }).toEqual({ unreadable: true, saved: false, replace: true });
+  });
 });
