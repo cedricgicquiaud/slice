@@ -58,9 +58,8 @@ export interface McpsRouterOptions {
   now: () => Date;
 }
 
-export function createMcpsRouter(accountMcps: AccountMcps, options: McpsRouterOptions = { now: () => new Date() }): Router {
+export function createMcpsRouter(accountMcps: AccountMcps, { apiKeys, now }: McpsRouterOptions): Router {
   const router = Router();
-  const { apiKeys, now } = options;
 
   router.get('/', async (req, res) => {
     const mcps = await accountMcps.list(res.locals.workspaceId);
