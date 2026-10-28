@@ -64,7 +64,9 @@ DATABASE_URL=postgres://… BETTER_AUTH_SECRET=… BETTER_AUTH_URL=https://… S
   the API answers nothing without a session, and hands the server a `SLICE_ENCRYPTION_KEY` drawn at random. A disposable local PostgreSQL works:
   `docker run --rm -d -p 54329:5432 -e POSTGRES_PASSWORD=smoke postgres:16`, then
   `DATABASE_URL=postgres://postgres:smoke@localhost:54329/postgres pnpm prod:smoke`.
-- The repository ships no Dockerfile for SLICE itself.
+- The repository's `Dockerfile` builds SLICE like `pnpm build` and starts it like `pnpm start`, listening on 3001. It
+  holds no secret and needs no build argument: `DATABASE_URL`, `BETTER_AUTH_SECRET`, `SLICE_ENCRYPTION_KEY` and the
+  other settings are given when the container starts.
 
 ### Persistent data
 
