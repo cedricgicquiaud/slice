@@ -123,6 +123,29 @@ describe('GET /api/mcps', () => {
       },
     });
   });
+
+  it('tells the access of each MCP to its API: none, API key, bearer token or OAuth2 (D8)', async () => {
+    const owner = await createTestAccount({ database, email: 'four-accesses@example.com' });
+    const accesses: Array<[string, HostedMcpConfig['upstreamAuth']]> = [
+      ['Open API', { type: 'none' }],
+      ['Keyed API', { type: 'apiKey', headerName: 'X-API-Key' }],
+      ['Token API', { type: 'bearer' }],
+      ['Machine API', { type: 'oauth2', tokenUrl: 'https://auth.example.com/token', scopes: [] }],
+    ];
+    for (const [day, [apiName, upstreamAuth]] of accesses.entries()) {
+      await store.put({ ...NOTION, apiName, upstreamAuth }, owner.workspaceId, new Date(Date.UTC(2026, 9, 21 - day)));
+    }
+
+    const res = await fetch(`${baseUrl}/api/mcps`, { headers: { cookie: owner.cookie } });
+    const { mcps } = (await res.json()) as { mcps: Array<{ apiName: string; upstreamAuthType: string }> };
+
+    expect(mcps.map((mcp) => [mcp.apiName, mcp.upstreamAuthType])).toEqual([
+      ['Open API', 'none'],
+      ['Keyed API', 'apiKey'],
+      ['Token API', 'bearer'],
+      ['Machine API', 'oauth2'],
+    ]);
+  });
 });
 
 describe('GET /api/mcps/:id/versions', () => {
