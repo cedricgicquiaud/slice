@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   deleteMcp,
+  getMcpApiKey,
   getMcpHistory,
   getMcpSelection,
   getMcpUsage,
@@ -249,6 +250,23 @@ describe('restoreMcpVersion', () => {
       status: 404,
       code: 'NOT_FOUND',
       message: 'Unknown version of this MCP.',
+    });
+  });
+});
+
+describe('getMcpApiKey', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("returns the date and the readability of the MCP's saved key, read from GET /api/mcps/:id/api-key", async () => {
+    const fetchMock = serverAnswers(200, { apiKey: { savedAt: '2026-10-27T09:30:00.000Z', readable: true } });
+
+    expect({ apiKey: await getMcpApiKey('notion-id'), asked: fetchMock.mock.calls }).toEqual({
+      apiKey: { savedAt: '2026-10-27T09:30:00.000Z', readable: true },
+      asked: [['/api/mcps/notion-id/api-key']],
     });
   });
 });
