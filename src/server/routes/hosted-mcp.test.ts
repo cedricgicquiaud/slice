@@ -534,6 +534,23 @@ describe('the saved key during a call', () => {
       })
     );
   });
+
+  it('is neither in clear nor encrypted in the error the agent reads when it can no longer be read (contract 21, D12)', async () => {
+    const { id } = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    await createMcpApiKeys(database, createKeyCipher(randomBytes(32))).save(id, 'saved-key-0175-sealed', CREATED);
+    const [{ sealed }] = await database.rows<{ sealed: string }>(
+      sql`select encrypted_key as sealed from connector_keys where connector_id = ${id}`
+    );
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`);
+    const answer = JSON.stringify(await agent.callTool({ name: 'list_things', arguments: {} }));
+    await agent.close();
+
+    expect({ inClear: answer.includes('saved-key-0175-sealed'), encrypted: answer.includes(sealed) }).toEqual({
+      inClear: false,
+      encrypted: false,
+    });
+  });
 });
 
 /** `config`, whose API's actions are exactly its own: every call of them is noted (D2). */
