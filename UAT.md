@@ -1466,7 +1466,90 @@ ligne (livraison 4).
 
 ### Livraison 2 — Derrière le proxy, chaque visiteur a son plafond ; les MCP sont en https
 
-À venir.
+Cette livraison n'a pas d'écran neuf. En ligne, un intermédiaire (le proxy de Coolify) reçoit chaque visite en
+https, puis la passe à SLICE en http ; il ajoute au passage l'adresse internet du visiteur à la fin de l'en-tête
+`X-Forwarded-For`. Ici, on joue ce proxy à la main : les commandes `curl` du terminal écrivent ces en-têtes
+elles-mêmes. Le constat contre le vrai proxy de Coolify se fait à la livraison 4.
+
+**Préparer la recette**
+
+- Dans le fichier `.env` à la racine, la ligne `BETTER_AUTH_URL=http://localhost:5173`. Lancer `pnpm dev`.
+- Les plafonds vivent dans la mémoire du serveur : arrêter puis relancer `pnpm dev` les remet à zéro. Chaque case
+  ci-dessous emploie ses propres adresses, pour pouvoir les jouer à la suite.
+- Une réponse `401` dans les cases des 30 requêtes veut dire « pas de session » : la requête est passée sous le
+  plafond. Seule `429` veut dire « plafond atteint ».
+
+**L'adresse d'un MCP part de l'adresse publique de SLICE (WAT-188)**
+
+- [ ] Sur http://localhost:5173, connecté (amorce `.pilot/amorce-recette.js` dans la console, puis recharger), créer
+  un MCP jusqu'à « Deploy to SLICE Cloud ». L'écran « Your MCP is live » montre une adresse qui commence par
+  `http://localhost:5173/m/`. La page « My MCPs » (http://localhost:5173/mcps) montre la même adresse pour ce MCP.
+  En ligne, ce sera `https://slice.giveme5xxxxx.fr/m/<id>`. Preuve aussi par les tests « is SLICE's public address
+  followed by /m/<id>, in https though the request came in http » et « is the same in My MCPs, in https though the
+  request came in http » (`src/server/behind-proxy.test.ts`).
+- [ ] Cette adresse répond, par la page de Vite. Dans le terminal, en remplaçant `<adresse>` par celle de l'écran :
+  `curl -s -X POST <adresse> -H "content-type: application/json" -H "accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'`
+  affiche la liste des actions du MCP (`"tools":[{"name":…`). Preuve aussi par le test « relays /m/<id> to the API
+  server, and keeps showing its own pages at /mcps ».
+- [ ] La page « My MCPs » s'affiche toujours à http://localhost:5173/mcps : le relai ne prend que les adresses en
+  `/m/…`.
+- [ ] Refus : ni une requête arrivée en `http`, ni un en-tête `Host` écrit par le visiteur ne changent l'adresse.
+  Ouvrir une session dans le terminal : `curl -s -c /tmp/slice-uat-cookies.txt -X POST http://localhost:3001/api/dev/sign-in`.
+  Puis `curl -s -b /tmp/slice-uat-cookies.txt http://localhost:3001/api/mcps -H "Host: evil.example.com" -H "X-Forwarded-Proto: http"` :
+  chaque `"url"` commence par `http://localhost:5173/m/`, aucune par `evil.example.com` ni par
+  `http://localhost:3001`. Preuve aussi par les tests « ignores a Host header written by the visitor, at creation
+  and in My MCPs » et, pour le serveur réel, « gives a created MCP an address at BETTER_AUTH_URL, not at the address
+  the request reached ».
+- [ ] Refus : une adresse publique finie par `/` ne donne jamais `//m/`. Mettre `BETTER_AUTH_URL=http://localhost:5173/`
+  dans `.env`, relancer `pnpm dev`, rejouer la commande `curl … /api/mcps` ci-dessus : les adresses commencent par
+  `http://localhost:5173/m/`, sans double barre. Remettre ensuite `BETTER_AUTH_URL=http://localhost:5173`. Preuve
+  aussi par le test « has a single slash before /m when the public address ends with one ».
+
+**Chaque visiteur est compté sur sa vraie adresse (WAT-109)**
+
+- [ ] Deux visiteurs ont chacun leurs 30 requêtes par minute. Le visiteur 203.0.113.7 en envoie 31 :
+  `for i in $(seq 31); do curl -s -o /dev/null -w "%{http_code} " http://localhost:3001/api/mcps -H "X-Forwarded-For: 203.0.113.7"; done; echo`
+  affiche trente `401` puis un `429`. Aussitôt après, le visiteur 198.51.100.4 :
+  `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3001/api/mcps -H "X-Forwarded-For: 198.51.100.4"`
+  affiche `401`, pas `429`. Preuve aussi par le test « refuses a visitor's thirty-first request, and only theirs ».
+- [ ] Refus : un visiteur qui écrit lui-même un faux `X-Forwarded-For` reste compté sur sa vraie adresse. Le
+  visiteur 203.0.113.8 écrit une fausse adresse différente à chaque requête, le proxy ajoute la vraie à la fin :
+  `for i in $(seq 31); do curl -s -o /dev/null -w "%{http_code} " http://localhost:3001/api/mcps -H "X-Forwarded-For: 10.0.0.$i, 203.0.113.8"; done; echo`
+  affiche trente `401` puis un `429`. Preuve aussi par le test « counts a visitor who writes a false
+  X-Forwarded-For on their real address » (bloc « thirty requests a minute »).
+- [ ] Refus : un visiteur ne peut pas épuiser le plafond d'un autre en se faisant passer pour lui. Le visiteur
+  192.0.2.66 écrit 30 fois l'adresse de 203.0.113.9 :
+  `for i in $(seq 30); do curl -s -o /dev/null -w "%{http_code} " http://localhost:3001/api/mcps -H "X-Forwarded-For: 203.0.113.9, 192.0.2.66"; done; echo`.
+  Puis le vrai 203.0.113.9 :
+  `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3001/api/mcps -H "X-Forwarded-For: 203.0.113.9"`
+  affiche `401`, pas `429`. Preuve aussi par le test « leaves a visitor their thirty requests when another passes
+  for them ».
+- [ ] Deux visiteurs ont chacun leurs 10 codes de connexion par heure. Le visiteur 203.0.113.20 en demande 11, pour
+  11 adresses e-mail différentes :
+  `for i in $(seq 11); do curl -s -o /dev/null -w "%{http_code} " -X POST http://localhost:3001/api/auth/email-otp/send-verification-otp -H "content-type: application/json" -H "Origin: http://localhost:5173" -H "X-Forwarded-For: 203.0.113.20" -d "{\"email\":\"visitor$i@example.com\",\"type\":\"sign-in\"}"; done; echo`
+  affiche dix `200` puis un `429` ; le terminal de `pnpm dev` montre dix lignes `Sign-in code for visitor…`, pas
+  d'onzième. La même commande avec `seq 1`, `X-Forwarded-For: 198.51.100.20` et `"email":"home@example.com"`
+  affiche `200`. Preuve aussi par le test « still sends a visitor's code when another visitor has had their ten ».
+- [ ] Refus : un faux `X-Forwarded-For` ne libère pas des 10 codes. La commande ci-dessus avec
+  `X-Forwarded-For: 10.0.0.$i, 203.0.113.21` et `"email":"forger$i@example.com"` affiche dix `200` puis un `429`.
+  Sans `-o /dev/null -w …`, la onzième réponse dit `"code":"too_many_codes_from_ip"` et « Too many codes asked from
+  your network. Try again in an hour. ». Preuve aussi par le test « counts a visitor who writes a false
+  X-Forwarded-For on their real address » (bloc « ten sign-in codes an hour »).
+- [ ] Refus : on n'épuise pas les codes d'un autre en se faisant passer pour lui. La commande ci-dessus avec
+  `seq 10`, `X-Forwarded-For: 203.0.113.22, 192.0.2.66` et `"email":"impostor$i@example.com"`, puis une demande avec
+  `X-Forwarded-For: 203.0.113.22` et `"email":"victim@example.com"` : cette dernière affiche `200`. Preuve aussi par
+  le test « leaves a visitor their ten codes when another passes for them ».
+
+**La documentation dit ce que le proxy doit faire (WAT-189)**
+
+- [ ] `docs/configuration.md`, section « Running behind a reverse proxy », dit que SLICE fait confiance à un seul
+  proxy, et compte chaque visiteur sur la dernière adresse de `X-Forwarded-For` ; elle dit aussi que l'adresse d'un
+  MCP commence par `BETTER_AUTH_URL`.
+- [ ] `docs/API.md`, section « Rate limiting », dit que les 30 requêtes par minute et les 10 codes par heure se
+  comptent par visiteur, sur la dernière adresse de `X-Forwarded-For`. Le champ `url` de `POST /api/host` et celui de
+  `GET /api/mcps` sont décrits comme `<BETTER_AUTH_URL>/m/<id>`.
+- [ ] Refus : la documentation ne dit plus nulle part que l'adresse d'un MCP vient de la requête.
+  `grep -rn "request protocol\|Host header\|does not set Express" docs/` ne montre rien.
 
 ### Livraison 3 — SLICE est sur invitation, et ne montre Google et Microsoft que s'ils sont réglés
 
