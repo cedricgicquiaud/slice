@@ -121,7 +121,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   // GET /api/mcps, DELETE /api/mcps/:id — the account's own MCPs (D9, D10), and their API keys (D3).
   if (options.accountMcps) {
     const now = options.now ?? (() => new Date());
-    app.use('/api/mcps', createMcpsRouter(options.accountMcps, { apiKeys: options.mcpApiKeys, now }));
+    app.use('/api/mcps', createMcpsRouter(options.accountMcps, { apiKeys: options.mcpApiKeys, now, publicUrl: options.publicUrl }));
   }
   // Recette primer: an unreadable key, so mounted only where NODE_ENV says development or test (D17).
   const { accountMcps, mcpApiKeys, mcpApiKeysUnderAnotherKey } = options;
