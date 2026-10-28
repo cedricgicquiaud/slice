@@ -116,6 +116,7 @@ describe('GET /api/mcps', () => {
             id,
             apiName: 'Notion API',
             actionCount: 2,
+            upstreamAuthType: 'bearer',
             createdAt: '2026-10-21T10:15:00.000Z',
             url: `${baseUrl}/m/${id}`,
           },
@@ -321,7 +322,14 @@ describe('POST /api/mcps/:id/versions', () => {
       tools: tools.map((tool) => tool.name),
     }).toEqual({
       saved: { status: 201, body: { number: 2 } },
-      listed: { id, apiName: 'Notes API', actionCount: 3, createdAt: CREATED.toISOString(), url: `${edit.url}/m/${id}` },
+      listed: {
+        id,
+        apiName: 'Notes API',
+        actionCount: 3,
+        upstreamAuthType: 'bearer',
+        createdAt: CREATED.toISOString(),
+        url: `${edit.url}/m/${id}`,
+      },
       tools: ['list_notes', 'create_note', 'empty_trash'],
     });
   });

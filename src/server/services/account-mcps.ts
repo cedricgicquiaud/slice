@@ -2,7 +2,7 @@
  * The MCPs of an account, as its "My MCPs" page shows them (D9).
  */
 import { and, count, desc, eq, isNotNull } from 'drizzle-orm';
-import type { McpSelectionChange } from '@shared/types';
+import type { McpSelectionChange, UpstreamAuthType } from '@shared/types';
 import type { Database } from '../db/client';
 import { connectorActions, connectorVersions, connectors } from '../db/schema';
 import { apiNameOf, readMcpHistory, restoreMcpVersion, type McpHistory, type RestoreOutcome } from './mcp-versions';
@@ -15,6 +15,8 @@ export interface AccountMcp {
   /** The API's name as read in its description, else its domain. */
   apiName: string;
   actionCount: number;
+  /** How the MCP reaches its API: only an API key or a bearer token takes a saved key (D8). */
+  upstreamAuthType: UpstreamAuthType;
   /** ISO creation date. */
   createdAt: string;
 }
@@ -50,6 +52,7 @@ export function createAccountMcps(database: Database): AccountMcps {
           id: connectors.id,
           apiName: connectors.apiName,
           baseUrl: connectors.baseUrl,
+          upstreamAuthType: connectors.upstreamAuthType,
           createdAt: connectors.createdAt,
           actionCount: count(connectorActions.position),
         })
@@ -69,10 +72,11 @@ export function createAccountMcps(database: Database): AccountMcps {
         .where(eq(connectors.workspaceId, workspaceId))
         .groupBy(connectors.id)
         .orderBy(desc(connectors.createdAt));
-      return rows.map(({ id, apiName, baseUrl, actionCount, createdAt }) => ({
+      return rows.map(({ id, apiName, baseUrl, actionCount, upstreamAuthType, createdAt }) => ({
         id,
         apiName: apiNameOf({ apiName, baseUrl }),
         actionCount,
+        upstreamAuthType,
         createdAt: createdAt.toISOString(),
       }));
     },

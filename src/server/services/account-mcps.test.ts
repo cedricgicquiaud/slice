@@ -52,8 +52,8 @@ describe('the MCPs of an account', () => {
     const stripe = await store.put(mcp({ apiName: 'Stripe', actions: 1 }), workspaceId, TUESDAY);
 
     expect(await createAccountMcps(database).list(workspaceId)).toEqual([
-      { id: stripe.id, apiName: 'Stripe', actionCount: 1, createdAt: '2026-10-20T14:00:00.000Z' },
-      { id: notion.id, apiName: 'Notion API', actionCount: 3, createdAt: '2026-10-19T08:30:00.000Z' },
+      { id: stripe.id, apiName: 'Stripe', actionCount: 1, upstreamAuthType: 'bearer', createdAt: '2026-10-20T14:00:00.000Z' },
+      { id: notion.id, apiName: 'Notion API', actionCount: 3, upstreamAuthType: 'bearer', createdAt: '2026-10-19T08:30:00.000Z' },
     ]);
   });
 
