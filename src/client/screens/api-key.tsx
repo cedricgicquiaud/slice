@@ -17,24 +17,30 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
   const [apiKey, setApiKey] = useState<McpApiKey | null>(null);
   const [pasted, setPasted] = useState('');
   const [replacing, setReplacing] = useState(false);
-  // "Save" stays greyed during the call: a double click saves once.
-  const [saving, setSaving] = useState(false);
+  // "Save", "Replace" and "Remove" stay greyed during a call: a double click sends one.
+  const [calling, setCalling] = useState(false);
 
   async function handleSave() {
-    if (saving) return;
-    setSaving(true);
+    if (calling) return;
+    setCalling(true);
     try {
       setApiKey(await saveMcpApiKey(mcpId, pasted));
       setPasted('');
       setReplacing(false);
     } finally {
-      setSaving(false);
+      setCalling(false);
     }
   }
 
   async function handleRemove() {
-    await removeMcpApiKey(mcpId);
-    setApiKey(null);
+    if (calling) return;
+    setCalling(true);
+    try {
+      await removeMcpApiKey(mcpId);
+      setApiKey(null);
+    } finally {
+      setCalling(false);
+    }
   }
 
   useEffect(() => {
@@ -85,13 +91,20 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
               )}
               {!replacing && (
                 <>
-                  <Button type="button" variant="outline" size="sm" onClick={() => setReplacing(true)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={calling}
+                    onClick={() => setReplacing(true)}
+                  >
                     Replace
                   </Button>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
+                    disabled={calling}
                     onClick={() => void handleRemove()}
                     className="text-muted-foreground hover:text-destructive"
                   >
@@ -110,7 +123,7 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
               }}
             >
               <Field label="API key" value={pasted} onChange={setPasted} mono />
-              <Button type="submit" disabled={saving} className="self-start">
+              <Button type="submit" disabled={calling} className="self-start">
                 Save
               </Button>
             </form>
