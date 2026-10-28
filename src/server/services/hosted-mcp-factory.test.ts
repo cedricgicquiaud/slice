@@ -506,4 +506,13 @@ describe('the key an action call sends to the API', () => {
 
     expect(heard.map((headers) => headers['x-api-key'])).toEqual(['saved-key-0173']);
   });
+
+  it('is the saved key when the agent sends an Authorization the relay refuses: another form than Bearer, a character beyond ASCII (D6)', async () => {
+    heard = [];
+
+    await callWith(API_KEY, { authorization: 'Basic YWdlbnQ6c2VjcmV0', savedKey: { key: 'saved-key-0173' } });
+    await callWith(API_KEY, { authorization: 'Bearer agent-clé-0173', savedKey: { key: 'saved-key-0173' } });
+
+    expect(heard.map((headers) => headers['x-api-key'])).toEqual(['saved-key-0173', 'saved-key-0173']);
+  });
 });
