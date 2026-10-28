@@ -5,6 +5,7 @@ import { sql } from 'drizzle-orm';
 import { createMcpApiKeys } from './mcp-api-key';
 import { createKeyCipher } from './key-cipher';
 import { createHostedStore } from './hosted-store';
+import { createAccountMcps } from './account-mcps';
 import type { HostedMcpConfig } from './hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
@@ -116,5 +117,14 @@ describe('the key of an MCP', () => {
       key: { unreadable: true },
       state: { savedAt: NOW, readable: false },
     });
+  });
+
+  it('leaves with its MCP (contract 11, D14)', async () => {
+    const { id } = await createHostedStore(database).put(notion, workspaceId, NOW);
+    await createMcpApiKeys(database, createKeyCipher(randomBytes(32))).save(id, 'secret_ntn_first', NOW);
+
+    await createAccountMcps(database).delete(workspaceId, id);
+
+    expect(await rawLinesOf(id)).toEqual([]);
   });
 });
