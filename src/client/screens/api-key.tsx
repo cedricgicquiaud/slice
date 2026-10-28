@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../components/ui/button';
 import { Field } from '../components/field';
-import { listMcps, saveMcpApiKey, type Mcp, type McpApiKey } from '../lib/mcps-api';
+import { getMcpApiKey, listMcps, saveMcpApiKey, type Mcp, type McpApiKey } from '../lib/mcps-api';
 import { CREATED, messageOf } from './mcps';
 
 export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
@@ -21,8 +21,11 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
   }
 
   useEffect(() => {
-    listMcps()
-      .then((mcps) => setMcp(mcps.find((other) => other.id === mcpId) ?? null))
+    Promise.all([listMcps(), getMcpApiKey(mcpId)])
+      .then(([mcps, saved]) => {
+        setApiKey(saved);
+        setMcp(mcps.find((other) => other.id === mcpId) ?? null);
+      })
       .catch((err: unknown) => setError(messageOf(err)));
   }, [mcpId]);
 
