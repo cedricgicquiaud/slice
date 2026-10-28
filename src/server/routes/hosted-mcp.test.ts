@@ -360,6 +360,31 @@ describe('an MCP whose key is saved on SLICE', () => {
 
     expect(received.map((r) => r.apiKey)).toEqual([undefined]);
   });
+
+  it('is never sent by an MCP in OAuth2 or without access, even when a key line is in the database (D8)', async () => {
+    const oauth2 = await store.put(
+      { ...threeActions(), upstreamAuth: { type: 'oauth2', tokenUrl: 'https://auth.example.com/token', scopes: [] } },
+      account.workspaceId,
+      CREATED
+    );
+    const none = await store.put({ ...threeActions(), upstreamAuth: { type: 'none' } }, account.workspaceId, CREATED);
+    // "Save" refuses a key for these MCPs (WAT-171): the lines are written behind its back.
+    const keys = createMcpApiKeys(database, cipher);
+    await keys.save(oauth2.id, 'saved-key-0172-oauth2', CREATED);
+    await keys.save(none.id, 'saved-key-0172-none', CREATED);
+    received = [];
+
+    for (const { id } of [oauth2, none]) {
+      const agent = await connectAgent(`${baseUrl}/m/${id}`);
+      await agent.callTool({ name: 'list_things', arguments: {} });
+      await agent.close();
+    }
+
+    expect(received.map(({ auth, apiKey }) => ({ auth, apiKey }))).toEqual([
+      { auth: undefined, apiKey: undefined },
+      { auth: undefined, apiKey: undefined },
+    ]);
+  });
 });
 
 /** `config`, whose API's actions are exactly its own: every call of them is noted (D2). */
