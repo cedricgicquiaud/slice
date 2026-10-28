@@ -142,9 +142,14 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
 
 export type SliceAuth = ReturnType<typeof createAuth>;
 
-/** The caller's IP as Better Auth reads it (`x-forwarded-for`, set by SLICE's proxy), if known. */
+/**
+ * The caller's IP, if known: the last address of `x-forwarded-for`, the one SLICE's single proxy
+ * adds (D6). Better Auth reads only a header holding one address, so it is handed that one alone.
+ */
 function ipOf(ctx: { headers?: Headers; context: { options: BetterAuthOptions } }): string | null {
-  return ctx.headers ? getIP(ctx.headers, ctx.context.options) : null;
+  if (!ctx.headers) return null;
+  const last = ctx.headers.get('x-forwarded-for')?.split(',').at(-1)?.trim();
+  return getIP(new Headers(last ? { 'x-forwarded-for': last } : {}), ctx.context.options);
 }
 
 /** BETTER_AUTH_SECRET; refused missing in production, where sessions would be signed with a public default. */
