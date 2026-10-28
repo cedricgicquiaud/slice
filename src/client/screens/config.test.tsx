@@ -71,6 +71,17 @@ describe('<ConfigScreen> (phase 06)', () => {
     expect(screen.queryByRole('button', { name: /on a remote/i })).not.toBeInTheDocument();
   });
 
+  // WAT-179 (D15) — the key is relayed or saved once, encrypted: no longer "never stored".
+  it('says SLICE Cloud uses the API key relayed from the agent or saved once and kept encrypted (contract 10, D15)', () => {
+    renderConfig({ spec: SPEC, selectedIds: ['GET /a'], onGenerate: () => {} });
+    expect({
+      card: screen.queryByText(
+        'We host it and use your API key: relayed from your agent, or saved once and kept encrypted. You get a URL to paste into your agent.'
+      ) !== null,
+      neverStored: /never stored/i.test(document.body.textContent ?? ''),
+    }).toEqual({ card: true, neverStored: false });
+  });
+
   // RC1.3 — cloud pre-selected by default, label adapts when switching.
   it('pre-selects SLICE Cloud and adapts label when switching to self-host', async () => {
     renderConfig({ spec: SPEC, selectedIds: ['GET /a'], onGenerate: () => {} });
