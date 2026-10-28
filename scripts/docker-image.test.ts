@@ -33,4 +33,12 @@ describe('the Dockerfile', () => {
       .map((i) => i.args);
     expect(runs).toEqual(expect.arrayContaining(['pnpm install --frozen-lockfile', 'pnpm build']));
   });
+
+  it('starts SLICE like pnpm start, from the folder that holds package.json and the built dist/', () => {
+    const instructions = instructionsOf(read('Dockerfile'));
+    const lastStage = instructions.slice(instructions.findLastIndex((i) => i.keyword === 'FROM'));
+    const cmd = lastStage.find((i) => i.keyword === 'CMD');
+    expect(cmd && JSON.parse(cmd.args)).toEqual(['pnpm', 'start']);
+    expect(lastStage.map((i) => `${i.keyword} ${i.args}`)).toContain('COPY --from=build /app/dist ./dist');
+  });
 });
