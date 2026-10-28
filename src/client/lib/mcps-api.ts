@@ -158,6 +158,18 @@ export async function getMcpApiKey(id: string): Promise<McpApiKey | null> {
   return apiKey;
 }
 
+/** Save the API key of one of the account's MCPs, replacing the one before (D3); returns its state, never the key. */
+export async function saveMcpApiKey(id: string, apiKey: string): Promise<McpApiKey> {
+  const res = await fetch(`/api/mcps/${id}/api-key`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiKey }),
+  });
+  if (!res.ok) await throwRefusal(res);
+  const { apiKey: saved } = (await res.json()) as { apiKey: McpApiKey };
+  return saved;
+}
+
 /** Delete one of the account's MCPs, at once (D10). */
 export async function deleteMcp(id: string): Promise<void> {
   const res = await fetch(`/api/mcps/${id}`, { method: 'DELETE' });
