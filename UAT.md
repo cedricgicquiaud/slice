@@ -1127,6 +1127,41 @@ Notes », à jeton), puis recharger la page. L'identifiant du MCP est dans l'adr
   « Recette Notes » (`https://api.example.com/v1`) n'existe pas. Preuve par le test « saves the key of my MCP without
   trying it on the MCP's API » : une API locale ne reçoit aucune requête pendant l'enregistrement.
 
+**Une clé inutilisable est refusée et rien n'est enregistré ; un MCP sans accès ou en OAuth2 n'accepte aucune clé (WAT-171)**
+
+Préparer : comme pour WAT-170 (session `recette@slice.local`, MCP « Recette Notes », à jeton, console de la page
+ouverte sur `/mcps/<identifiant>/history`). Enregistrer d'abord la clé de recette
+`slice-recette-key-0123456789abcdefghijkl` par le `PUT` ci-dessus, et noter la date rendue. Pour chaque refus, la
+commande est
+`await (await fetch('/api/mcps/<identifiant>/api-key', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ apiKey: <la clé> }) })).json()`,
+puis le `GET` de la clé : il doit rendre encore la date notée, preuve que l'ancienne clé est restée.
+
+- [ ] Refus : une clé vide (`''`) ou faite seulement d'espaces et de retours à la ligne (`'  \n  '`) rend
+  `{ code: "INVALID_KEY", message: "This key can't be used: it is empty." }` ; le `GET` rend toujours la date notée.
+- [ ] Refus : une clé de 4 097 caractères (`'k'.repeat(4097)`) rend
+  `{ code: "INVALID_KEY", message: "This key can't be used: it is longer than 4,096 characters." }` ; le `GET` rend
+  toujours la date notée.
+- [ ] Refus : une clé contenant « € » (`'secret_ntn_12€34'`), un emoji (`'secret_ntn_12🔑34'`) ou un retour à la ligne
+  au milieu (`'secret_ntn_12\n34'`) rend
+  `{ code: "INVALID_KEY", message: "This key can't be used: it contains a character an API can't receive." }` ; le
+  `GET` rend toujours la date notée.
+- [ ] Le refus répond `400` : remplacer `.json()` par `.status` dans la commande, avec la clé `''` : `400`.
+- [ ] Une clé collée avec un retour à la ligne final (`'slice-recette-key-final\n'`) ou des espaces en bout
+  (`'  slice-recette-key-final  '`) est enregistrée sans eux : la réponse porte une nouvelle date. La valeur rangée ne
+  se lit pas par l'API (elle ne rend jamais la clé) : preuve par le test « saves a key pasted with a final line break
+  without them » et « … with spaces at its ends without them » (`src/server/routes/mcps.test.ts`), qui relisent la
+  clé servie au relai, `secret_ntn_1234`.
+- [ ] Une clé de 4 096 caractères exactement (`'k'.repeat(4096)`) est enregistrée : la réponse porte
+  `readable: true` et une nouvelle date.
+- [ ] Refus : un MCP sans accès refuse la clé. Sur http://localhost:5173, créer un MCP depuis
+  `fixtures/uat-no-auth.yaml` (« Anonymous Sample »), « None » choisi à l'étape 3, hébergé par SLICE. Son identifiant
+  se lit dans `await (await fetch('/api/mcps')).json()`, à la ligne `upstreamAuthType: "none"`. Le `PUT` d'une clé
+  sur cet identifiant rend `{ code: "INVALID_KEY", message: "This MCP takes no API key." }`, et son `GET` rend
+  `{ apiKey: null }`.
+- [ ] Refus : un MCP en OAuth2 refuse la clé, et n'en garde aucune. Preuve par le test « refuses the key of an MCP in
+  OAuth2 with INVALID_KEY, and saves nothing » (`src/server/routes/mcps.test.ts`) : il n'y a pas, dans `fixtures/`,
+  de description en `client_credentials` à créer depuis l'écran.
+
 ### Livraison 2 — Le MCP appelle l'API avec la clé enregistrée
 
 _Section écrite par la livraison 2._
