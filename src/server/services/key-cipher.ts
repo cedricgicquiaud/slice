@@ -3,6 +3,34 @@
  * The repository is public, so no default key exists: the server refuses to start
  * without one, whatever NODE_ENV.
  */
+import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+
+const ALGORITHM = 'aes-256-gcm';
+const NONCE_BYTES = 12;
+const TAG_BYTES = 16;
+
+export interface KeyCipher {
+  /** The value sealed in base64: a fresh nonce, the authentication tag, then the ciphertext. */
+  encrypt(value: string): string;
+  decrypt(sealed: string): string;
+}
+
+export function createKeyCipher(encryptionKey: Buffer): KeyCipher {
+  return {
+    encrypt(value) {
+      const nonce = randomBytes(NONCE_BYTES);
+      const cipher = createCipheriv(ALGORITHM, encryptionKey, nonce);
+      const ciphertext = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+      return Buffer.concat([nonce, cipher.getAuthTag(), ciphertext]).toString('base64');
+    },
+    decrypt(sealed) {
+      const bytes = Buffer.from(sealed, 'base64');
+      const decipher = createDecipheriv(ALGORITHM, encryptionKey, bytes.subarray(0, NONCE_BYTES));
+      decipher.setAuthTag(bytes.subarray(NONCE_BYTES, NONCE_BYTES + TAG_BYTES));
+      return Buffer.concat([decipher.update(bytes.subarray(NONCE_BYTES + TAG_BYTES)), decipher.final()]).toString('utf8');
+    },
+  };
+}
 
 /** SLICE_ENCRYPTION_KEY, decoded; refused missing in every environment. */
 export function encryptionKeyFromEnv(env: NodeJS.ProcessEnv): Buffer {
