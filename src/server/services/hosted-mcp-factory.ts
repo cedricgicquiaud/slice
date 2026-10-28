@@ -252,7 +252,10 @@ async function callUpstream(
     const value = args[p.name];
     if (value !== undefined && value !== null) headers.set(p.name, String(value));
   }
-  const token = agentKey() ?? savedKey();
+  const ownKey = agentKey();
+  const token = ownKey ?? savedKey();
+  // The saved key never reaches the agent: an API copying it into its error has it hidden (D12).
+  const hidden = ownKey === undefined ? token : undefined;
   if (token) {
     // oauth2 is relayed exactly like bearer here: the hosted runtime never runs
     // the client_credentials flow (no secret on SLICE Cloud) — the agent's own
@@ -273,7 +276,8 @@ async function callUpstream(
   try {
     const res = await fetch(url, { method: endpoint.method, headers, body, signal: abandon.signal });
     if (!res.ok) {
-      throw new UpstreamFailure(res.status, `Upstream ${res.status} ${res.statusText}: ${await res.text()}`);
+      const message = `Upstream ${res.status} ${res.statusText}: ${await res.text()}`;
+      throw new UpstreamFailure(res.status, hidden ? message.replaceAll(hidden, '[hidden]') : message);
     }
     const ct = res.headers.get('content-type') ?? '';
     return await (ct.includes('application/json') ? res.json() : res.text());
