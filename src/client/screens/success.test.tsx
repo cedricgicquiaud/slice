@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { SuccessScreen } from './success';
 import { ToastProvider } from '../components/toast';
 import type { SliceConfig } from '@shared/types';
@@ -158,5 +158,31 @@ describe('hosted MCP that takes a saved key', () => {
       'Paste the snippet below into your agent, then replace PASTE_YOUR_TOKEN_HERE with the token of your target API, ' +
         'or save it once in SLICE: we keep it encrypted.'
     );
+  });
+
+  it('never says "never stored", whatever the access, and links an MCP by API key or by token only (contract 10, 16, D8, D15)', () => {
+    const accesses: SliceConfig['upstreamAuth'][] = [
+      { type: 'apiKey', headerName: 'X-Shopify-Access-Token' },
+      { type: 'bearer' },
+      { type: 'oauth2', tokenUrl: 'https://auth.example.com/token', scopes: [] },
+      { type: 'none' },
+    ];
+
+    const seen = accesses.map((access) => {
+      setupHostedAs(access);
+      const page = {
+        neverStored: /never stored/i.test(document.body.textContent ?? ''),
+        link: screen.queryByRole('link', { name: 'Add your API key' }) !== null,
+      };
+      cleanup();
+      return page;
+    });
+
+    expect(seen).toEqual([
+      { neverStored: false, link: true },
+      { neverStored: false, link: true },
+      { neverStored: false, link: false },
+      { neverStored: false, link: false },
+    ]);
   });
 });
