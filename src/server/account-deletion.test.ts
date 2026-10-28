@@ -1,6 +1,7 @@
 // WAT-107 — once the account is deleted, nothing of it is left: its MCPs' addresses,
 // its sessions on every device, its MCPs at the next sign-in (contract 28, D11).
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -246,7 +247,15 @@ async function startServer(cwd: string, env: Record<string, string>) {
     ['--tsconfig', path.join(cwd, 'tsconfig.server.json'), path.join(cwd, 'src/server/index.ts')],
     {
       cwd,
-      env: { ...inherited, NODE_ENV: 'development', PORT: String(port), BETTER_AUTH_SECRET: TEST_AUTH_SECRET, ...env },
+      env: {
+        ...inherited,
+        NODE_ENV: 'development',
+        PORT: String(port),
+        BETTER_AUTH_SECRET: TEST_AUTH_SECRET,
+        // A key of its own: the repository holds none (D11).
+        SLICE_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
+        ...env,
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     }
   );

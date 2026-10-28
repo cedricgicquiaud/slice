@@ -1003,3 +1003,169 @@ On ne peut pas atteindre 10 000 appels à la main ; chaque case renvoie à son t
   cleaned up again an hour after a cleanup failed on an unreachable database, the failure only logged ».
 - [ ] `docs/API.md`, section `ANY /m/:id`, décrit le délai de 30 secondes, le plafond de 10 000 appels notés par MCP et
   par jour UTC, et la conservation des notes pendant 30 jours.
+
+## SLICE — Le MCP porte l'authentification
+
+_Feature P-WAT-43. Une section par livraison, ajoutée par chaque PR._
+
+### Livraison 1 — SLICE garde la clé d'un MCP, chiffrée
+
+Cette livraison n'a pas d'écran : tout se constate dans le terminal du serveur, par l'API et dans la base de
+développement. La page « API key » arrive en livraison 3.
+
+**Préparer la recette**
+
+- Le serveur ne démarre plus sans clé de chiffrement, en développement aussi. Ajouter au fichier `.env` de la racine
+  du dépôt (le créer depuis `.env.example` s'il n'existe pas) la ligne `SLICE_ENCRYPTION_KEY=` suivie de la sortie de
+  `openssl rand -base64 32` (44 caractères finissant par `=`). Ne jamais la committer ni la recopier ailleurs.
+
+**Le serveur refuse de démarrer sans sa clé de chiffrement (WAT-168)**
+
+- [ ] Refus : sans `SLICE_ENCRYPTION_KEY`, le serveur refuse de démarrer, en développement comme en production.
+  Développement : `SLICE_ENCRYPTION_KEY= pnpm dev:server` (la valeur vide passe avant celle du `.env`) ; le terminal
+  affiche `SLICE server cannot start: SLICE_ENCRYPTION_KEY is required (32 bytes in base64, …)` et le serveur
+  s'arrête. Production : `pnpm build`, puis
+  `SLICE_ENCRYPTION_KEY= DATABASE_URL=postgres://localhost:9/none BETTER_AUTH_SECRET=x BETTER_AUTH_URL=http://localhost:3001 pnpm start` ;
+  même message, même arrêt (la base n'est jamais ouverte). Preuve aussi par les tests « refuses to start in
+  development without SLICE_ENCRYPTION_KEY » et « refuses to start in production without SLICE_ENCRYPTION_KEY »
+  (`src/server/index.test.ts`).
+- [ ] Refus : avec une valeur qui ne fait pas 32 octets une fois décodée, le serveur refuse de démarrer.
+  `SLICE_ENCRYPTION_KEY=$(openssl rand -base64 31) pnpm dev:server` affiche
+  `SLICE server cannot start: SLICE_ENCRYPTION_KEY must be 32 bytes in base64 (…)` et s'arrête ; même message avec
+  `SLICE_ENCRYPTION_KEY='not base64 at all!' pnpm dev:server`. Avec la clé du `.env` (`pnpm dev:server` seul), le
+  terminal affiche `SLICE server running on http://localhost:3001`.
+- [ ] Une valeur chiffrée puis déchiffrée avec la même clé redonne la valeur d'origine, et chiffrer deux fois la même
+  valeur donne deux résultats différents : preuve par les tests « decrypts what it encrypted back to the original
+  value » et « encrypts the same value twice into two different results » (`src/server/services/key-cipher.test.ts`).
+- [ ] Refus : déchiffrer avec une autre clé de chiffrement échoue par une erreur reconnaissable, jamais par un texte
+  faux : preuve par le test « refuses to decrypt with another encryption key, by an UnreadableKeyError and never a
+  wrong text ». L'état « illisible » qui en découle se voit par l'API plus bas dans cette livraison (WAT-170).
+- [ ] Aucune clé par défaut n'est écrite dans le dépôt : `git grep -n "SLICE_ENCRYPTION_KEY="` ne montre que la ligne
+  vide de `.env.example`, et les lignes des tests et du smoke qui tirent leur clé au hasard
+  (`randomBytes(32).toString('base64')`).
+- [ ] `.env.example` et `docs/configuration.md` (tableau des variables) nomment `SLICE_ENCRYPTION_KEY` et la commande
+  qui la génère, `openssl rand -base64 32`.
+- [ ] `pnpm prod:smoke` démarre le binaire compilé avec une clé tirée au hasard et finit par `✅ prod smoke passed` :
+  vérifier que l'étape « Prod smoke (compiled bundle) » de la CI de la PR est verte (en local, il faut un PostgreSQL,
+  voir `docs/configuration.md`).
+
+**La clé d'un MCP est rangée chiffrée, une par MCP, et disparaît avec lui ou avec le compte (WAT-169)**
+
+Les routes qui enregistrent une clé arrivent avec WAT-170 : d'ici là, chaque case se constate par un test de
+`src/server/services/mcp-api-key.test.ts` (`pnpm vitest run src/server/services/mcp-api-key.test.ts`, 9 tests verts),
+dont le nom est cité.
+
+- [ ] Refus : après enregistrement, la valeur de la clé n'apparaît en clair nulle part en base. Une clé de 40
+  caractères tirés au hasard est enregistrée, puis la ligne de la table `connector_keys` est lue brute, toutes colonnes
+  en texte : elle ne contient pas la clé. Preuve par « is kept as one line where the key never appears in clear ».
+- [ ] Un MCP a au plus une clé : enregistrer `secret_ntn_second` après `secret_ntn_first` laisse une seule ligne en base,
+  et la clé relue est `secret_ntn_second`. Preuve par « saved again replaces the one before, which leaves the database ».
+- [ ] La date gardée est celle du dernier enregistrement : une clé enregistrée le 28/10/2026 à 09:00 UTC puis remplacée
+  le 29/10/2026 à 14:30 UTC est datée du 29/10/2026 à 14:30 UTC. Preuve par « is dated from its last saving, a
+  replacement included ».
+- [ ] Retirer la clé efface sa ligne : plus aucune ligne en base, et le MCP n'a plus de clé. Preuve par « removed leaves
+  the database, the MCP having no key any more ».
+- [ ] Refus : la clé d'un MCP n'est lue que pour ce MCP. Deux MCP du même compte, un seul avec clé : l'autre n'en a
+  aucune. Preuve par « is read for its MCP only, never for another MCP of the same account ».
+- [ ] Refus : une clé chiffrée avec une autre clé de chiffrement est rendue « illisible » (`unreadable`), avec sa date,
+  jamais déchiffrée en un texte faux. Preuve par « encrypted under another encryption key is told unreadable, never
+  decrypted into a wrong text ».
+- [ ] Supprimer un MCP supprime sa clé ; supprimer son compte supprime les clés de ses MCP. Preuve par « leaves with its
+  MCP » et « leaves with the account that owns its MCP » (la suppression passe par la vraie route
+  `POST /api/auth/delete-user`).
+- [ ] Refus : deux enregistrements simultanés sur le même MCP laissent une seule clé, joué vingt fois. Preuve sur
+  PostgreSQL : vérifier que l'étape « Storage tests (PostgreSQL) » de la CI de la PR est verte et qu'elle nomme
+  `src/server/services/mcp-api-key.test.ts` (`.github/workflows/ci.yml`) ; le test « saved twice at once leaves a single
+  key, played twenty times » y joue une vraie course.
+
+**J'enregistre, remplace et retire la clé d'un MCP par l'API, et je vois si elle existe, jamais sa valeur (WAT-170)**
+
+Préparer : lancer `pnpm dev`, ouvrir http://localhost:5173, coller dans la console du navigateur l'amorce
+`.pilot/recette/amorce-history.js` (elle ouvre une session pour `recette@slice.local` et crée le MCP « Recette
+Notes », à jeton), puis recharger la page. L'identifiant du MCP est dans l'adresse :
+`http://localhost:5173/mcps/<identifiant>/history`. Les commandes ci-dessous se collent dans la console de cette page
+(remplacer `<identifiant>`) ; la clé de recette fait 40 caractères : `slice-recette-key-0123456789abcdefghijkl`.
+
+- [ ] « Save » : `await (await fetch('/api/mcps/<identifiant>/api-key', { method: 'PUT', headers: { 'content-type':
+  'application/json' }, body: JSON.stringify({ apiKey: 'slice-recette-key-0123456789abcdefghijkl' }) })).json()` rend
+  `{ apiKey: { savedAt: "<maintenant, en UTC>", readable: true } }`. Puis
+  `await (await fetch('/api/mcps/<identifiant>/api-key')).json()` rend la même chose : la date, l'état lisible, jamais
+  la clé.
+- [ ] « Replace » : refaire le `PUT` une minute plus tard avec `slice-recette-key-ZYXWVUTSRQ9876543210abcd` : la réponse
+  porte la nouvelle date. « Remove » : `(await fetch('/api/mcps/<identifiant>/api-key', { method: 'DELETE' })).status`
+  rend `204`, puis le `GET` rend `{ apiKey: null }`.
+- [ ] Clé illisible : refaire le `PUT`, puis
+  `(await fetch('/api/dev/mcps/<identifiant>/api-key/garble', { method: 'POST' })).status` rend `204` (cette route de
+  recette chiffre la clé sous une autre clé de chiffrement, comme si `SLICE_ENCRYPTION_KEY` avait changé). Le `GET`
+  rend alors `readable: false`, avec la date du `PUT`. Même chose, par le vrai serveur redémarré avec une autre
+  `SLICE_ENCRYPTION_KEY` : test « keeps the key of an MCP under its SLICE_ENCRYPTION_KEY: readable after a restart with
+  it, unreadable with another » (`src/server/index.test.ts`).
+- [ ] `await (await fetch('/api/mcps')).json()` : chaque MCP porte `upstreamAuthType` ; « Recette Notes » porte
+  `"bearer"`. Les quatre types (`none`, `apiKey`, `bearer`, `oauth2`) : test « tells the access of each MCP to its API:
+  none, API key, bearer token or OAuth2 » (`src/server/routes/mcps.test.ts`).
+- [ ] Refus : aucune réponse ne contient la clé. Après un `PUT` de `slice-recette-key-0123456789abcdefghijkl`, lire
+  `/api/mcps/<identifiant>/api-key`, `/api/mcps`, `/api/mcps/<identifiant>/versions` et `/api/mcps/<identifiant>/usage`
+  avec `await (await fetch('<chemin>')).text()`, et chercher `0123456789abcdefghijkl` dans chaque texte : absent
+  partout, réponse du `PUT` comprise.
+- [ ] Refus : aucune ligne des journaux du serveur ne contient la clé à l'enregistrement. Après les `PUT` ci-dessus,
+  chercher `slice-recette-key` dans le terminal de `pnpm dev` (Cmd+F) : aucun résultat. Preuve aussi par le test
+  « writes the key of my MCP in no line of the server logs while saving and replacing it ».
+- [ ] Refus : le MCP d'un autre compte répond comme un MCP inconnu. Ouvrir une fenêtre de navigation privée sur
+  http://localhost:5173, se connecter par code e-mail avec `voisin@example.com` (le code s'affiche dans le terminal de
+  `pnpm dev`), puis, dans sa console, faire le `GET`, le `PUT` et le `DELETE` ci-dessus sur `<identifiant>` (celui de
+  « Recette Notes ») : chacun répond `404` avec `{"code":"NOT_FOUND","message":"Unknown MCP id."}`, exactement comme
+  sur `/api/mcps/nexistepas/api-key`. Dans la première fenêtre, le `GET` montre la clé de « Recette Notes » toujours là,
+  à sa date.
+- [ ] Refus : sans session, ces demandes répondent 401. Dans un terminal :
+  `curl -s -X PUT http://localhost:3001/api/mcps/<identifiant>/api-key -H 'content-type: application/json' -d '{"apiKey":"x"}'`
+  affiche `{"code":"UNAUTHORIZED","message":"Sign in to continue."}` ; de même avec `curl -s` (lecture) et
+  `curl -s -X DELETE` sur la même adresse. La clé de « Recette Notes » ne bouge pas.
+- [ ] Refus : la route de recette n'existe pas en production. Preuve par le test « does not exist when
+  NODE_ENV=production: the key stays readable » (`src/server/routes/dev-api-key.test.ts`) : la demande répond `404`
+  et la clé reste lisible.
+- [ ] La clé n'est jamais essayée auprès de l'API à l'enregistrement : le `PUT` répond aussitôt, alors que l'API de
+  « Recette Notes » (`https://api.example.com/v1`) n'existe pas. Preuve par le test « saves the key of my MCP without
+  trying it on the MCP's API » : une API locale ne reçoit aucune requête pendant l'enregistrement.
+
+**Une clé inutilisable est refusée et rien n'est enregistré ; un MCP sans accès ou en OAuth2 n'accepte aucune clé (WAT-171)**
+
+Préparer : comme pour WAT-170 (session `recette@slice.local`, MCP « Recette Notes », à jeton, console de la page
+ouverte sur `/mcps/<identifiant>/history`). Enregistrer d'abord la clé de recette
+`slice-recette-key-0123456789abcdefghijkl` par le `PUT` ci-dessus, et noter la date rendue. Pour chaque refus, la
+commande est
+`await (await fetch('/api/mcps/<identifiant>/api-key', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ apiKey: <la clé> }) })).json()`,
+puis le `GET` de la clé : il doit rendre encore la date notée, preuve que l'ancienne clé est restée.
+
+- [ ] Refus : une clé vide (`''`) ou faite seulement d'espaces et de retours à la ligne (`'  \n  '`) rend
+  `{ code: "INVALID_KEY", message: "This key can't be used: it is empty." }` ; le `GET` rend toujours la date notée.
+- [ ] Refus : une clé de 4 097 caractères (`'k'.repeat(4097)`) rend
+  `{ code: "INVALID_KEY", message: "This key can't be used: it is longer than 4,096 characters." }` ; le `GET` rend
+  toujours la date notée.
+- [ ] Refus : une clé contenant « € » (`'secret_ntn_12€34'`), un emoji (`'secret_ntn_12🔑34'`) ou un retour à la ligne
+  au milieu (`'secret_ntn_12\n34'`) rend
+  `{ code: "INVALID_KEY", message: "This key can't be used: it contains a character an API can't receive." }` ; le
+  `GET` rend toujours la date notée.
+- [ ] Le refus répond `400` : remplacer `.json()` par `.status` dans la commande, avec la clé `''` : `400`.
+- [ ] Une clé collée avec un retour à la ligne final (`'slice-recette-key-final\n'`) ou des espaces en bout
+  (`'  slice-recette-key-final  '`) est enregistrée sans eux : la réponse porte une nouvelle date. La valeur rangée ne
+  se lit pas par l'API (elle ne rend jamais la clé) : preuve par le test « saves a key pasted with a final line break
+  without them » et « … with spaces at its ends without them » (`src/server/routes/mcps.test.ts`), qui relisent la
+  clé servie au relai, `secret_ntn_1234`.
+- [ ] Une clé de 4 096 caractères exactement (`'k'.repeat(4096)`) est enregistrée : la réponse porte
+  `readable: true` et une nouvelle date.
+- [ ] Refus : un MCP sans accès refuse la clé. Sur http://localhost:5173, créer un MCP depuis
+  `fixtures/uat-no-auth.yaml` (« Anonymous Sample »), « None » choisi à l'étape 3, hébergé par SLICE. Son identifiant
+  se lit dans `await (await fetch('/api/mcps')).json()`, à la ligne `upstreamAuthType: "none"`. Le `PUT` d'une clé
+  sur cet identifiant rend `{ code: "INVALID_KEY", message: "This MCP takes no API key." }`, et son `GET` rend
+  `{ apiKey: null }`.
+- [ ] Refus : un MCP en OAuth2 refuse la clé, et n'en garde aucune. Preuve par le test « refuses the key of an MCP in
+  OAuth2 with INVALID_KEY, and saves nothing » (`src/server/routes/mcps.test.ts`) : il n'y a pas, dans `fixtures/`,
+  de description en `client_credentials` à créer depuis l'écran.
+
+### Livraison 2 — Le MCP appelle l'API avec la clé enregistrée
+
+_Section écrite par la livraison 2._
+
+### Livraison 3 — J'enregistre ma clé sur la page « API key » de mon MCP
+
+_Section écrite par la livraison 3._

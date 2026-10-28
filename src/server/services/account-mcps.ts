@@ -2,7 +2,7 @@
  * The MCPs of an account, as its "My MCPs" page shows them (D9).
  */
 import { and, count, desc, eq, isNotNull } from 'drizzle-orm';
-import type { McpSelectionChange } from '@shared/types';
+import type { McpSelectionChange, UpstreamAuthType } from '@shared/types';
 import type { Database } from '../db/client';
 import { connectorActions, connectorVersions, connectors } from '../db/schema';
 import { apiNameOf, readMcpHistory, restoreMcpVersion, type McpHistory, type RestoreOutcome } from './mcp-versions';
@@ -15,6 +15,8 @@ export interface AccountMcp {
   /** The API's name as read in its description, else its domain. */
   apiName: string;
   actionCount: number;
+  /** How the MCP reaches its API: only an API key or a bearer token takes a saved key (D8). */
+  upstreamAuthType: UpstreamAuthType;
   /** ISO creation date. */
   createdAt: string;
 }
@@ -27,6 +29,10 @@ export interface AccountMcps {
    * `false` when `workspaceId` has no such MCP, whoever else owns it (contract 17).
    */
   delete(workspaceId: string, id: string): Promise<boolean>;
+  /** Whether `workspaceId` has the MCP `id`: `false` for an unknown id as for another account's MCP. */
+  owns(workspaceId: string, id: string): Promise<boolean>;
+  /** How the MCP `id` of `workspaceId` reaches its API (D8), or `undefined` when there is no such MCP. */
+  upstreamAuthTypeOf(workspaceId: string, id: string): Promise<UpstreamAuthType | undefined>;
   /** The versions of the MCP `id` of `workspaceId` (D8), or `undefined` when there is no such MCP. */
   history(workspaceId: string, id: string): Promise<McpHistory | undefined>;
   /** The selection of the MCP `id` of `workspaceId`, for "Edit actions" (D2), or `undefined` when there is no such MCP. */
@@ -41,6 +47,13 @@ export interface AccountMcps {
 
 export function createAccountMcps(database: Database): AccountMcps {
   const { db } = database;
+  async function upstreamAuthTypeOf(workspaceId: string, id: string): Promise<UpstreamAuthType | undefined> {
+    const [owned] = await db
+      .select({ upstreamAuthType: connectors.upstreamAuthType })
+      .from(connectors)
+      .where(and(eq(connectors.id, id), eq(connectors.workspaceId, workspaceId)));
+    return owned?.upstreamAuthType;
+  }
   return {
     async list(workspaceId) {
       const rows = await db
@@ -48,6 +61,7 @@ export function createAccountMcps(database: Database): AccountMcps {
           id: connectors.id,
           apiName: connectors.apiName,
           baseUrl: connectors.baseUrl,
+          upstreamAuthType: connectors.upstreamAuthType,
           createdAt: connectors.createdAt,
           actionCount: count(connectorActions.position),
         })
@@ -67,10 +81,11 @@ export function createAccountMcps(database: Database): AccountMcps {
         .where(eq(connectors.workspaceId, workspaceId))
         .groupBy(connectors.id)
         .orderBy(desc(connectors.createdAt));
-      return rows.map(({ id, apiName, baseUrl, actionCount, createdAt }) => ({
+      return rows.map(({ id, apiName, baseUrl, actionCount, upstreamAuthType, createdAt }) => ({
         id,
         apiName: apiNameOf({ apiName, baseUrl }),
         actionCount,
+        upstreamAuthType,
         createdAt: createdAt.toISOString(),
       }));
     },
@@ -81,6 +96,8 @@ export function createAccountMcps(database: Database): AccountMcps {
         .returning();
       return deleted.length > 0;
     },
+    owns: async (workspaceId, id) => (await upstreamAuthTypeOf(workspaceId, id)) !== undefined,
+    upstreamAuthTypeOf,
     history: (workspaceId, id) => readMcpHistory(database, workspaceId, id),
     selection: (workspaceId, id) => readMcpSelection(database, workspaceId, id),
     saveSelection: (workspaceId, id, change) => saveMcpSelection(database, workspaceId, id, change, new Date()),

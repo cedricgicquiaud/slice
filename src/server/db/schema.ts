@@ -161,6 +161,19 @@ export const connectorVersions = pgTable(
   ]
 );
 
+/**
+ * The API key of a connector, one at most (D4), encrypted under SLICE_ENCRYPTION_KEY (D11, D12).
+ * A table apart: reading a connector never loads it.
+ */
+export const connectorKeys = pgTable('connector_keys', {
+  connectorId: text('connector_id')
+    .primaryKey()
+    .references(() => connectors.id, { onDelete: 'cascade' }),
+  encryptedKey: text('encrypted_key').notNull(),
+  /** When the key was last saved or replaced (D3). */
+  savedAt: timestamp('saved_at', { withTimezone: true }).notNull(),
+});
+
 /** The actions of a connector's version: what its address serves while the version is active. */
 export const connectorActions = pgTable(
   'connector_actions',

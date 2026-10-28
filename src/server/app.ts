@@ -9,9 +9,11 @@ import { createGenerateRouter } from './routes/generate';
 import { createHostRouter } from './routes/host';
 import { createHostedMcpRouter } from './routes/hosted-mcp';
 import { createMcpsRouter } from './routes/mcps';
+import { devGarbleApiKey } from './routes/dev-api-key';
 import type { HostedStore } from './services/hosted-store';
 import type { AccountMcps } from './services/account-mcps';
 import type { McpCalls } from './services/mcp-calls';
+import type { McpApiKeys } from './services/mcp-api-key';
 import type { SliceAuth } from './auth/auth';
 import { devSignIn } from './auth/dev-sign-in';
 import { requireSameOrigin, requireSession } from './middleware/require-session';
@@ -36,7 +38,14 @@ export interface CreateAppOptions {
   upstreamTimeoutMs?: number;
   /** The MCPs of each account's workspace. Without it, `/api/mcps` is not mounted. */
   accountMcps?: AccountMcps;
-  /** Clock that dates a created connector. Defaults to the system clock. */
+  /** The MCPs' API keys, encrypted. Without them, `/api/mcps/:id/api-key` is not mounted. */
+  mcpApiKeys?: McpApiKeys;
+  /**
+   * The same keys, sealed under an encryption key drawn at random: the recette's
+   * garble route writes through them (D17). Without them, that route is not mounted.
+   */
+  mcpApiKeysUnderAnotherKey?: McpApiKeys;
+  /** Clock that dates a created connector and a saved key. Defaults to the system clock. */
   now?: () => Date;
   /** Accounts and sessions. Without it, every `/api/*` call but health is refused. */
   auth?: SliceAuth;
@@ -104,8 +113,16 @@ export function createApp(options: CreateAppOptions = {}): Express {
   // 10 MB app-level one is bypassed by the path-specific router order.
   app.use('/api/generate', createGenerateRouter());
 
-  // GET /api/mcps, DELETE /api/mcps/:id — the account's own MCPs (D9, D10).
-  if (options.accountMcps) app.use('/api/mcps', createMcpsRouter(options.accountMcps));
+  // GET /api/mcps, DELETE /api/mcps/:id — the account's own MCPs (D9, D10), and their API keys (D3).
+  if (options.accountMcps) {
+    const now = options.now ?? (() => new Date());
+    app.use('/api/mcps', createMcpsRouter(options.accountMcps, { apiKeys: options.mcpApiKeys, now }));
+  }
+  // Recette primer: an unreadable key, so mounted only where NODE_ENV says development or test (D17).
+  const { accountMcps, mcpApiKeys, mcpApiKeysUnderAnotherKey } = options;
+  if (accountMcps && mcpApiKeys && mcpApiKeysUnderAnotherKey && (declaredEnv === 'development' || declaredEnv === 'test')) {
+    app.post('/api/dev/mcps/:id/api-key/garble', devGarbleApiKey(accountMcps, mcpApiKeys, mcpApiKeysUnderAnotherKey));
+  }
 
   // Pivot-4 — SLICE Cloud. POST /api/host stores a config and returns a URL;
   // /m/:id is the hosted MCP runtime (not under /api/, so not rate-limited

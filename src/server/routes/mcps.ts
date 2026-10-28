@@ -3,14 +3,16 @@
  * (D9), `GET /api/mcps/:id/versions` reads the versions of one (D8),
  * `POST /api/mcps/:id/versions/:number/restore` makes one of them active again
  * (D9), `GET /api/mcps/:id/usage` reads what agents did with one over the
- * last 30 days (D10), `DELETE /api/mcps/:id` deletes one at once (D10). Mounted under the
- * session guard, which sets `res.locals.workspaceId`: another workspace's
- * MCPs are out of reach.
+ * last 30 days (D10), `DELETE /api/mcps/:id` deletes one at once (D10),
+ * `GET`/`PUT`/`DELETE /api/mcps/:id/api-key` tell, save and remove the key of
+ * one, never showing it (D3). Mounted under the session guard, which sets
+ * `res.locals.workspaceId`: another workspace's MCPs are out of reach.
  */
 import { Router } from 'express';
 import type { ApiErrorPayload } from '@shared/types';
-import { mcpSelectionChangeSchema } from '@shared/config-schema';
+import { mcpApiKeySchema, mcpSelectionChangeSchema } from '@shared/config-schema';
 import type { AccountMcps } from '../services/account-mcps';
+import type { McpApiKeys, McpApiKeyState } from '../services/mcp-api-key';
 import type { SaveRefusal } from '../services/mcp-selection';
 import type { RestoreRefusal } from '../services/mcp-versions';
 
@@ -22,6 +24,10 @@ const VERSION_NUMBER = /^[1-9]\d{0,8}$/;
 
 function invalidSelection(message: string): ApiErrorPayload {
   return { code: 'INVALID_SELECTION', message };
+}
+
+function invalidKey(message: string): ApiErrorPayload {
+  return { code: 'INVALID_KEY', message };
 }
 
 /** How each refusal of a "Save" is answered: nothing is saved in any case. */
@@ -44,7 +50,19 @@ const RESTORE_REFUSALS: Record<RestoreRefusal, ApiErrorPayload> = {
   'unknown-version': UNKNOWN_VERSION,
 };
 
-export function createMcpsRouter(accountMcps: AccountMcps): Router {
+/** What is told of a key: when it was saved and whether SLICE can read it, never its value (D3). */
+function apiKeyPayload(state: McpApiKeyState | undefined) {
+  return { apiKey: state ? { savedAt: state.savedAt.toISOString(), readable: state.readable } : null };
+}
+
+export interface McpsRouterOptions {
+  /** The MCPs' API keys. Without them, `/api/mcps/:id/api-key` is not mounted. */
+  apiKeys?: McpApiKeys;
+  /** Clock that dates a saved key. */
+  now: () => Date;
+}
+
+export function createMcpsRouter(accountMcps: AccountMcps, { apiKeys, now }: McpsRouterOptions): Router {
   const router = Router();
 
   router.get('/', async (req, res) => {
@@ -109,6 +127,43 @@ export function createMcpsRouter(accountMcps: AccountMcps): Router {
     }
     res.json({ number, activeSince: outcome.activeSince });
   });
+
+  if (apiKeys) {
+    // Another account's MCP answers like a missing one, before its key is read or touched (D13).
+    router.all('/:id/api-key', async (req, res, next) => {
+      if (!(await accountMcps.owns(res.locals.workspaceId, req.params.id))) {
+        res.status(404).json(UNKNOWN_MCP);
+        return;
+      }
+      next();
+    });
+
+    router.get('/:id/api-key', async (req, res) => {
+      res.json(apiKeyPayload(await apiKeys.stateOf(req.params.id)));
+    });
+
+    router.put('/:id/api-key', async (req, res) => {
+      // An unusable key is refused before anything is saved: the key before stays (D9, D17).
+      const sent = mcpApiKeySchema.safeParse(req.body);
+      if (!sent.success) {
+        res.status(400).json(invalidKey(sent.error.issues[0]?.message ?? 'Invalid key.'));
+        return;
+      }
+      // Only an API key or a bearer token takes a saved key (D8).
+      const access = await accountMcps.upstreamAuthTypeOf(res.locals.workspaceId, req.params.id);
+      if (access !== 'apiKey' && access !== 'bearer') {
+        res.status(400).json(invalidKey('This MCP takes no API key.'));
+        return;
+      }
+      await apiKeys.save(req.params.id, sent.data.apiKey, now());
+      res.json(apiKeyPayload(await apiKeys.stateOf(req.params.id)));
+    });
+
+    router.delete('/:id/api-key', async (req, res) => {
+      await apiKeys.remove(req.params.id);
+      res.status(204).end();
+    });
+  }
 
   router.delete('/:id', async (req, res) => {
     if (!(await accountMcps.delete(res.locals.workspaceId, req.params.id))) {

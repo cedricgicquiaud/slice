@@ -55,6 +55,12 @@ CREATE TABLE "connector_calls" (
 	CONSTRAINT "connector_calls_status_iff_failed" CHECK (("connector_calls"."result" = 'failed') = ("connector_calls"."status" is not null))
 );
 --> statement-breakpoint
+CREATE TABLE "connector_keys" (
+	"connector_id" text PRIMARY KEY NOT NULL,
+	"encrypted_key" text NOT NULL,
+	"saved_at" timestamp with time zone NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "connector_versions" (
 	"connector_id" text NOT NULL,
 	"number" integer NOT NULL,
@@ -121,6 +127,7 @@ ALTER TABLE "accounts" ADD CONSTRAINT "accounts_user_id_users_id_fk" FOREIGN KEY
 ALTER TABLE "connector_actions" ADD CONSTRAINT "connector_actions_version_fk" FOREIGN KEY ("connector_id","version") REFERENCES "public"."connector_versions"("connector_id","number") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connector_api_actions" ADD CONSTRAINT "connector_api_actions_connector_id_connectors_id_fk" FOREIGN KEY ("connector_id") REFERENCES "public"."connectors"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connector_calls" ADD CONSTRAINT "connector_calls_version_fk" FOREIGN KEY ("connector_id","version") REFERENCES "public"."connector_versions"("connector_id","number") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "connector_keys" ADD CONSTRAINT "connector_keys_connector_id_connectors_id_fk" FOREIGN KEY ("connector_id") REFERENCES "public"."connectors"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connector_versions" ADD CONSTRAINT "connector_versions_connector_id_connectors_id_fk" FOREIGN KEY ("connector_id") REFERENCES "public"."connectors"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "connectors" ADD CONSTRAINT "connectors_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "sessions" ADD CONSTRAINT "sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

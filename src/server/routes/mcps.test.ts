@@ -1,13 +1,18 @@
 // WAT-103/104/105 — `GET /api/mcps` and `DELETE /api/mcps/:id`: an account's own MCPs, never another's.
 // WAT-148/149 — `POST /api/mcps/:id/versions/:number/restore`: an existing version of one's own MCP, active again.
 // WAT-161/162 — `GET /api/mcps/:id/usage`: the calls agents made to one's own MCP, never another's.
+// WAT-170 — `GET`/`PUT`/`DELETE /api/mcps/:id/api-key`: the key of one's own MCP, saved, told, never shown.
+// WAT-171 — `PUT /api/mcps/:id/api-key`: an unusable key, or a key for an MCP that takes none, is refused.
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { createApp } from '../app';
+import { randomBytes } from 'node:crypto';
+import { createApp, type CreateAppOptions } from '../app';
 import { createAccountMcps } from '../services/account-mcps';
 import { createHostedStore, type HostedStore } from '../services/hosted-store';
 import { createMcpCalls } from '../services/mcp-calls';
+import { createMcpApiKeys } from '../services/mcp-api-key';
+import { createKeyCipher } from '../services/key-cipher';
 import type { HostedMcpConfig } from '../services/hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
@@ -76,13 +81,14 @@ beforeAll(async () => {
  * Another server on the same database, for a block of tests: each keeps its own
  * count of requests, so the files' tests stay under the rate limit of `/api/*`.
  */
-async function startApp(): Promise<{ url: string; close(): Promise<void> }> {
+async function startApp(options: CreateAppOptions = {}): Promise<{ url: string; close(): Promise<void> }> {
   const server = createApp({
     nodeEnv: 'test',
     hostedStore: store,
     mcpCalls: createMcpCalls(database),
     accountMcps: createAccountMcps(database),
     auth: account.auth,
+    ...options,
   }).listen(0);
   await new Promise<void>((r) => server.once('listening', r));
   return {
@@ -111,12 +117,36 @@ describe('GET /api/mcps', () => {
             id,
             apiName: 'Notion API',
             actionCount: 2,
+            upstreamAuthType: 'bearer',
             createdAt: '2026-10-21T10:15:00.000Z',
             url: `${baseUrl}/m/${id}`,
           },
         ],
       },
     });
+  });
+
+  it('tells the access of each MCP to its API: none, API key, bearer token or OAuth2 (D8)', async () => {
+    const owner = await createTestAccount({ database, email: 'four-accesses@example.com' });
+    const accesses: Array<[string, HostedMcpConfig['upstreamAuth']]> = [
+      ['Open API', { type: 'none' }],
+      ['Keyed API', { type: 'apiKey', headerName: 'X-API-Key' }],
+      ['Token API', { type: 'bearer' }],
+      ['Machine API', { type: 'oauth2', tokenUrl: 'https://auth.example.com/token', scopes: [] }],
+    ];
+    for (const [day, [apiName, upstreamAuth]] of accesses.entries()) {
+      await store.put({ ...NOTION, apiName, upstreamAuth }, owner.workspaceId, new Date(Date.UTC(2026, 9, 21 - day)));
+    }
+
+    const res = await fetch(`${baseUrl}/api/mcps`, { headers: { cookie: owner.cookie } });
+    const { mcps } = (await res.json()) as { mcps: Array<{ apiName: string; upstreamAuthType: string }> };
+
+    expect(mcps.map((mcp) => [mcp.apiName, mcp.upstreamAuthType])).toEqual([
+      ['Open API', 'none'],
+      ['Keyed API', 'apiKey'],
+      ['Token API', 'bearer'],
+      ['Machine API', 'oauth2'],
+    ]);
   });
 });
 
@@ -293,7 +323,14 @@ describe('POST /api/mcps/:id/versions', () => {
       tools: tools.map((tool) => tool.name),
     }).toEqual({
       saved: { status: 201, body: { number: 2 } },
-      listed: { id, apiName: 'Notes API', actionCount: 3, createdAt: CREATED.toISOString(), url: `${edit.url}/m/${id}` },
+      listed: {
+        id,
+        apiName: 'Notes API',
+        actionCount: 3,
+        upstreamAuthType: 'bearer',
+        createdAt: CREATED.toISOString(),
+        url: `${edit.url}/m/${id}`,
+      },
       tools: ['list_notes', 'create_note', 'empty_trash'],
     });
   });
@@ -697,6 +734,363 @@ describe('GET /api/mcps/:id/usage', () => {
     expect({ status: res.status, body: await res.json() }).toEqual({
       status: 401,
       body: { code: 'UNAUTHORIZED', message: 'Sign in to continue.' },
+    });
+  });
+});
+
+describe('/api/mcps/:id/api-key', () => {
+  const SAVED = new Date('2026-10-28T09:30:00.000Z');
+  const REPLACED = new Date('2026-10-29T16:45:00.000Z');
+  const cipher = createKeyCipher(randomBytes(32));
+  /** The clock of the server: each test sets the date it saves at. */
+  let clock = SAVED;
+  let keys: { url: string; close(): Promise<void> };
+  beforeAll(async () => {
+    keys = await startApp({ mcpApiKeys: createMcpApiKeys(database, cipher), now: () => clock });
+  });
+  afterAll(async () => {
+    await keys?.close();
+  });
+
+  /** A key of 40 characters drawn at random: found only where it was written. */
+  function randomApiKey(): string {
+    return randomBytes(30).toString('base64url');
+  }
+
+  /** "Save" on the "API key" page, as the signed-in account; without a session when `cookie` is `null`. */
+  function saveKey(id: string, apiKey: string, cookie: string | null = account.cookie) {
+    return fetch(`${keys.url}/api/mcps/${id}/api-key`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', ...(cookie && { cookie }) },
+      body: JSON.stringify({ apiKey }),
+    });
+  }
+
+  /** "Remove" on the "API key" page, as the signed-in account; without a session when `cookie` is `null`. */
+  function removeKey(id: string, cookie: string | null = account.cookie) {
+    return fetch(`${keys.url}/api/mcps/${id}/api-key`, { method: 'DELETE', headers: cookie ? { cookie } : {} });
+  }
+
+  /** What the "API key" page reads of the key, as the signed-in account; without a session when `cookie` is `null`. */
+  function readKey(id: string, cookie: string | null = account.cookie) {
+    return fetch(`${keys.url}/api/mcps/${id}/api-key`, { headers: cookie ? { cookie } : {} });
+  }
+
+  it('saves the key of my MCP: it is then told saved on its date, readable, never shown (contract 14, D3)', async () => {
+    clock = SAVED;
+    const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+
+    const saved = await saveKey(id, randomApiKey());
+    const read = await readKey(id);
+
+    expect({
+      saved: { status: saved.status, body: await saved.json() },
+      read: { status: read.status, body: await read.json() },
+    }).toEqual({
+      saved: { status: 200, body: { apiKey: { savedAt: '2026-10-28T09:30:00.000Z', readable: true } } },
+      read: { status: 200, body: { apiKey: { savedAt: '2026-10-28T09:30:00.000Z', readable: true } } },
+    });
+  });
+
+  it('replaces the key of my MCP saved again: the new one serves, dated from its replacement (D3)', async () => {
+    clock = SAVED;
+    const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+    await saveKey(id, randomApiKey());
+    const replacement = randomApiKey();
+
+    clock = REPLACED;
+    const replaced = await saveKey(id, replacement);
+
+    expect({
+      replaced: { status: replaced.status, body: await replaced.json() },
+      served: await createMcpApiKeys(database, cipher).keyOf(id),
+    }).toEqual({
+      replaced: { status: 200, body: { apiKey: { savedAt: '2026-10-29T16:45:00.000Z', readable: true } } },
+      served: { key: replacement },
+    });
+  });
+
+  it('removes the key of my MCP: it is then told absent, and no longer serves (D3)', async () => {
+    const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+    await saveKey(id, randomApiKey());
+
+    const removed = await removeKey(id);
+    const read = await readKey(id);
+
+    expect({
+      removed: removed.status,
+      read: { status: read.status, body: await read.json() },
+      served: await createMcpApiKeys(database, cipher).keyOf(id),
+    }).toEqual({
+      removed: 204,
+      read: { status: 200, body: { apiKey: null } },
+      served: undefined,
+    });
+  });
+
+  it('tells unreadable a key of my MCP encrypted under another encryption key, dated from its saving (contract 21, D3)', async () => {
+    const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+    await createMcpApiKeys(database, createKeyCipher(randomBytes(32))).save(id, randomApiKey(), SAVED);
+
+    const read = await readKey(id);
+
+    expect({ status: read.status, body: await read.json() }).toEqual({
+      status: 200,
+      body: { apiKey: { savedAt: '2026-10-28T09:30:00.000Z', readable: false } },
+    });
+  });
+
+  it('shows the key of my MCP in no answer of the API: key, list, versions, selection, usage (contract 14, D3, D12)', async () => {
+    const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+    const apiKey = randomApiKey();
+
+    const saved = await saveKey(id, apiKey);
+    const answers = [saved, await readKey(id)];
+    for (const path of ['/api/mcps', `/api/mcps/${id}/versions`, `/api/mcps/${id}/selection`, `/api/mcps/${id}/usage`]) {
+      answers.push(await fetch(`${keys.url}${path}`, { headers: { cookie: account.cookie } }));
+    }
+    const read = await Promise.all(answers.map(async (res) => ({ status: res.status, text: await res.text() })));
+
+    expect({
+      statuses: read.map((answer) => answer.status),
+      showingTheKey: read.filter((answer) => answer.text.includes(apiKey)).length,
+    }).toEqual({ statuses: [200, 200, 200, 200, 200, 200], showingTheKey: 0 });
+  });
+
+  it('writes the key of my MCP in no line of the server logs while saving and replacing it (contract 13, D12)', async () => {
+    const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+    const [first, second] = [randomApiKey(), randomApiKey()];
+    const lines: string[] = [];
+    const methods = ['log', 'info', 'warn', 'error', 'debug'] as const;
+    const spies = methods.map((method) =>
+      vi.spyOn(console, method).mockImplementation((...args: unknown[]) => {
+        lines.push(args.map((arg) => (arg instanceof Error ? `${arg.stack}` : String(arg))).join(' '));
+      })
+    );
+
+    try {
+      await saveKey(id, first);
+      await saveKey(id, second);
+    } finally {
+      spies.forEach((spy) => spy.mockRestore());
+    }
+
+    expect(lines.filter((line) => line.includes(first) || line.includes(second))).toEqual([]);
+  });
+
+  it("saves the key of my MCP without trying it on the MCP's API (D10)", async () => {
+    let received = 0;
+    const notionApi = createServer((_req, res) => {
+      received += 1;
+      res.writeHead(200, { 'content-type': 'application/json' }).end('{}');
+    }).listen(0);
+    await new Promise<void>((r) => notionApi.once('listening', r));
+    const notionApiUrl = `http://127.0.0.1:${(notionApi.address() as AddressInfo).port}`;
+    const { id } = await store.put({ ...NOTION, baseUrl: notionApiUrl }, account.workspaceId, CREATED);
+
+    try {
+      const saved = await saveKey(id, randomApiKey());
+      expect({ saved: saved.status, received }).toEqual({ saved: 200, received: 0 });
+    } finally {
+      await new Promise<void>((r) => notionApi.close(() => r()));
+    }
+  });
+
+  describe('refused', () => {
+    let guarded: { url: string; close(): Promise<void> };
+    beforeAll(async () => {
+      guarded = await startApp({ mcpApiKeys: createMcpApiKeys(database, cipher), now: () => clock });
+    });
+    afterAll(async () => {
+      await guarded?.close();
+    });
+
+    /** A request on the key of the MCP `id`, as the signed-in account; without a session when `cookie` is `null`. */
+    function ask(method: 'GET' | 'PUT' | 'DELETE', id: string, cookie: string | null = account.cookie) {
+      return fetch(`${guarded.url}/api/mcps/${id}/api-key`, {
+        method,
+        headers: { 'content-type': 'application/json', ...(cookie && { cookie }) },
+        ...(method === 'PUT' && { body: JSON.stringify({ apiKey: randomApiKey() }) }),
+      });
+    }
+
+    it.each([
+      ['read', 'GET', false],
+      ['save', 'PUT', false],
+      ['replace', 'PUT', true],
+      ['remove', 'DELETE', true],
+    ] as const)(
+      "answers a request to %s the key of another account's MCP exactly as an unknown id, and leaves its key (contract 17, D13)",
+      async (what, method, hasKey) => {
+        const other = await createTestAccount({ database, email: `neighbour-key-${what}@example.com` });
+        const { id } = await store.put(NOTION, other.workspaceId, CREATED);
+        const theirKey = randomApiKey();
+        if (hasKey) await createMcpApiKeys(database, cipher).save(id, theirKey, SAVED);
+
+        const theirs = await ask(method, id);
+        const unknown = await ask(method, 'no-such-mcp-id');
+
+        expect({
+          theirs: { status: theirs.status, body: await theirs.text() },
+          unknown: { status: unknown.status, body: await unknown.text() },
+          kept: await createMcpApiKeys(database, cipher).keyOf(id),
+        }).toEqual({
+          theirs: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+          unknown: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+          kept: hasKey ? { key: theirKey } : undefined,
+        });
+      }
+    );
+
+    it.each([
+      ['read', 'GET', false],
+      ['save', 'PUT', false],
+      ['replace', 'PUT', true],
+      ['remove', 'DELETE', true],
+    ] as const)('answers 401 to a request to %s the key of my MCP without a session, and leaves its key (contract 18, D13)', async (_what, method, hasKey) => {
+      const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+      const myKey = randomApiKey();
+      if (hasKey) await createMcpApiKeys(database, cipher).save(id, myKey, SAVED);
+
+      const res = await ask(method, id, null);
+
+      expect({ status: res.status, body: await res.json(), kept: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
+        status: 401,
+        body: { code: 'UNAUTHORIZED', message: 'Sign in to continue.' },
+        kept: hasKey ? { key: myKey } : undefined,
+      });
+    });
+
+    it('answers 403 to a key sent from another site, and saves nothing (D16)', async () => {
+      const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+
+      const res = await fetch(`${guarded.url}/api/mcps/${id}/api-key`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', cookie: account.cookie, origin: 'https://evil.example' },
+        body: JSON.stringify({ apiKey: randomApiKey() }),
+      });
+
+      expect({ status: res.status, kept: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
+        status: 403,
+        kept: undefined,
+      });
+    });
+  });
+
+  describe('an unusable key', () => {
+    let checked: { url: string; close(): Promise<void> };
+    beforeAll(async () => {
+      checked = await startApp({ mcpApiKeys: createMcpApiKeys(database, cipher), now: () => clock });
+    });
+    afterAll(async () => {
+      await checked?.close();
+    });
+
+    /** "Save" on the "API key" page of the MCP `id` with `body`, as the signed-in account. */
+    function put(id: string, body: unknown) {
+      return fetch(`${checked.url}/api/mcps/${id}/api-key`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', cookie: account.cookie },
+        body: JSON.stringify(body),
+      });
+    }
+
+    const EMPTY = "This key can't be used: it is empty.";
+    const TOO_LONG = "This key can't be used: it is longer than 4,096 characters.";
+    const UNSENDABLE = "This key can't be used: it contains a character an API can't receive.";
+
+    it.each([
+      ['empty', '', EMPTY],
+      ['made of spaces only', ' \n\t  \r\n', EMPTY],
+      ['of 4,097 characters', 'k'.repeat(4097), TOO_LONG],
+      ['holding a euro sign', 'secret_ntn_12€34', UNSENDABLE],
+      ['holding an emoji', 'secret_ntn_12🔑34', UNSENDABLE],
+      ['holding a line break in the middle', 'secret_ntn_12\n34', UNSENDABLE],
+    ])('refuses a key %s with INVALID_KEY, and keeps the key before (contract 15, D9, D17)', async (_what, apiKey, message) => {
+      const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+      const before = randomApiKey();
+      await createMcpApiKeys(database, cipher).save(id, before, SAVED);
+
+      const res = await put(id, { apiKey });
+
+      expect({ status: res.status, body: await res.json(), kept: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
+        status: 400,
+        body: { code: 'INVALID_KEY', message },
+        kept: { key: before },
+      });
+    });
+
+    it.each([
+      ['without an apiKey', {}],
+      ['with an apiKey that is not a text', { apiKey: 1234 }],
+    ])('refuses a body %s with INVALID_KEY, and keeps the key before (D17)', async (_what, body) => {
+      const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+      const before = randomApiKey();
+      await createMcpApiKeys(database, cipher).save(id, before, SAVED);
+
+      const res = await put(id, body);
+
+      expect({ status: res.status, body: await res.json(), kept: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
+        status: 400,
+        body: { code: 'INVALID_KEY', message: "This key can't be used: it is not a text." },
+        kept: { key: before },
+      });
+    });
+
+    it.each([
+      ['a final line break', 'secret_ntn_1234\n'],
+      ['spaces at its ends', '  secret_ntn_1234   '],
+    ])('saves a key pasted with %s without them (contract 15, D9)', async (_what, apiKey) => {
+      const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+
+      const res = await put(id, { apiKey });
+
+      expect({ status: res.status, served: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
+        status: 200,
+        served: { key: 'secret_ntn_1234' },
+      });
+    });
+
+    it.each([
+      ['without access to its API', { type: 'none' }],
+      ['in OAuth2', { type: 'oauth2', tokenUrl: 'https://auth.example.com/token', scopes: [] }],
+    ] as Array<[string, HostedMcpConfig['upstreamAuth']]>)(
+      'refuses the key of an MCP %s with INVALID_KEY, and saves nothing (contract 16, D8)',
+      async (_what, upstreamAuth) => {
+        const { id } = await store.put({ ...NOTION, upstreamAuth }, account.workspaceId, CREATED);
+
+        const res = await put(id, { apiKey: randomApiKey() });
+
+        expect({ status: res.status, body: await res.json(), kept: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
+          status: 400,
+          body: { code: 'INVALID_KEY', message: 'This MCP takes no API key.' },
+          kept: undefined,
+        });
+      }
+    );
+
+    it('saves the key of an MCP reaching its API by an API key (D8)', async () => {
+      const { id } = await store.put({ ...NOTION, upstreamAuth: { type: 'apiKey', headerName: 'X-API-Key' } }, account.workspaceId, CREATED);
+      const apiKey = randomApiKey();
+
+      const res = await put(id, { apiKey });
+
+      expect({ status: res.status, served: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
+        status: 200,
+        served: { key: apiKey },
+      });
+    });
+
+    it('saves a key of 4,096 characters exactly (D9)', async () => {
+      const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+      const apiKey = 'k'.repeat(4096);
+
+      const res = await put(id, { apiKey });
+
+      expect({ status: res.status, served: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
+        status: 200,
+        served: { key: apiKey },
+      });
     });
   });
 });

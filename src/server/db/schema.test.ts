@@ -132,6 +132,19 @@ describe('database schema (D3)', () => {
     ]);
   });
 
+  it("keeps of an MCP's key its MCP, the encrypted value and the date it was saved, and nothing else (WAT-169, D3, D12)", async () => {
+    const columns = await rows<{ column_name: string; udt_name: string; is_nullable: string }>(
+      sql`select column_name, udt_name, is_nullable from information_schema.columns
+          where table_schema = 'public' and table_name = 'connector_keys' order by ordinal_position`
+    );
+
+    expect(columns.map((c) => `${c.column_name} ${c.udt_name} ${c.is_nullable}`)).toEqual([
+      'connector_id text NO',
+      'encrypted_key text NO',
+      'saved_at timestamptz NO',
+    ]);
+  });
+
   it("keeps the API's status code of a failed call, and of a failed call only (D4)", async () => {
     await insertConnector('noted', 'none', null, null);
     await insertVersion('noted', 1, true);

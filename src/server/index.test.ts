@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import request from 'supertest';
 import { execFileSync, type ChildProcess } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -52,6 +53,8 @@ paths:
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const TSX = path.join(ROOT, 'node_modules/.bin/tsx');
 const ENTRY = path.join(ROOT, 'src/server/index.ts');
+/** The servers this file starts encrypt with a key of their own: the repository holds none (D11). */
+const ENCRYPTION_KEY = randomBytes(32).toString('base64');
 
 async function freePort(): Promise<number> {
   const probe = createServer();
@@ -74,7 +77,14 @@ async function startServer(cwd: string, env: Record<string, string>): Promise<Ru
   const { DATABASE_URL: _ignored, ...inherited } = process.env;
   const child: ChildProcess = startTestProcess(TSX, ['--tsconfig', path.join(ROOT, 'tsconfig.server.json'), ENTRY], {
     cwd,
-    env: { ...inherited, NODE_ENV: 'development', PORT: String(port), BETTER_AUTH_SECRET: TEST_AUTH_SECRET, ...env },
+    env: {
+      ...inherited,
+      NODE_ENV: 'development',
+      PORT: String(port),
+      BETTER_AUTH_SECRET: TEST_AUTH_SECRET,
+      SLICE_ENCRYPTION_KEY: ENCRYPTION_KEY,
+      ...env,
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
@@ -100,7 +110,7 @@ async function runUntilExit(cwd: string, env: Record<string, string>): Promise<{
   const { DATABASE_URL: _ignored, ...inherited } = process.env;
   const child = startTestProcess(TSX, ['--tsconfig', path.join(ROOT, 'tsconfig.server.json'), ENTRY], {
     cwd,
-    env: { ...inherited, PORT: String(await freePort()), ...env },
+    env: { ...inherited, PORT: String(await freePort()), SLICE_ENCRYPTION_KEY: ENCRYPTION_KEY, ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';
@@ -279,6 +289,51 @@ describe('server entry point', () => {
     }
   }, 30_000);
 
+  it('keeps the key of an MCP under its SLICE_ENCRYPTION_KEY: readable after a restart with it, unreadable with another (contract 21, D11)', async () => {
+    const scratch = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    const readKey = async (server: RunningServer, id: string, cookie: string) =>
+      (await (await fetch(`${server.baseUrl}/api/mcps/${id}/api-key`, { headers: { cookie } })).json()) as {
+        apiKey: { readable: boolean } | null;
+      };
+    try {
+      const database = openDatabase({ driver: 'pglite', dataDir: path.join(scratch, 'pglite') });
+      await migrateDatabase(database);
+      const { cookie, workspaceId } = await createTestAccount({ database });
+      const { id } = await createHostedStore(database).put(
+        { name: 'keyed', baseUrl: 'https://api.example.com', upstreamAuth: { type: 'bearer' }, endpoints: [] },
+        workspaceId,
+        new Date()
+      );
+      await database.close();
+
+      const first = await startServer(ROOT, { SLICE_DATA_DIR: scratch });
+      let saved: number;
+      try {
+        saved = (
+          await fetch(`${first.baseUrl}/api/mcps/${id}/api-key`, {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json', cookie },
+            body: JSON.stringify({ apiKey: randomBytes(30).toString('base64url') }),
+          })
+        ).status;
+      } finally {
+        await first.stop();
+      }
+      const sameKey = await startServer(ROOT, { SLICE_DATA_DIR: scratch });
+      const readWithIt = await readKey(sameKey, id, cookie).finally(() => sameKey.stop());
+      const otherKey = await startServer(ROOT, { SLICE_DATA_DIR: scratch, SLICE_ENCRYPTION_KEY: randomBytes(32).toString('base64') });
+      const readWithAnother = await readKey(otherKey, id, cookie).finally(() => otherKey.stop());
+
+      expect({ saved, readWithIt: readWithIt.apiKey?.readable, readWithAnother: readWithAnother.apiKey?.readable }).toEqual({
+        saved: 200,
+        readWithIt: true,
+        readWithAnother: false,
+      });
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it('refuses to start when its migrations fail, and says why', async () => {
     const scratch = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
     try {
@@ -303,6 +358,51 @@ describe('server entry point', () => {
 
       expect(code).toBe(1);
       expect(output).toContain('DATABASE_URL is required in production');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it('refuses to start in development without SLICE_ENCRYPTION_KEY, and names it (contract 20, D11)', async () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    try {
+      const { code, output } = await runUntilExit(cwd, { NODE_ENV: 'development', SLICE_ENCRYPTION_KEY: '' });
+
+      expect(code).toBe(1);
+      expect(output).toContain('SLICE_ENCRYPTION_KEY is required');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it('refuses to start in production without SLICE_ENCRYPTION_KEY, and names it (contract 20, D11)', async () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    try {
+      const { code, output } = await runUntilExit(cwd, {
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgres://postgres@127.0.0.1:9/never-reached',
+        BETTER_AUTH_SECRET: 'production-secret',
+        BETTER_AUTH_URL: 'https://slice.example.com',
+        SLICE_ENCRYPTION_KEY: '',
+      });
+
+      expect(code).toBe(1);
+      expect(output).toContain('SLICE_ENCRYPTION_KEY is required');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it('refuses to start with a SLICE_ENCRYPTION_KEY of 31 bytes, and names it (contract 20, D11)', async () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    try {
+      const { code, output } = await runUntilExit(cwd, {
+        NODE_ENV: 'development',
+        SLICE_ENCRYPTION_KEY: randomBytes(31).toString('base64'),
+      });
+
+      expect(code).toBe(1);
+      expect(output).toContain('SLICE_ENCRYPTION_KEY must be 32 bytes in base64');
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }
@@ -430,6 +530,14 @@ describe('environment file', () => {
     const names = variables().map((line) => line.split('=')[0]);
 
     expect(names).toEqual(expect.arrayContaining(['RESEND_API_KEY', 'RESEND_FROM']));
+  });
+
+  it('.env.example names SLICE_ENCRYPTION_KEY with the command that generates it (D11)', () => {
+    const lines = readFileSync(path.join(ROOT, '.env.example'), 'utf-8').split('\n');
+    // The comments above the variable; none when the variable is missing.
+    const above = lines.slice(0, Math.max(lines.indexOf('SLICE_ENCRYPTION_KEY='), 0));
+
+    expect(above.some((line) => line.startsWith('#') && line.includes('openssl rand -base64 32'))).toBe(true);
   });
 
   it('.env.example carries no value', () => {
