@@ -144,6 +144,15 @@ describe('thirty requests a minute for each visitor behind the proxy (D6)', () =
     // Without a session, a request under the limit is refused for that: 401.
     expect({ his: his.status, another: another.status }).toEqual({ his: 429, another: 401 });
   });
+
+  it('counts a visitor who writes a false X-Forwarded-For on his real address (contract 14)', async () => {
+    const app = createApp({ nodeEnv: 'test' });
+    for (let i = 1; i <= 30; i++) await fromVisitor(app, '203.0.113.7', `10.0.0.${i}`);
+
+    const res = await fromVisitor(app, '203.0.113.7', '10.0.0.31');
+
+    expect(res.status).toBe(429);
+  });
 });
 
 // The real entry point, run from the repository root as `pnpm dev:server` runs it (tsx binary, no package manager).
