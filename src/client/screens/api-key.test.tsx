@@ -362,6 +362,37 @@ describe('Refusing an unusable key', () => {
       saved: screen.queryByText('Saved on Oct 27, 2026') !== null,
     }).toEqual({ message: true, saved: true });
   });
+
+  it('keeps a saved key "Saved on <date>" when the replacement is refused under the field (D9)', async () => {
+    server.mcps = [NOTION];
+    server.keys['notion-id'] = { savedAt: '2026-10-27T09:30:00.000Z', readable: true };
+    const user = userEvent.setup();
+    render(<ApiKeyScreen mcpId="notion-id" />);
+
+    await user.click(await screen.findByRole('button', { name: 'Replace' }));
+    await user.click(screen.getByLabelText('API key'));
+    await user.paste('secret_ntn_12€34');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect({
+      message: screen.queryByText("This key can't be used: it contains a character an API can't receive.") !== null,
+      saved: screen.queryByText('Saved on Oct 27, 2026') !== null,
+      sent: server.saved,
+    }).toEqual({ message: true, saved: true, sent: [] });
+  });
+
+  it("shows the server's message under the title, spaced mt-4, when the save is refused for another reason", async () => {
+    server.mcps = [NOTION];
+    server.refusal = { status: 503, code: 'SERVICE_UNAVAILABLE', message: 'SLICE is unavailable for the moment.' };
+
+    await saveKey('secret_ntn_1234');
+
+    const alert = await screen.findByRole('alert');
+    expect({ message: alert.textContent, spaced: alert.classList.contains('mt-4') }).toEqual({
+      message: 'SLICE is unavailable for the moment.',
+      spaced: true,
+    });
+  });
 });
 
 describe('An MCP that takes no key', () => {
