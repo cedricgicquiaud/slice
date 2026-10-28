@@ -9,6 +9,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { buildHostedMcpServer, relayStore, type HostedMcpConfig } from './hosted-mcp-factory';
 import type { CallResult } from './mcp-calls';
+import type { McpApiKey } from './mcp-api-key';
+import type { EndpointParam, UpstreamAuth } from '@shared/types';
 
 function freePort(): Promise<number> {
   return new Promise((resolve) => {
@@ -417,5 +419,83 @@ describe('an action whose API takes its time (D5)', () => {
       vi.useRealTimers();
       await close();
     }
+  });
+});
+
+// WAT-173 — the agent's own key passes first; the example text of the snippets is no key.
+describe('the key an action call sends to the API', () => {
+  let keyApi: Server;
+  let keyApiUrl: string;
+  /** The headers of each call the API received. */
+  let heard: Array<Record<string, string | string[] | undefined>> = [];
+
+  beforeAll(async () => {
+    keyApi = createServer((req, res) => {
+      heard.push(req.headers);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    });
+    await new Promise<void>((r) => keyApi.listen(0, '127.0.0.1', r));
+    keyApiUrl = `http://127.0.0.1:${(keyApi.address() as { port: number }).port}`;
+  });
+
+  afterAll(async () => {
+    keyApi.closeAllConnections();
+    await new Promise<void>((r) => keyApi.close(() => r()));
+  });
+
+  /**
+   * Call the one action of an MCP of the key API, whose access is `upstreamAuth`, as an agent
+   * sending `authorization` (none without it) to an MCP whose saved key is `savedKey`.
+   */
+  async function callWith(
+    upstreamAuth: UpstreamAuth,
+    { authorization, savedKey, args = {}, params = [] }: {
+      authorization?: string;
+      savedKey?: McpApiKey;
+      args?: Record<string, unknown>;
+      params?: EndpointParam[];
+    }
+  ): Promise<void> {
+    const srv = buildHostedMcpServer(
+      {
+        name: 'keyed',
+        baseUrl: keyApiUrl,
+        upstreamAuth,
+        endpoints: [{ name: 'list_things', description: 'List', method: 'GET', path: '/things', params }],
+      },
+      { allowPrivateHosts: true }
+    );
+    const tr = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID() });
+    await srv.connect(tr);
+    const http = createServer((req, res) => {
+      relayStore.run({ authorization: req.headers.authorization ?? '', savedKey }, () => {
+        void tr.handleRequest(req, res);
+      });
+    });
+    await new Promise<void>((r) => http.listen(0, '127.0.0.1', r));
+    const agent = new Client({ name: 'keyed-test', version: '0.0.0' });
+    try {
+      await agent.connect(
+        new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${(http.address() as { port: number }).port}/`), {
+          requestInit: { headers: authorization === undefined ? {} : { Authorization: authorization } },
+        })
+      );
+      await agent.callTool({ name: 'list_things', arguments: args });
+    } finally {
+      await agent.close();
+      http.closeAllConnections();
+      await new Promise<void>((r) => http.close(() => r()));
+    }
+  }
+
+  const API_KEY: UpstreamAuth = { type: 'apiKey', headerName: 'X-API-Key' };
+
+  it("is the agent's own key when the agent sends one, not the saved key (contract 4, D6)", async () => {
+    heard = [];
+
+    await callWith(API_KEY, { authorization: 'Bearer agent-key-0173', savedKey: { key: 'saved-key-0173' } });
+
+    expect(heard.map((headers) => headers['x-api-key'])).toEqual(['agent-key-0173']);
   });
 });
