@@ -187,6 +187,15 @@ function askForCodeFrom(app: ReturnType<typeof createApp>, ip: string, email: st
 }
 
 describe('ten sign-in codes an hour for each visitor behind the proxy (D6)', () => {
+  it("still sends a visitor's code when another visitor has had his ten (contract 5)", async () => {
+    const { app, sentTo } = sliceSendingCodes();
+    for (let i = 1; i <= 10; i++) await askForCodeFrom(app, '203.0.113.7', `office${i}@example.com`);
+
+    const res = await askForCodeFrom(app, '198.51.100.4', 'home@example.com');
+
+    expect({ status: res.status, sent: sentTo.length }).toEqual({ status: 200, sent: 11 });
+  });
+
   it('counts a visitor who writes a false X-Forwarded-For on his real address (contract 14)', async () => {
     const { app, sentTo } = sliceSendingCodes();
     for (let i = 1; i <= 10; i++) await askForCodeFrom(app, '203.0.113.7', `forger${i}@example.com`, `10.0.0.${i}`);
