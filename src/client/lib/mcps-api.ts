@@ -1,4 +1,4 @@
-import type { EndpointGroup, McpSelectionChange } from '@shared/types';
+import type { EndpointGroup, McpSelectionChange, UpstreamAuthType } from '@shared/types';
 import { ApiError, type ApiErrorBody } from './api';
 import { refreshSession } from './auth-client';
 
@@ -8,6 +8,8 @@ export interface Mcp {
   /** The API's name as read in its description, else its domain. */
   apiName: string;
   actionCount: number;
+  /** How the MCP reaches its API, set at its creation: only `apiKey` and `bearer` take a saved key (D8). */
+  upstreamAuthType: UpstreamAuthType;
   /** ISO creation date. */
   createdAt: string;
   /** The MCP's address, to paste into the agent. */

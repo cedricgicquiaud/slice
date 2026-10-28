@@ -6,9 +6,10 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from '../App';
 import { ApiKeyScreen } from './api-key';
+import type { Mcp } from '../lib/mcps-api';
 
 /** The Notion MCP, reaching its API by an API key in a header. */
-const NOTION = {
+const NOTION: Mcp = {
   id: 'notion-id',
   apiName: 'Notion API',
   actionCount: 2,
@@ -32,7 +33,7 @@ const NOTION = {
 const server = vi.hoisted(() => {
   const state: {
     session: unknown;
-    mcps: { id: string }[];
+    mcps: Mcp[];
     keys: Record<string, { savedAt: string; readable: boolean } | null>;
     saved: string[];
     removed: string[];
