@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { randomBytes } from 'node:crypto';
-import { createKeyCipher, encryptionKeyFromEnv } from './key-cipher';
+import { createKeyCipher, encryptionKeyFromEnv, UnreadableKeyError } from './key-cipher';
 
 describe('encryptionKeyFromEnv', () => {
   it('refuses an environment without SLICE_ENCRYPTION_KEY, naming it', () => {
@@ -33,5 +33,17 @@ describe('createKeyCipher', () => {
     const cipher = createKeyCipher(randomBytes(32));
 
     expect(cipher.encrypt('secret_ntn_4f9Qx2')).not.toBe(cipher.encrypt('secret_ntn_4f9Qx2'));
+  });
+
+  it('refuses to decrypt with another encryption key, by an UnreadableKeyError and never a wrong text', () => {
+    const sealed = createKeyCipher(randomBytes(32)).encrypt('secret_ntn_4f9Qx2');
+    let refusal: unknown;
+    try {
+      createKeyCipher(randomBytes(32)).decrypt(sealed);
+    } catch (err) {
+      refusal = err;
+    }
+
+    expect(refusal).toBeInstanceOf(UnreadableKeyError);
   });
 });
