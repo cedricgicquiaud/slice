@@ -1,5 +1,6 @@
 // WAT-176 — "API key", at /mcps/<id>/api-key: I paste my key, "Save", and never see it again.
 // WAT-177 — I replace or remove my key; a key SLICE can no longer read asks to be replaced.
+// WAT-178 — an unusable key is refused under the field; an MCP that takes no key has no field.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -276,5 +277,37 @@ describe('Replacing or removing the key', () => {
       spaced: alert.classList.contains('mt-4'),
       saved: screen.queryByText('Saved on Oct 27, 2026') !== null,
     }).toEqual({ message: 'SLICE is unavailable for the moment.', spaced: true, saved: true });
+  });
+});
+
+describe('Refusing an unusable key', () => {
+  /** "Save" with `key` pasted in the field (nothing pasted for an empty key). */
+  async function saveKey(key: string) {
+    const user = userEvent.setup();
+    render(<ApiKeyScreen mcpId="notion-id" />);
+    const field = await screen.findByLabelText('API key');
+    if (key) {
+      await user.click(field);
+      await user.paste(key);
+    }
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    return field;
+  }
+
+  /** The message under the field, as the field points to it. */
+  function messageUnder(field: HTMLElement): string | null {
+    const id = field.getAttribute('aria-describedby');
+    return id ? (document.getElementById(id)?.textContent ?? null) : null;
+  }
+
+  it("refuses an empty key under the field, and saves nothing (contract 15, D9)", async () => {
+    server.mcps = [NOTION];
+
+    const field = await saveKey('');
+
+    expect({ message: messageUnder(field), sent: server.saved }).toEqual({
+      message: "This key can't be used: it is empty.",
+      sent: [],
+    });
   });
 });
