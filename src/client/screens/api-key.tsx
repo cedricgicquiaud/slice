@@ -14,10 +14,18 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState<McpApiKey | null>(null);
   const [pasted, setPasted] = useState('');
+  // "Save" stays greyed during the call: a double click saves once.
+  const [saving, setSaving] = useState(false);
 
   async function handleSave() {
-    setApiKey(await saveMcpApiKey(mcpId, pasted));
-    setPasted('');
+    if (saving) return;
+    setSaving(true);
+    try {
+      setApiKey(await saveMcpApiKey(mcpId, pasted));
+      setPasted('');
+    } finally {
+      setSaving(false);
+    }
   }
 
   useEffect(() => {
@@ -68,7 +76,7 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
               }}
             >
               <Field label="API key" value={pasted} onChange={setPasted} mono />
-              <Button type="submit" className="self-start">
+              <Button type="submit" disabled={saving} className="self-start">
                 Save
               </Button>
             </form>
