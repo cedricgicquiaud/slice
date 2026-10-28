@@ -11,6 +11,7 @@ import type { AccountMcps } from '../services/account-mcps';
 import type { McpApiKeys } from '../services/mcp-api-key';
 
 const UNKNOWN_MCP: ApiErrorPayload = { code: 'NOT_FOUND', message: 'Unknown MCP id.' };
+const NO_KEY: ApiErrorPayload = { code: 'NOT_FOUND', message: 'This MCP has no API key.' };
 
 /**
  * `underAnotherKey` writes to the same keys, sealed under another encryption key:
@@ -25,8 +26,12 @@ export function devGarbleApiKey(accountMcps: AccountMcps, apiKeys: McpApiKeys, u
       return;
     }
     const state = await apiKeys.stateOf(id);
+    if (!state) {
+      res.status(404).json(NO_KEY);
+      return;
+    }
     // The date stays the saving's: only the encryption key changed (D3).
-    await underAnotherKey.save(id, randomBytes(30).toString('base64url'), state!.savedAt);
+    await underAnotherKey.save(id, randomBytes(30).toString('base64url'), state.savedAt);
     res.status(204).end();
   };
 }
