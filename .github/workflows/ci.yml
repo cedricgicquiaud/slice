@@ -12,9 +12,9 @@ concurrency:
 
 jobs:
   gate:
-    name: typecheck + tests + prod smoke
+    name: typecheck + tests + prod smoke + image
     runs-on: ubuntu-latest
-    # A real PostgreSQL for the storage tests and the prod smoke; every other
+    # A real PostgreSQL for the storage tests, the prod smoke and the image; every other
     # test file stays on in-memory PGlite. The password is a throwaway for this
     # disposable CI container, not a secret.
     services:
