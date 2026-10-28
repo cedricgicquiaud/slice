@@ -18,6 +18,9 @@ The browser front end uses the `/api/*` routes; AI agents use the hosted runtime
 | `POST` | `/api/mcps/:id/versions/:number/restore` | Make an existing version the active one again | Yes |
 | `GET` | `/api/mcps/:id/selection` | Read every action of an MCP's API and those of its active version | Yes |
 | `GET` | `/api/mcps/:id/usage` | Read what agents did with one of the signed-in account's hosted MCPs over the last 30 days | Yes |
+| `GET` | `/api/mcps/:id/api-key` | Tell whether an MCP has a saved API key, and since when, never the key | Yes |
+| `PUT` | `/api/mcps/:id/api-key` | Save the API key of an MCP, encrypted, replacing the one before | Yes |
+| `DELETE` | `/api/mcps/:id/api-key` | Remove the API key of an MCP | Yes |
 | `DELETE` | `/api/mcps/:id` | Delete one of the signed-in account's hosted MCPs | Yes |
 | any | `/m/:id` | Hosted MCP runtime (MCP Streamable HTTP, stateless) | No |
 
@@ -92,6 +95,11 @@ once `delete` is typed.
 This route is under `/api/auth/*`, so SLICE's own origin guard above does not see it: Better Auth's origin check
 refuses foreign writes instead, and stricter, since it also wants the `Origin` header whenever a session cookie comes
 along. That check is off under `NODE_ENV=test` or `TEST=true`.
+
+Only when `NODE_ENV` is `development` or `test`, `POST /api/dev/mcps/:id/api-key/garble`, with the session cookie, makes
+the saved key of one of the account's MCPs unreadable, as a changed `SLICE_ENCRYPTION_KEY` would, its date kept: the
+recette primer shows the "API key" page in that state. It answers `204`, or `404 NOT_FOUND` for an MCP of another account
+("Unknown MCP id.") or without a key ("This MCP has no API key."). In production the route does not exist.
 
 The hosted runtime `/m/:id` is protected by the unguessable id in its URL (see [Hosted runtime](#any-mid)).
 
@@ -479,8 +487,8 @@ Lists the hosted MCPs of the signed-in account's personal workspace, newest firs
 appear. An MCP is created by [`POST /api/host`](#post-apihost), its versions are read by
 [`GET /api/mcps/:id/versions`](#get-apimcpsidversions), its selection of actions is changed by
 [`POST /api/mcps/:id/versions`](#post-apimcpsidversions), an older version is made active again by
-[`POST /api/mcps/:id/versions/:number/restore`](#post-apimcpsidversionsnumberrestore), and it is deleted by
-[`DELETE /api/mcps/:id`](#delete-apimcpsid).
+[`POST /api/mcps/:id/versions/:number/restore`](#post-apimcpsidversionsnumberrestore), its API key is saved by
+[`PUT /api/mcps/:id/api-key`](#put-apimcpsidapi-key), and it is deleted by [`DELETE /api/mcps/:id`](#delete-apimcpsid).
 Only its selection of actions can change: its name, the API's address and its upstream access stay those of its creation.
 
 **Response `200`**
@@ -492,6 +500,7 @@ Only its selection of actions can change: its name, the API's address and its up
       "id": "Q2xhdWRlIGlzIG5vdCBoZXJl",
       "apiName": "Notion API",
       "actionCount": 2,
+      "upstreamAuthType": "bearer",
       "createdAt": "2026-10-21T10:15:00.000Z",
       "url": "https://slice.example.com/m/Q2xhdWRlIGlzIG5vdCBoZXJl"
     }
@@ -504,6 +513,7 @@ Only its selection of actions can change: its name, the API's address and its up
 | `id` | The MCP's id, as returned by `POST /api/host` |
 | `apiName` | The API's name as read in its description; for an MCP stored without one, the host name of its `baseUrl` (for example `api.acme.io`) |
 | `actionCount` | Number of actions (tools) the MCP exposes: those of its active version, not the API's full list |
+| `upstreamAuthType` | How the MCP reaches its API, set at its creation: `none`, `apiKey` (a key in a header), `bearer` (`Authorization: Bearer`) or `oauth2` (client_credentials) |
 | `createdAt` | Creation date, ISO 8601 |
 | `url` | `<request protocol>://<Host header>/m/<id>`, the address to paste into the agent |
 
@@ -787,9 +797,86 @@ There is no other period, and nothing updates by itself: reading again gives the
 
 ---
 
+## `GET /api/mcps/:id/api-key`
+
+Tells whether one hosted MCP of the signed-in account has a saved API key, since when, and whether SLICE can still read
+it. No answer of SLICE's API ever holds the key, even in part.
+
+**Response `200`**
+
+```json
+{ "apiKey": { "savedAt": "2026-10-28T09:30:00.000Z", "readable": true } }
+```
+
+| Field | Description |
+|---|---|
+| `apiKey` | `null` when the MCP has no saved key |
+| `apiKey.savedAt` | Date of the last save or replacement, ISO 8601 |
+| `apiKey.readable` | `false` when the key was encrypted under another `SLICE_ENCRYPTION_KEY` than the server's: SLICE can no longer read it, and never reads it as another text. Replace it |
+
+**Errors**
+
+| HTTP | `code` | Cause |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | No live session |
+| 404 | `NOT_FOUND` | No MCP under this id in the account's workspace. Message: "Unknown MCP id." The same answer whether the id does not exist or belongs to another account, so an id reveals nothing |
+| 429 | (none) | Rate limit exceeded |
+| 503 | `SERVICE_UNAVAILABLE` | The database is unreachable |
+
+---
+
+## `PUT /api/mcps/:id/api-key`
+
+Saves the API key of one hosted MCP of the signed-in account. It is encrypted with `SLICE_ENCRYPTION_KEY` (AES-256-GCM)
+before it reaches the database, and never written to the server's logs. An MCP has one key at most: saving again
+replaces the key before, which is erased. The key is not tried on the API: a wrong key shows at the first call.
+
+**Request**
+
+```json
+{ "apiKey": "<the key>" }
+```
+
+**Response `200`** — the state of the key, as [`GET /api/mcps/:id/api-key`](#get-apimcpsidapi-key) tells it:
+
+```json
+{ "apiKey": { "savedAt": "2026-10-28T09:30:00.000Z", "readable": true } }
+```
+
+**Errors** — in every case, nothing is saved and the key before stays.
+
+| HTTP | `code` | Cause |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | No live session |
+| 403 | `FORBIDDEN` | Sent from another site than SLICE's page |
+| 404 | `NOT_FOUND` | No MCP under this id in the account's workspace. Message: "Unknown MCP id." The same answer whether the id does not exist or belongs to another account; the other account's key is left untouched |
+| 429 | (none) | Rate limit exceeded |
+| 503 | `SERVICE_UNAVAILABLE` | The database is unreachable |
+
+---
+
+## `DELETE /api/mcps/:id/api-key`
+
+Removes the API key of one hosted MCP of the signed-in account: it is erased from the database. An MCP without a key
+answers the same.
+
+**Response `204`**, with no body.
+
+**Errors** — in every case, the key stays.
+
+| HTTP | `code` | Cause |
+|---|---|---|
+| 401 | `UNAUTHORIZED` | No live session |
+| 403 | `FORBIDDEN` | Sent from another site than SLICE's page |
+| 404 | `NOT_FOUND` | No MCP under this id in the account's workspace. Message: "Unknown MCP id." The same answer whether the id does not exist or belongs to another account; the other account's key is left untouched |
+| 429 | (none) | Rate limit exceeded |
+| 503 | `SERVICE_UNAVAILABLE` | The database is unreachable |
+
+---
+
 ## `DELETE /api/mcps/:id`
 
-Deletes one hosted MCP of the signed-in account, with its actions, its versions and the list of its API's actions, at once. From then on its URL answers
+Deletes one hosted MCP of the signed-in account, with its actions, its versions, the list of its API's actions and its API key, at once. From then on its URL answers
 `404 { "error": "Unknown MCP id." }` (see [`ANY /m/:id`](#any-mid)). There is no undo.
 
 **Response `204`**, with no body.
