@@ -10,7 +10,7 @@ import { createApp } from '../app';
 import { createHostedStore, type HostedStore } from '../services/hosted-store';
 import { createAccountMcps } from '../services/account-mcps';
 import { createMcpCalls, type McpCalls } from '../services/mcp-calls';
-import { createMcpApiKeys } from '../services/mcp-api-key';
+import { createMcpApiKeys, type McpApiKeys } from '../services/mcp-api-key';
 import { createKeyCipher } from '../services/key-cipher';
 import type { HostedMcpConfig } from '../services/hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
@@ -423,6 +423,35 @@ describe('the saved key of an MCP, replaced or removed', () => {
 
     expect(received.map((r) => r.apiKey)).toEqual(['saved-key-0174-removed', undefined]);
   });
+
+  it('serves a request begun before "Replace" with the key read at its arrival, to its last call (D6)', async () => {
+    const { id } = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    const keys = createMcpApiKeys(database, cipher);
+    await keys.save(id, 'saved-key-0174-before', CREATED);
+    // "Replace" lands once the request has read the key, before any of its calls reaches the API.
+    const replacedOnRead: McpApiKeys = {
+      ...keys,
+      keyOf: async (connectorId) => {
+        const read = await keys.keyOf(connectorId);
+        await keys.save(connectorId, 'saved-key-0174-after', CREATED);
+        return read;
+      },
+    };
+    const replacing = createApp({ nodeEnv: 'test', hostedStore: store, mcpApiKeys: replacedOnRead, now, auth: account.auth }).listen(0);
+    await new Promise<void>((r) => replacing.once('listening', r));
+    received = [];
+    try {
+      await postBatch(
+        `http://127.0.0.1:${(replacing.address() as AddressInfo).port}/m/${id}`,
+        [toolCall(1, 'list_things', {}), toolCall(2, 'delete_thing', { id: '42' })],
+        { agentKey: false }
+      );
+
+      expect(received.map((r) => r.apiKey)).toEqual(['saved-key-0174-before', 'saved-key-0174-before']);
+    } finally {
+      await new Promise<void>((r) => replacing.close(() => r()));
+    }
+  });
 });
 
 /** `config`, whose API's actions are exactly its own: every call of them is noted (D2). */
@@ -703,14 +732,17 @@ describe('the note of an action call refused before the API', () => {
   });
 });
 
-/** Send several JSON-RPC messages in one request (a batch), as the SDK accepts them; the raw answer. */
-async function postBatch(url: string, messages: unknown[]): Promise<string> {
+/**
+ * Send several JSON-RPC messages in one request (a batch), as the SDK accepts them; the raw answer.
+ * The agent sends its own key, unless `agentKey` is false.
+ */
+async function postBatch(url: string, messages: unknown[], { agentKey = true } = {}): Promise<string> {
   const res = await fetch(url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       accept: 'application/json, text/event-stream',
-      authorization: 'Bearer TOKEN',
+      ...(agentKey && { authorization: 'Bearer TOKEN' }),
     },
     body: JSON.stringify(messages),
   });
