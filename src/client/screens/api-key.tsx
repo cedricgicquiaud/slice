@@ -4,6 +4,7 @@
  * Outside the three steps: the MCP's name at the top and a way back to "My MCPs".
  */
 import { useEffect, useState } from 'react';
+import { mcpApiKeySchema } from '@shared/config-schema';
 import { Button } from '../components/ui/button';
 import { Field } from '../components/field';
 import { ApiError } from '../lib/api';
@@ -20,12 +21,20 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
   // "Save", "Replace" and "Remove" stay greyed during a call: a double click sends one.
   const [calling, setCalling] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
+  // Why the pasted key can't be used (D9), shown under the field.
+  const [keyError, setKeyError] = useState<string | null>(null);
 
   async function handleSave() {
     if (calling) return;
+    const parsed = mcpApiKeySchema.safeParse({ apiKey: pasted });
+    if (!parsed.success) {
+      setKeyError(parsed.error.issues[0]?.message ?? null);
+      return;
+    }
+    setKeyError(null);
     setCalling(true);
     try {
-      setApiKey(await saveMcpApiKey(mcpId, pasted));
+      setApiKey(await saveMcpApiKey(mcpId, parsed.data.apiKey));
       setPasted('');
       setReplacing(false);
     } finally {
@@ -131,7 +140,7 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
                 void handleSave();
               }}
             >
-              <Field label="API key" value={pasted} onChange={setPasted} mono />
+              <Field label="API key" value={pasted} onChange={setPasted} error={keyError ?? undefined} mono />
               <Button type="submit" disabled={calling} className="self-start">
                 Save
               </Button>
