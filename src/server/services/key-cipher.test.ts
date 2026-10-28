@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { randomBytes } from 'node:crypto';
-import { encryptionKeyFromEnv } from './key-cipher';
+import { createKeyCipher, encryptionKeyFromEnv } from './key-cipher';
 
 describe('encryptionKeyFromEnv', () => {
   it('refuses an environment without SLICE_ENCRYPTION_KEY, naming it', () => {
@@ -19,5 +19,13 @@ describe('encryptionKeyFromEnv', () => {
     const SLICE_ENCRYPTION_KEY = `${valid.slice(0, 20)}!!!!${valid.slice(20)}`;
 
     expect(() => encryptionKeyFromEnv({ SLICE_ENCRYPTION_KEY })).toThrow(/SLICE_ENCRYPTION_KEY must be 32 bytes in base64/);
+  });
+});
+
+describe('createKeyCipher', () => {
+  it('decrypts what it encrypted back to the original value', () => {
+    const cipher = createKeyCipher(randomBytes(32));
+
+    expect(cipher.decrypt(cipher.encrypt('secret_ntn_4f9Qx2'))).toBe('secret_ntn_4f9Qx2');
   });
 });
