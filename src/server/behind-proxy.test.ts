@@ -153,6 +153,15 @@ describe('thirty requests a minute for each visitor behind the proxy (D6)', () =
 
     expect(res.status).toBe(429);
   });
+
+  it("leaves a visitor his thirty requests when another passes himself off as him (contract 14)", async () => {
+    const app = createApp({ nodeEnv: 'test' });
+    for (let i = 0; i < 30; i++) await fromVisitor(app, '192.0.2.66', '203.0.113.7');
+
+    const res = await fromVisitor(app, '203.0.113.7');
+
+    expect(res.status).toBe(401);
+  });
 });
 
 // The real entry point, run from the repository root as `pnpm dev:server` runs it (tsx binary, no package manager).
