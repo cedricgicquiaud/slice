@@ -20,6 +20,7 @@ in production, set the variables in the platform's settings.
 | `DATABASE_URL` | (none) | PostgreSQL connection string (`postgres://user:password@host:5432/database`) where hosted MCPs are stored. **Required when `NODE_ENV=production`**: without it the server refuses to start and says why. Elsewhere, leaving it unset uses the embedded database below. |
 | `BETTER_AUTH_SECRET` | (none) | Signs the session cookies of SLICE accounts. **Required when `NODE_ENV=production`**: without it the server refuses to start and says why. Use a long random value (`openssl rand -hex 32`), kept in the platform's secret settings. Elsewhere, Better Auth falls back to a public development secret. |
 | `BETTER_AUTH_URL` | `http://localhost:5173` outside production; (none) in production | SLICE's public address (`https://slice.example.com`, or the Vite page in development). Better Auth builds its sign-in links from it, and the API takes writes only from a page at this address or at the address the request reached (`403 FORBIDDEN` otherwise, see [API.md](API.md#authentication)). **Required when `NODE_ENV=production`**: without it the server refuses to start and says why, since behind a proxy that ends HTTPS the server sees `http://` requests and would refuse the `https://` page. An `https://` address makes the session cookie `Secure`. |
+| `SLICE_ENCRYPTION_KEY` | (none) | Encrypts the API keys saved for MCPs (AES-256-GCM) before they reach the database. **Required whatever `NODE_ENV`**, development included: without it, or with a value that is not 32 bytes in base64, the server refuses to start and names it. Generate one with `openssl rand -base64 32` and keep it in the platform's secret settings; the repository holds none, and the tests draw their own at random. Changing it makes every saved key unreadable: SLICE never decrypts one into a wrong value. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | (none) | The Google application SLICE signs in with ([oauth-apps.md](oauth-apps.md)). With both set, "Continue with Google" works; without them, the server offers no Google sign-in. |
 | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | (none) | The Microsoft application SLICE signs in with, personal and work or school accounts ([oauth-apps.md](oauth-apps.md)). Same rule as Google. |
 | `RESEND_API_KEY` | (none) | Sends the sign-in codes by email through [Resend](https://resend.com). Without it, the code of each request is printed in the server's terminal (`Sign-in code for <address>: <code>`) and no email leaves: fine on a developer's machine, not for real users. |
@@ -45,11 +46,12 @@ Requirements: Node.js 22 or later, pnpm 9.
 ```bash
 pnpm install          # full install: the build tools and the MCP SDK used by the hosted runtime are devDependencies
 pnpm build            # front end to dist/client, server to dist/server/server (templates and migrations copied alongside)
-DATABASE_URL=postgres://… BETTER_AUTH_SECRET=… BETTER_AUTH_URL=https://… pnpm start   # NODE_ENV=production node dist/server/server/index.js
+DATABASE_URL=postgres://… BETTER_AUTH_SECRET=… BETTER_AUTH_URL=https://… SLICE_ENCRYPTION_KEY=… pnpm start   # NODE_ENV=production node dist/server/server/index.js
 ```
 
 - Provide a PostgreSQL database through `DATABASE_URL`; the server refuses to start in production without one. Keep its
-  password in the platform's secret settings, never in the repository. Same for `BETTER_AUTH_SECRET`.
+  password in the platform's secret settings, never in the repository. Same for `BETTER_AUTH_SECRET` and
+  `SLICE_ENCRYPTION_KEY`.
 - At startup the server creates or updates its tables before it accepts any request. The migrations run under a
   PostgreSQL lock, so several instances starting together migrate only once. If they fail, the server refuses to start
   and prints the database's reason.
