@@ -994,10 +994,18 @@ describe('/api/mcps/:id/api-key', () => {
       });
     }
 
+    const EMPTY = "This key can't be used: it is empty.";
+    const TOO_LONG = "This key can't be used: it is longer than 4,096 characters.";
+    const UNSENDABLE = "This key can't be used: it contains a character an API can't receive.";
+
     it.each([
-      ['empty', ''],
-      ['made of spaces only', ' \n\t  \r\n'],
-    ])('refuses a key %s with INVALID_KEY, and keeps the key before (contract 15, D9, D17)', async (_what, apiKey) => {
+      ['empty', '', EMPTY],
+      ['made of spaces only', ' \n\t  \r\n', EMPTY],
+      ['of 4,097 characters', 'k'.repeat(4097), TOO_LONG],
+      ['holding a euro sign', 'secret_ntn_12€34', UNSENDABLE],
+      ['holding an emoji', 'secret_ntn_12🔑34', UNSENDABLE],
+      ['holding a line break in the middle', 'secret_ntn_12\n34', UNSENDABLE],
+    ])('refuses a key %s with INVALID_KEY, and keeps the key before (contract 15, D9, D17)', async (_what, apiKey, message) => {
       const { id } = await store.put(NOTION, account.workspaceId, CREATED);
       const before = randomApiKey();
       await createMcpApiKeys(database, cipher).save(id, before, SAVED);
@@ -1006,39 +1014,7 @@ describe('/api/mcps/:id/api-key', () => {
 
       expect({ status: res.status, body: await res.json(), kept: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
         status: 400,
-        body: { code: 'INVALID_KEY', message: "This key can't be used: it is empty." },
-        kept: { key: before },
-      });
-    });
-
-    it('refuses a key of 4,097 characters with INVALID_KEY, and keeps the key before (contract 15, D9, D17)', async () => {
-      const { id } = await store.put(NOTION, account.workspaceId, CREATED);
-      const before = randomApiKey();
-      await createMcpApiKeys(database, cipher).save(id, before, SAVED);
-
-      const res = await put(id, { apiKey: 'k'.repeat(4097) });
-
-      expect({ status: res.status, body: await res.json(), kept: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
-        status: 400,
-        body: { code: 'INVALID_KEY', message: "This key can't be used: it is longer than 4,096 characters." },
-        kept: { key: before },
-      });
-    });
-
-    it.each([
-      ['a euro sign', 'secret_ntn_12€34'],
-      ['an emoji', 'secret_ntn_12🔑34'],
-      ['a line break in the middle', 'secret_ntn_12\n34'],
-    ])('refuses a key holding %s with INVALID_KEY, and keeps the key before (contract 15, D9, D17)', async (_what, apiKey) => {
-      const { id } = await store.put(NOTION, account.workspaceId, CREATED);
-      const before = randomApiKey();
-      await createMcpApiKeys(database, cipher).save(id, before, SAVED);
-
-      const res = await put(id, { apiKey });
-
-      expect({ status: res.status, body: await res.json(), kept: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
-        status: 400,
-        body: { code: 'INVALID_KEY', message: "This key can't be used: it contains a character an API can't receive." },
+        body: { code: 'INVALID_KEY', message },
         kept: { key: before },
       });
     });
