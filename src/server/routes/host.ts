@@ -25,6 +25,8 @@ export interface HostRouterOptions {
   now: () => Date;
   /** When false (production default), SSRF-guard the user-supplied baseUrl. */
   allowPrivateHosts?: boolean;
+  /** SLICE's public address, where the returned URL starts (D5). Without it, the address the request reached. */
+  publicUrl?: string;
 }
 
 export function createHostRouter(options: HostRouterOptions): Router {
@@ -37,14 +39,15 @@ export function createHostRouter(options: HostRouterOptions): Router {
     }
     next(err);
   }) as import('express').ErrorRequestHandler);
-  router.post('/', makeHandleHost(options.store, options.now, options.allowPrivateHosts ?? false));
+  router.post('/', makeHandleHost(options.store, options.now, options.allowPrivateHosts ?? false, options.publicUrl));
   return router;
 }
 
 const makeHandleHost = (
   store: HostedStore,
   now: () => Date,
-  allowPrivateHosts: boolean
+  allowPrivateHosts: boolean,
+  publicUrl: string | undefined
 ): RequestHandler => async (req, res, next) => {
   const parsed = generateRequestSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -85,7 +88,7 @@ const makeHandleHost = (
         503
       );
     });
-    const url = `${req.protocol}://${req.get('host')}/m/${id}`;
+    const url = `${publicUrl ?? `${req.protocol}://${req.get('host')}`}/m/${id}`;
     res.status(200).json({ id, url });
   } catch (err) {
     if (err instanceof ApiError) {

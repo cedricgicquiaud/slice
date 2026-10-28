@@ -49,6 +49,11 @@ export interface CreateAppOptions {
   now?: () => Date;
   /** Accounts and sessions. Without it, every `/api/*` call but health is refused. */
   auth?: SliceAuth;
+  /**
+   * SLICE's public address (`BETTER_AUTH_URL`): the MCPs' addresses start with it (D5).
+   * Without it, they start with the address the request reached.
+   */
+  publicUrl?: string;
 }
 
 export function createApp(options: CreateAppOptions = {}): Express {
@@ -133,7 +138,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
       now: options.now ?? (() => new Date()),
       allowPrivateHosts,
     };
-    app.use('/api/host', createHostRouter(hosted));
+    app.use('/api/host', createHostRouter({ ...hosted, publicUrl: options.publicUrl }));
     app.use(
       '/m',
       createHostedMcpRouter({
