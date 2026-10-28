@@ -20,7 +20,8 @@ export default defineConfig({
         changeOrigin: true,
       },
       // The MCPs' addresses start with BETTER_AUTH_URL, this page in development (D16).
-      '/m': {
+      // A prefix: `/m` alone would also take the page's `/mcps`.
+      '/m/': {
         target: 'http://localhost:3001',
         changeOrigin: true,
       },
