@@ -293,6 +293,12 @@ describe('hosted connector served from the database', () => {
   });
 });
 
+/** "Remove" on the "API key" page of the MCP `id`, as the signed-in account. */
+async function removeKey(id: string): Promise<void> {
+  const res = await fetch(`${baseUrl}/api/mcps/${id}/api-key`, { method: 'DELETE', headers: { cookie: account.cookie } });
+  expect(res.status).toBe(204);
+}
+
 /** "Save" on the "API key" page of the MCP `id`, as the signed-in account. */
 async function saveKey(id: string, apiKey: string): Promise<void> {
   const res = await fetch(`${baseUrl}/api/mcps/${id}/api-key`, {
@@ -402,6 +408,20 @@ describe('the saved key of an MCP, replaced or removed', () => {
     await agent.close();
 
     expect(received.map((r) => r.apiKey)).toEqual(['saved-key-0174-old', 'saved-key-0174-new', 'saved-key-0174-new']);
+  });
+
+  it('is sent no more after "Remove": the next call without the agent\'s key goes without any key (contract 6, D3)', async () => {
+    const { id } = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    await saveKey(id, 'saved-key-0174-removed');
+    received = [];
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`);
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await removeKey(id);
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    expect(received.map((r) => r.apiKey)).toEqual(['saved-key-0174-removed', undefined]);
   });
 });
 
