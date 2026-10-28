@@ -28,4 +28,10 @@ describe('createKeyCipher', () => {
 
     expect(cipher.decrypt(cipher.encrypt('secret_ntn_4f9Qx2'))).toBe('secret_ntn_4f9Qx2');
   });
+
+  it('encrypts the same value twice into two different results', () => {
+    const cipher = createKeyCipher(randomBytes(32));
+
+    expect(cipher.encrypt('secret_ntn_4f9Qx2')).not.toBe(cipher.encrypt('secret_ntn_4f9Qx2'));
+  });
 });
