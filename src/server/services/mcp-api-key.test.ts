@@ -81,4 +81,14 @@ describe('the key of an MCP', () => {
 
     expect(await keys.stateOf(id)).toEqual({ savedAt: new Date('2026-10-29T14:30:00.000Z'), readable: true });
   });
+
+  it('removed leaves the database, the MCP having no key any more (D3)', async () => {
+    const { id } = await createHostedStore(database).put(notion, workspaceId, NOW);
+    const keys = createMcpApiKeys(database, createKeyCipher(randomBytes(32)));
+    await keys.save(id, 'secret_ntn_first', NOW);
+
+    await keys.remove(id);
+
+    expect({ state: await keys.stateOf(id), lines: (await rawLinesOf(id)).length }).toEqual({ state: undefined, lines: 0 });
+  });
 });
