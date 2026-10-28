@@ -39,11 +39,16 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
       return;
     }
     setKeyError(null);
+    setRefusal(null);
     setCalling(true);
     try {
       setApiKey(await saveMcpApiKey(mcpId, parsed.data.apiKey));
       setPasted('');
       setReplacing(false);
+    } catch (err) {
+      // A key the server can't use is refused under the field, as above (D9); any other refusal under the title.
+      if (err instanceof ApiError && err.code === 'INVALID_KEY') setKeyError(err.message);
+      else setRefusal(messageOf(err));
     } finally {
       setCalling(false);
     }
