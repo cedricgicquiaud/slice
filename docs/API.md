@@ -837,6 +837,9 @@ replaces the key before, which is erased. The key is not tried on the API: a wro
 { "apiKey": "<the key>" }
 ```
 
+The spaces and line breaks at the ends of `apiKey` are dropped first (a copy-paste often leaves a final line break);
+the key saved is what remains. Only an MCP whose `upstreamAuthType` is `apiKey` or `bearer` takes a key.
+
 **Response `200`** — the state of the key, as [`GET /api/mcps/:id/api-key`](#get-apimcpsidapi-key) tells it:
 
 ```json
@@ -847,6 +850,11 @@ replaces the key before, which is erased. The key is not tried on the API: a wro
 
 | HTTP | `code` | Cause |
 |---|---|---|
+| 400 | `INVALID_KEY` | `apiKey` is missing or is not a text. Message: "This key can't be used: it is not a text." |
+| 400 | `INVALID_KEY` | `apiKey` is empty, or made of spaces and line breaks only. Message: "This key can't be used: it is empty." |
+| 400 | `INVALID_KEY` | `apiKey` is longer than 4,096 characters, its ends dropped. Message: "This key can't be used: it is longer than 4,096 characters." |
+| 400 | `INVALID_KEY` | `apiKey` holds a character outside printable ASCII (a line break in the middle, "€", an emoji…), which an HTTP header cannot carry. Message: "This key can't be used: it contains a character an API can't receive." |
+| 400 | `INVALID_KEY` | The MCP reaches its API without access (`none`) or through OAuth2 (`oauth2`). Message: "This MCP takes no API key." |
 | 401 | `UNAUTHORIZED` | No live session |
 | 403 | `FORBIDDEN` | Sent from another site than SLICE's page |
 | 404 | `NOT_FOUND` | No MCP under this id in the account's workspace. Message: "Unknown MCP id." The same answer whether the id does not exist or belongs to another account; the other account's key is left untouched |
