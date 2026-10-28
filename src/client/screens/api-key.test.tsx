@@ -310,4 +310,36 @@ describe('Refusing an unusable key', () => {
       sent: [],
     });
   });
+
+  it('refuses a key of 4,097 characters under the field, and saves nothing (contract 15, D9)', async () => {
+    server.mcps = [NOTION];
+
+    const field = await saveKey('k'.repeat(4097));
+
+    expect({ message: messageUnder(field), sent: server.saved }).toEqual({
+      message: "This key can't be used: it is longer than 4,096 characters.",
+      sent: [],
+    });
+  });
+
+  it('refuses a key holding "€" under the field, and saves nothing (contract 15, D9)', async () => {
+    server.mcps = [NOTION];
+
+    const field = await saveKey('secret_ntn_12€34');
+
+    expect({ message: messageUnder(field), sent: server.saved }).toEqual({
+      message: "This key can't be used: it contains a character an API can't receive.",
+      sent: [],
+    });
+  });
+
+  // A text field already drops line breaks on paste: the spaces around the key prove the ends are dropped too.
+  it('saves a key pasted with a final line break and spaces at its ends without them (contract 15, D9)', async () => {
+    server.mcps = [NOTION];
+
+    await saveKey('  secret_ntn_1234  \n');
+    await screen.findByText('Saved on Oct 28, 2026');
+
+    expect(server.saved).toEqual(['secret_ntn_1234']);
+  });
 });
