@@ -1,4 +1,5 @@
 // WAT-176 — "API key", at /mcps/<id>/api-key: I paste my key, "Save", and never see it again.
+// WAT-177 — I replace or remove my key; a key SLICE can no longer read asks to be replaced.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -157,5 +158,24 @@ describe('API key', () => {
       field: screen.queryByLabelText('API key') !== null,
       back: screen.getByRole('link', { name: 'Back to My MCPs' }).getAttribute('href'),
     }).toEqual({ notFound: true, spaced: true, field: false, back: '/mcps' });
+  });
+});
+
+describe('Replacing or removing the key', () => {
+  it('replaces the key: "Replace" opens the field, "Save" shows the new key saved on the day of the save (D3)', async () => {
+    server.mcps = [NOTION];
+    server.keys['notion-id'] = { savedAt: '2026-10-27T09:30:00.000Z', readable: true };
+    const user = userEvent.setup();
+    render(<ApiKeyScreen mcpId="notion-id" />);
+
+    await user.click(await screen.findByRole('button', { name: 'Replace' }));
+    await user.click(screen.getByLabelText('API key'));
+    await user.paste('secret_ntn_5678');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect({
+      saved: (await screen.findByText('Saved on Oct 28, 2026')) !== null,
+      sent: server.saved,
+    }).toEqual({ saved: true, sent: ['secret_ntn_5678'] });
   });
 });
