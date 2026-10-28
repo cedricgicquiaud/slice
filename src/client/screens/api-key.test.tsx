@@ -1,7 +1,9 @@
 // WAT-176 — "API key", at /mcps/<id>/api-key: I paste my key, "Save", and never see it again.
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import App from '../App';
+import { ApiKeyScreen } from './api-key';
 
 /** The Notion MCP, reaching its API by an API key in a header. */
 const NOTION = {
@@ -17,7 +19,9 @@ const NOTION = {
  * SLICE's API as this page sees it: `GET /api/mcps` answers the account's MCPs
  * (`mcps`); `GET /api/mcps/:id/api-key` answers the key kept in `keys` under
  * that id, `null` without any, or 404 for an MCP outside `mcps`, as for an
- * unknown MCP or another account's; any other call is "who is signed in?" (`session`).
+ * unknown MCP or another account's; `PUT /api/mcps/:id/api-key` keeps the key
+ * sent in `saved` and answers it saved on Oct 28, 2026; any other call is
+ * "who is signed in?" (`session`).
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
 const server = vi.hoisted(() => {
@@ -25,16 +29,21 @@ const server = vi.hoisted(() => {
     session: unknown;
     mcps: { id: string }[];
     keys: Record<string, { savedAt: string; readable: boolean } | null>;
-  } = { session: null, mcps: [], keys: {} };
+    saved: string[];
+  } = { session: null, mcps: [], keys: {}, saved: [] };
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : String(input);
     if (url === '/api/mcps') return json({ mcps: state.mcps });
     const asked = /^\/api\/mcps\/([^/]+)\/api-key$/.exec(url);
     if (!asked) return json(state.session);
     const id = asked[1]!;
     if (!state.mcps.some((mcp) => mcp.id === id)) return json({ code: 'NOT_FOUND', message: 'Unknown MCP id.' }, 404);
+    if (init?.method === 'PUT') {
+      state.saved.push((JSON.parse(String(init.body)) as { apiKey: string }).apiKey);
+      state.keys[id] = { savedAt: '2026-10-28T09:30:00.000Z', readable: true };
+    }
     return json({ apiKey: state.keys[id] ?? null });
   }) as typeof fetch;
   return state;
@@ -43,6 +52,7 @@ const server = vi.hoisted(() => {
 afterEach(() => {
   server.mcps = [];
   server.keys = {};
+  server.saved = [];
   window.history.pushState({}, '', '/');
 });
 
@@ -60,5 +70,22 @@ describe('API key', () => {
       ) !== null,
       address: screen.queryByText("Anyone with this MCP's address acts with your key. Keep the address private.") !== null,
     }).toEqual({ name: true, used: true, address: true });
+  });
+
+  it('shows "Saved on <date>" with "Replace" and "Remove" once a pasted key is saved, the date as on My MCPs (contract 1, 9, D3)', async () => {
+    server.mcps = [NOTION];
+    const user = userEvent.setup();
+    render(<ApiKeyScreen mcpId="notion-id" />);
+
+    await user.click(await screen.findByLabelText('API key'));
+    await user.paste('secret_ntn_1234');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect({
+      saved: (await screen.findByText('Saved on Oct 28, 2026')) !== null,
+      replace: screen.queryByRole('button', { name: 'Replace' }) !== null,
+      remove: screen.queryByRole('button', { name: 'Remove' }) !== null,
+      sent: server.saved,
+    }).toEqual({ saved: true, replace: true, remove: true, sent: ['secret_ntn_1234'] });
   });
 });
