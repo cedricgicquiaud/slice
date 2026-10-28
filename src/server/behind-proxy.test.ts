@@ -97,4 +97,19 @@ describe("an MCP's address behind the proxy (D5)", () => {
       listed: `https://slice.example.com/m/${created.body.id}`,
     });
   });
+
+  it('has a single slash before /m when the public address ends with one, at creation and in My MCPs', async () => {
+    const app = sliceAt('https://slice.example.com/');
+
+    const created = await deploy(app);
+    const listed = await request(app).get('/api/mcps').set('cookie', account.cookie);
+
+    expect({
+      created: created.body.url,
+      listed: listed.body.mcps.find((mcp: { id: string }) => mcp.id === created.body.id)?.url,
+    }).toEqual({
+      created: `https://slice.example.com/m/${created.body.id}`,
+      listed: `https://slice.example.com/m/${created.body.id}`,
+    });
+  });
 });
