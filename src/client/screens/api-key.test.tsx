@@ -23,7 +23,8 @@ const NOTION = {
  * unknown MCP or another account's; `PUT /api/mcps/:id/api-key` keeps the key
  * sent in `saved` and answers, once `held` resolves when set, the key saved on
  * Oct 28, 2026; `DELETE /api/mcps/:id/api-key` is kept in `removed` and, once
- * `held` resolves when set, removes the key; any other call is
+ * `held` resolves when set, removes the key; a `PUT` or a `DELETE` answers
+ * `refusal` instead when set; any other call is
  * "who is signed in?" (`session`).
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
@@ -35,7 +36,8 @@ const server = vi.hoisted(() => {
     saved: string[];
     removed: string[];
     held: Promise<void> | null;
-  } = { session: null, mcps: [], keys: {}, saved: [], removed: [], held: null };
+    refusal: { status: number; code: string; message: string } | null;
+  } = { session: null, mcps: [], keys: {}, saved: [], removed: [], held: null, refusal: null };
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -45,6 +47,10 @@ const server = vi.hoisted(() => {
     if (!asked) return json(state.session);
     const id = asked[1]!;
     if (!state.mcps.some((mcp) => mcp.id === id)) return json({ code: 'NOT_FOUND', message: 'Unknown MCP id.' }, 404);
+    if ((init?.method === 'PUT' || init?.method === 'DELETE') && state.refusal) {
+      const { status, code, message } = state.refusal;
+      return json({ code, message }, status);
+    }
     if (init?.method === 'PUT') {
       state.saved.push((JSON.parse(String(init.body)) as { apiKey: string }).apiKey);
       await state.held;
@@ -67,6 +73,7 @@ afterEach(() => {
   server.saved = [];
   server.removed = [];
   server.held = null;
+  server.refusal = null;
   window.history.pushState({}, '', '/');
 });
 
@@ -252,5 +259,22 @@ describe('Replacing or removing the key', () => {
       inThePage: document.body.innerHTML.includes('secret_ntn_1234'),
       field: field.value,
     }).toEqual({ inThePage: false, field: '' });
+  });
+
+  it("keeps the key and shows the server's message under the title, spaced mt-4, when the removal is refused", async () => {
+    server.mcps = [NOTION];
+    server.keys['notion-id'] = { savedAt: '2026-10-27T09:30:00.000Z', readable: true };
+    server.refusal = { status: 503, code: 'SERVICE_UNAVAILABLE', message: 'SLICE is unavailable for the moment.' };
+    const user = userEvent.setup();
+    render(<ApiKeyScreen mcpId="notion-id" />);
+
+    await user.click(await screen.findByRole('button', { name: 'Remove' }));
+
+    const alert = await screen.findByRole('alert');
+    expect({
+      message: alert.textContent,
+      spaced: alert.classList.contains('mt-4'),
+      saved: screen.queryByText('Saved on Oct 27, 2026') !== null,
+    }).toEqual({ message: 'SLICE is unavailable for the moment.', spaced: true, saved: true });
   });
 });
