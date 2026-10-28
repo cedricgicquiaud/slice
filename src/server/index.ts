@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { createApp } from './app';
 import { authBaseUrlFromEnv, authSecretFromEnv, createAuth, oauthApplicationsFromEnv } from './auth/auth';
 import { codeSenderFromEnv } from './auth/email-code';
@@ -6,7 +7,8 @@ import { migrateDatabase } from './db/migrate';
 import { createHostedStore } from './services/hosted-store';
 import { createAccountMcps } from './services/account-mcps';
 import { createMcpCalls, startCallsCleanup } from './services/mcp-calls';
-import { encryptionKeyFromEnv } from './services/key-cipher';
+import { createKeyCipher, encryptionKeyFromEnv } from './services/key-cipher';
+import { createMcpApiKeys } from './services/mcp-api-key';
 
 const PORT = Number(process.env.PORT ?? 3001);
 const NODE_ENV = process.env.NODE_ENV ?? 'development';
@@ -15,8 +17,8 @@ try {
   const databaseConfig = databaseConfigFromEnv(process.env);
   const authSecret = authSecretFromEnv(process.env);
   const authBaseUrl = authBaseUrlFromEnv(process.env);
-  // Read before anything opens, so a server without it never starts (D11); WAT-170 hands it to `createMcpApiKeys` through `createApp`.
-  encryptionKeyFromEnv(process.env);
+  // Read before anything opens, so a server without it never starts (D11).
+  const encryptionKey = encryptionKeyFromEnv(process.env);
   const database = openDatabase(databaseConfig);
   await migrateDatabase(database);
 
@@ -24,6 +26,9 @@ try {
   const hostedStore = createHostedStore(database);
   const accountMcps = createAccountMcps(database);
   const mcpCalls = createMcpCalls(database);
+  const mcpApiKeys = createMcpApiKeys(database, createKeyCipher(encryptionKey));
+  // Under a key drawn at random, for the recette's garble route: createApp mounts it in development and test only (D17).
+  const mcpApiKeysUnderAnotherKey = createMcpApiKeys(database, createKeyCipher(randomBytes(32)));
   // The calls of more than 30 days leave the database within the hour (D9).
   startCallsCleanup(mcpCalls, { now: () => new Date() });
 
@@ -37,7 +42,15 @@ try {
   });
 
   // The NODE_ENV as declared: the recette sign-in opens only where it says development or test.
-  const app = createApp({ nodeEnv: process.env.NODE_ENV, hostedStore, mcpCalls, accountMcps, auth });
+  const app = createApp({
+    nodeEnv: process.env.NODE_ENV,
+    hostedStore,
+    mcpCalls,
+    accountMcps,
+    mcpApiKeys,
+    mcpApiKeysUnderAnotherKey,
+    auth,
+  });
 
   app.listen(PORT, () => {
     console.log(`SLICE server running on http://localhost:${PORT} (${NODE_ENV})`);
