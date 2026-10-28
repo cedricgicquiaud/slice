@@ -975,4 +975,40 @@ describe('/api/mcps/:id/api-key', () => {
       });
     });
   });
+
+  describe('an unusable key', () => {
+    let checked: { url: string; close(): Promise<void> };
+    beforeAll(async () => {
+      checked = await startApp({ mcpApiKeys: createMcpApiKeys(database, cipher), now: () => clock });
+    });
+    afterAll(async () => {
+      await checked?.close();
+    });
+
+    /** "Save" on the "API key" page of the MCP `id` with `body`, as the signed-in account. */
+    function put(id: string, body: unknown) {
+      return fetch(`${checked.url}/api/mcps/${id}/api-key`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', cookie: account.cookie },
+        body: JSON.stringify(body),
+      });
+    }
+
+    it.each([
+      ['empty', ''],
+      ['made of spaces only', ' \n\t  \r\n'],
+    ])('refuses a key %s with INVALID_KEY, and keeps the key before (contract 15, D9, D17)', async (_what, apiKey) => {
+      const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+      const before = randomApiKey();
+      await createMcpApiKeys(database, cipher).save(id, before, SAVED);
+
+      const res = await put(id, { apiKey });
+
+      expect({ status: res.status, body: await res.json(), kept: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
+        status: 400,
+        body: { code: 'INVALID_KEY', message: "This key can't be used: it is empty." },
+        kept: { key: before },
+      });
+    });
+  });
 });
