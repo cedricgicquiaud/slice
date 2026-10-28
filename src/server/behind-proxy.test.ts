@@ -208,6 +208,15 @@ describe('ten sign-in codes an hour for each visitor behind the proxy (D6)', () 
       sent: 10,
     });
   });
+
+  it('leaves a visitor his ten codes when another passes himself off as him (contract 14)', async () => {
+    const { app, sentTo } = sliceSendingCodes();
+    for (let i = 1; i <= 10; i++) await askForCodeFrom(app, '192.0.2.66', `impostor${i}@example.com`, '203.0.113.7');
+
+    const res = await askForCodeFrom(app, '203.0.113.7', 'victim@example.com');
+
+    expect({ status: res.status, sent: sentTo.length }).toEqual({ status: 200, sent: 11 });
+  });
 });
 
 // The real entry point, run from the repository root as `pnpm dev:server` runs it (tsx binary, no package manager).
