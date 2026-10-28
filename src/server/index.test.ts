@@ -348,6 +348,21 @@ describe('server entry point', () => {
     }
   }, 30_000);
 
+  it('refuses to start with a SLICE_ENCRYPTION_KEY of 31 bytes, and names it (contract 20, D11)', async () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    try {
+      const { code, output } = await runUntilExit(cwd, {
+        NODE_ENV: 'development',
+        SLICE_ENCRYPTION_KEY: randomBytes(31).toString('base64'),
+      });
+
+      expect(code).toBe(1);
+      expect(output).toContain('SLICE_ENCRYPTION_KEY must be 32 bytes in base64');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   it('starts the Google and Microsoft sign-ins with the applications declared in its environment', async () => {
     const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
     const server = await startServer(cwd, {
