@@ -45,7 +45,7 @@ export function createKeyCipher(encryptionKey: Buffer): KeyCipher {
   };
 }
 
-/** SLICE_ENCRYPTION_KEY, decoded; refused missing in every environment. */
+/** SLICE_ENCRYPTION_KEY, decoded; refused missing, or other than 32 bytes in base64, in every environment. */
 export function encryptionKeyFromEnv(env: NodeJS.ProcessEnv): Buffer {
   if (!env.SLICE_ENCRYPTION_KEY) {
     throw new Error('SLICE_ENCRYPTION_KEY is required (32 bytes in base64, `openssl rand -base64 32`): it encrypts the MCPs\' API keys.');
