@@ -387,6 +387,24 @@ describe('an MCP whose key is saved on SLICE', () => {
   });
 });
 
+// WAT-174 — each request reads the key saved at its arrival: a key replaced or removed is never sent again.
+describe('the saved key of an MCP, replaced or removed', () => {
+  it('is sent no more after "Replace": every call arriving after it carries the new key (contract 5, D3, D6)', async () => {
+    const { id } = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    await saveKey(id, 'saved-key-0174-old');
+    received = [];
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`);
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await saveKey(id, 'saved-key-0174-new');
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    expect(received.map((r) => r.apiKey)).toEqual(['saved-key-0174-old', 'saved-key-0174-new', 'saved-key-0174-new']);
+  });
+});
+
 /** `config`, whose API's actions are exactly its own: every call of them is noted (D2). */
 function withApiActions(config: HostedMcpConfig): HostedMcpConfig {
   return {
