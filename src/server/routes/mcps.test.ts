@@ -1019,6 +1019,20 @@ describe('/api/mcps/:id/api-key', () => {
       });
     });
 
+    it.each([
+      ['a final line break', 'secret_ntn_1234\n'],
+      ['spaces at its ends', '  secret_ntn_1234   '],
+    ])('saves a key pasted with %s without them (contract 15, D9)', async (_what, apiKey) => {
+      const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+
+      const res = await put(id, { apiKey });
+
+      expect({ status: res.status, served: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
+        status: 200,
+        served: { key: 'secret_ntn_1234' },
+      });
+    });
+
     it('saves a key of 4,096 characters exactly (D9)', async () => {
       const { id } = await store.put(NOTION, account.workspaceId, CREATED);
       const apiKey = 'k'.repeat(4096);
