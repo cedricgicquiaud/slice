@@ -283,7 +283,13 @@ describe('the server started with BETTER_AUTH_URL (D5, D16)', () => {
 
 describe('the Vite page in development (D16)', () => {
   it('relays /m/<id> to the API server, and keeps showing its own pages at /mcps', async () => {
-    const vite = await createViteServer({ configFile: path.join(ROOT, 'vite.config.ts'), logLevel: 'silent', server: { port: 0 } });
+    // Only the relay is at stake: no dependency pre-bundling, no file watching, a free port.
+    const vite = await createViteServer({
+      configFile: path.join(ROOT, 'vite.config.ts'),
+      logLevel: 'silent',
+      optimizeDeps: { noDiscovery: true, include: [] },
+      server: { port: 0, watch: null },
+    });
     await vite.listen();
     const page = `http://localhost:${(vite.httpServer!.address() as AddressInfo).port}`;
     // Asked for a web page: unrelayed, Vite answers with SLICE's page (whatever the API server is doing).
