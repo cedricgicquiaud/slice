@@ -487,6 +487,14 @@ describe('environment file', () => {
     expect(names).toEqual(expect.arrayContaining(['RESEND_API_KEY', 'RESEND_FROM']));
   });
 
+  it('.env.example names SLICE_ENCRYPTION_KEY with the command that generates it (D11)', () => {
+    const lines = readFileSync(path.join(ROOT, '.env.example'), 'utf-8').split('\n');
+    // The comments above the variable; none when the variable is missing.
+    const above = lines.slice(0, Math.max(lines.indexOf('SLICE_ENCRYPTION_KEY='), 0));
+
+    expect(above.some((line) => line.startsWith('#') && line.includes('openssl rand -base64 32'))).toBe(true);
+  });
+
   it('.env.example carries no value', () => {
     expect(variables().filter((line) => !/^[A-Z][A-Z0-9_]*=$/.test(line))).toEqual([]);
   });
