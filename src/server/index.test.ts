@@ -330,6 +330,24 @@ describe('server entry point', () => {
     }
   }, 30_000);
 
+  it('refuses to start in production without SLICE_ENCRYPTION_KEY, and names it (contract 20, D11)', async () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    try {
+      const { code, output } = await runUntilExit(cwd, {
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgres://postgres@127.0.0.1:9/never-reached',
+        BETTER_AUTH_SECRET: 'production-secret',
+        BETTER_AUTH_URL: 'https://slice.example.com',
+        SLICE_ENCRYPTION_KEY: '',
+      });
+
+      expect(code).toBe(1);
+      expect(output).toContain('SLICE_ENCRYPTION_KEY is required');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   it('starts the Google and Microsoft sign-ins with the applications declared in its environment', async () => {
     const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
     const server = await startServer(cwd, {
