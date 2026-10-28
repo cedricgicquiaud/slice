@@ -62,6 +62,8 @@ const HOSTED_URL = /\/m\/[A-Za-z0-9_-]{22}$/;
 
 /** Signs the compiled server's session cookies; the smoke signs its own account in with it. */
 const AUTH_SECRET = randomBytes(32).toString('hex');
+/** Encrypts the MCPs' API keys; the compiled server refuses to start without one, and the repository holds none. */
+const ENCRYPTION_KEY = randomBytes(32).toString('base64');
 /** `Cookie` header of the smoke's signed-in account, set once the server has migrated its database. */
 let cookie = '';
 
@@ -255,6 +257,7 @@ async function main(): Promise<void> {
       BETTER_AUTH_SECRET: AUTH_SECRET,
       // Plain http here: Better Auth then names its cookie without the `__Secure-` prefix.
       BETTER_AUTH_URL: BASE,
+      SLICE_ENCRYPTION_KEY: ENCRYPTION_KEY,
     },
     stdio: ['ignore', 'inherit', 'inherit'],
   });

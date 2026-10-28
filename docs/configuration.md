@@ -61,7 +61,7 @@ DATABASE_URL=postgres://… BETTER_AUTH_SECRET=… BETTER_AUTH_URL=https://… S
   server in production mode, so it needs `DATABASE_URL` too. It creates a throwaway database on that server, runs the
   compiled server against it and drops it afterwards: the database user needs the right to create databases, and the
   smoke connector never lands in the database the URL names. It signs a throwaway account in on that database, since
-  the API answers nothing without a session. A disposable local PostgreSQL works:
+  the API answers nothing without a session, and hands the server a `SLICE_ENCRYPTION_KEY` drawn at random. A disposable local PostgreSQL works:
   `docker run --rm -d -p 54329:5432 -e POSTGRES_PASSWORD=smoke postgres:16`, then
   `DATABASE_URL=postgres://postgres:smoke@localhost:54329/postgres pnpm prod:smoke`.
 - The repository ships no Dockerfile for SLICE itself.
