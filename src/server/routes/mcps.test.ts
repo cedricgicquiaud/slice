@@ -795,4 +795,16 @@ describe('/api/mcps/:id/api-key', () => {
       served: undefined,
     });
   });
+
+  it('tells unreadable a key of my MCP encrypted under another encryption key, dated from its saving (contract 21, D3)', async () => {
+    const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+    await createMcpApiKeys(database, createKeyCipher(randomBytes(32))).save(id, randomApiKey(), SAVED);
+
+    const read = await readKey(id);
+
+    expect({ status: read.status, body: await read.json() }).toEqual({
+      status: 200,
+      body: { apiKey: { savedAt: '2026-10-28T09:30:00.000Z', readable: false } },
+    });
+  });
 });
