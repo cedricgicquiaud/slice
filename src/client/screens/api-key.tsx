@@ -5,11 +5,18 @@
  */
 import { useEffect, useState } from 'react';
 import { mcpApiKeySchema } from '@shared/config-schema';
+import type { UpstreamAuthType } from '@shared/types';
 import { Button } from '../components/ui/button';
 import { Field } from '../components/field';
 import { ApiError } from '../lib/api';
 import { getMcpApiKey, listMcps, removeMcpApiKey, saveMcpApiKey, type Mcp, type McpApiKey } from '../lib/mcps-api';
 import { CREATED, messageOf } from './mcps';
+
+/** What the page says instead of the field, for an MCP that takes no key (D17). */
+const NO_KEY: Partial<Record<UpstreamAuthType, string>> = {
+  none: 'This MCP needs no API key.',
+  oauth2: 'This MCP gets its access from your agent on every call.',
+};
 
 export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
   const [mcp, setMcp] = useState<Mcp | null>(null);
@@ -93,8 +100,8 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
               {refusal}
             </p>
           )}
-          {mcp.upstreamAuthType === 'none' ? (
-            <p className="mt-4 text-sm text-muted-foreground">This MCP needs no API key.</p>
+          {NO_KEY[mcp.upstreamAuthType] ? (
+            <p className="mt-4 text-sm text-muted-foreground">{NO_KEY[mcp.upstreamAuthType]}</p>
           ) : (
             <>
             <p className="mt-8 text-sm text-foreground">
