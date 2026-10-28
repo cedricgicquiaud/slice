@@ -734,6 +734,11 @@ describe('/api/mcps/:id/api-key', () => {
     });
   }
 
+  /** "Remove" on the "API key" page, as the signed-in account; without a session when `cookie` is `null`. */
+  function removeKey(id: string, cookie: string | null = account.cookie) {
+    return fetch(`${keys.url}/api/mcps/${id}/api-key`, { method: 'DELETE', headers: cookie ? { cookie } : {} });
+  }
+
   /** What the "API key" page reads of the key, as the signed-in account; without a session when `cookie` is `null`. */
   function readKey(id: string, cookie: string | null = account.cookie) {
     return fetch(`${keys.url}/api/mcps/${id}/api-key`, { headers: cookie ? { cookie } : {} });
@@ -770,6 +775,24 @@ describe('/api/mcps/:id/api-key', () => {
     }).toEqual({
       replaced: { status: 200, body: { apiKey: { savedAt: '2026-10-29T16:45:00.000Z', readable: true } } },
       served: { key: replacement },
+    });
+  });
+
+  it('removes the key of my MCP: it is then told absent, and no longer serves (D3)', async () => {
+    const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+    await saveKey(id, randomApiKey());
+
+    const removed = await removeKey(id);
+    const read = await readKey(id);
+
+    expect({
+      removed: removed.status,
+      read: { status: read.status, body: await read.json() },
+      served: await createMcpApiKeys(database, cipher).keyOf(id),
+    }).toEqual({
+      removed: 204,
+      read: { status: 200, body: { apiKey: null } },
+      served: undefined,
     });
   });
 });
