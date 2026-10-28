@@ -144,4 +144,19 @@ describe('the key of an MCP', () => {
 
     expect({ status: res.status, lines: await rawLinesOf(id) }).toEqual({ status: 200, lines: [] });
   });
+
+  it('saved twice at once leaves a single key, played twenty times (D4)', async () => {
+    // A real race on PostgreSQL only (`DATABASE_URL`): PGlite's single connection runs the two one after the other.
+    const store = createHostedStore(database);
+    const keys = createMcpApiKeys(database, createKeyCipher(randomBytes(32)));
+    const lines: number[] = [];
+    for (let round = 0; round < 20; round += 1) {
+      const { id } = await store.put(notion, workspaceId, NOW);
+
+      await Promise.all([keys.save(id, 'secret_ntn_first', NOW), keys.save(id, 'secret_ntn_second', NOW)]);
+      lines.push((await rawLinesOf(id)).length);
+    }
+
+    expect(lines).toEqual(Array.from({ length: 20 }, () => 1));
+  });
 });
