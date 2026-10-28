@@ -2,6 +2,7 @@
 // WAT-148/149 — `POST /api/mcps/:id/versions/:number/restore`: an existing version of one's own MCP, active again.
 // WAT-161/162 — `GET /api/mcps/:id/usage`: the calls agents made to one's own MCP, never another's.
 // WAT-170 — `GET`/`PUT`/`DELETE /api/mcps/:id/api-key`: the key of one's own MCP, saved, told, never shown.
+// WAT-171 — `PUT /api/mcps/:id/api-key`: an unusable key, or a key for an MCP that takes none, is refused.
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
