@@ -6,11 +6,13 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../components/ui/button';
 import { Field } from '../components/field';
+import { ApiError } from '../lib/api';
 import { getMcpApiKey, listMcps, saveMcpApiKey, type Mcp, type McpApiKey } from '../lib/mcps-api';
 import { CREATED, messageOf } from './mcps';
 
 export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
   const [mcp, setMcp] = useState<Mcp | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState<McpApiKey | null>(null);
   const [pasted, setPasted] = useState('');
@@ -34,7 +36,11 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
         setApiKey(saved);
         setMcp(mcps.find((other) => other.id === mcpId) ?? null);
       })
-      .catch((err: unknown) => setError(messageOf(err)));
+      .catch((err: unknown) => {
+        // Another account's MCP answers as an unknown one (D13): one case here.
+        if (err instanceof ApiError && err.status === 404) setNotFound(true);
+        else setError(messageOf(err));
+      });
   }, [mcpId]);
 
   return (
@@ -46,6 +52,12 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
         <p role="alert" className="mt-8 text-sm text-destructive">
           {error}
         </p>
+      )}
+      {notFound && (
+        <>
+          <h1 className="mt-4 font-serif text-4xl italic">MCP not found</h1>
+          <p className="mt-4 text-sm text-muted-foreground">There is no MCP at this address in your account.</p>
+        </>
       )}
       {mcp && (
         <>
