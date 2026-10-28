@@ -22,7 +22,8 @@ const NOTION = {
  * that id, `null` without any, or 404 for an MCP outside `mcps`, as for an
  * unknown MCP or another account's; `PUT /api/mcps/:id/api-key` keeps the key
  * sent in `saved` and answers, once `held` resolves when set, the key saved on
- * Oct 28, 2026; any other call is
+ * Oct 28, 2026; `DELETE /api/mcps/:id/api-key` is kept in `removed` and, once
+ * `held` resolves when set, removes the key; any other call is
  * "who is signed in?" (`session`).
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
@@ -32,8 +33,9 @@ const server = vi.hoisted(() => {
     mcps: { id: string }[];
     keys: Record<string, { savedAt: string; readable: boolean } | null>;
     saved: string[];
+    removed: string[];
     held: Promise<void> | null;
-  } = { session: null, mcps: [], keys: {}, saved: [], held: null };
+  } = { session: null, mcps: [], keys: {}, saved: [], removed: [], held: null };
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -48,6 +50,12 @@ const server = vi.hoisted(() => {
       await state.held;
       state.keys[id] = { savedAt: '2026-10-28T09:30:00.000Z', readable: true };
     }
+    if (init?.method === 'DELETE') {
+      state.removed.push(id);
+      await state.held;
+      state.keys[id] = null;
+      return new Response(null, { status: 204 });
+    }
     return json({ apiKey: state.keys[id] ?? null });
   }) as typeof fetch;
   return state;
@@ -57,6 +65,7 @@ afterEach(() => {
   server.mcps = [];
   server.keys = {};
   server.saved = [];
+  server.removed = [];
   server.held = null;
   window.history.pushState({}, '', '/');
 });
@@ -177,5 +186,20 @@ describe('Replacing or removing the key', () => {
       saved: (await screen.findByText('Saved on Oct 28, 2026')) !== null,
       sent: server.saved,
     }).toEqual({ saved: true, sent: ['secret_ntn_5678'] });
+  });
+
+  it('removes the key: "Remove" brings the page back to the empty field (contract 6, D3)', async () => {
+    server.mcps = [NOTION];
+    server.keys['notion-id'] = { savedAt: '2026-10-27T09:30:00.000Z', readable: true };
+    const user = userEvent.setup();
+    render(<ApiKeyScreen mcpId="notion-id" />);
+
+    await user.click(await screen.findByRole('button', { name: 'Remove' }));
+
+    expect({
+      field: ((await screen.findByLabelText('API key')) as HTMLInputElement).value,
+      saved: screen.queryByText(/^Saved on/) !== null,
+      removed: server.removed,
+    }).toEqual({ field: '', saved: false, removed: ['notion-id'] });
   });
 });
