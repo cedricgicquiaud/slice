@@ -324,6 +324,18 @@ describe('an MCP whose key is saved on SLICE', () => {
       apiKeys: ['saved-key-0172'],
     });
   });
+
+  it('calls the API with Authorization: Bearer and the saved key for an MCP with a token (contract 3, D7)', async () => {
+    const { id } = await store.put(threeActions(), account.workspaceId, CREATED);
+    await saveKey(id, 'saved-token-0172');
+    received = [];
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`);
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    expect(received.map((r) => r.auth)).toEqual(['Bearer saved-token-0172']);
+  });
 });
 
 /** `config`, whose API's actions are exactly its own: every call of them is noted (D2). */
