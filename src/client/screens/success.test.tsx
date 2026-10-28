@@ -123,3 +123,30 @@ describe('<SuccessScreen />', () => {
     });
   });
 });
+
+// WAT-179 — the end of the creation leads to the "API key" page of an MCP by API key or by token.
+describe('hosted MCP that takes a saved key', () => {
+  function setupHostedAs(upstreamAuth: SliceConfig['upstreamAuth']) {
+    URL.createObjectURL = vi.fn(() => 'blob:fake');
+    URL.revokeObjectURL = vi.fn();
+    render(
+      <ToastProvider>
+        <SuccessScreen
+          config={{ ...CONFIG, upstreamAuth }}
+          endpointCount={23}
+          economySnapshot={74}
+          hostedUrl="https://slice.test/m/abc123"
+          hostedId="abc123"
+          onRestart={vi.fn()}
+          onBackToSelection={vi.fn()}
+        />
+      </ToastProvider>
+    );
+  }
+
+  it('links an MCP by API key to its API key page with "Add your API key" (contract 8, D1)', () => {
+    setupHostedAs({ type: 'apiKey', headerName: 'X-Shopify-Access-Token' });
+
+    expect(screen.getByRole('link', { name: 'Add your API key' })).toHaveAttribute('href', '/mcps/abc123/api-key');
+  });
+});
