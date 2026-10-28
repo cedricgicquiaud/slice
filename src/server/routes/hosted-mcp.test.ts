@@ -336,6 +336,17 @@ describe('an MCP whose key is saved on SLICE', () => {
 
     expect(received.map((r) => r.auth)).toEqual(['Bearer saved-token-0172']);
   });
+
+  it('calls the API without any key when none is saved and the agent sends none, as before (D6)', async () => {
+    const { id } = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    received = [];
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`);
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    expect(received.map(({ auth, apiKey }) => ({ auth, apiKey }))).toEqual([{ auth: undefined, apiKey: undefined }]);
+  });
 });
 
 /** `config`, whose API's actions are exactly its own: every call of them is noted (D2). */
