@@ -1,4 +1,5 @@
 // WAT-103/104 — "My MCPs": the account finds its MCPs, copies an address, deletes one.
+// WAT-179 — an MCP by API key or by token has a way to its "API key" page.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -163,6 +164,33 @@ describe('My MCPs', () => {
       ['History', '/mcps/notion-id/history'],
       ['Usage', '/mcps/notion-id/usage'],
     ]);
+  });
+
+  it('offers "API key" next to Usage, at /mcps/<id>/api-key, on the rows of an MCP by API key or by token only (contract 7, 16, D1, D8)', async () => {
+    server.mcps = [
+      { ...NOTION, id: 'shopify-id', apiName: 'Shopify', upstreamAuthType: 'apiKey' },
+      { ...NOTION, id: 'notion-id', apiName: 'Notion API', upstreamAuthType: 'bearer' },
+      { ...NOTION, id: 'stripe-id', apiName: 'Stripe API', upstreamAuthType: 'oauth2' },
+      { ...NOTION, id: 'public-id', apiName: 'Open Library', upstreamAuthType: 'none' },
+    ];
+
+    renderPage();
+
+    const linksOf = async (name: string) =>
+      within(await screen.findByRole('listitem', { name }))
+        .getAllByRole('link')
+        .map((link) => [link.textContent, link.getAttribute('href')]);
+    expect({
+      shopify: (await linksOf('Shopify')).slice(2),
+      notion: (await linksOf('Notion API')).slice(2),
+      stripe: (await linksOf('Stripe API')).slice(2),
+      public: (await linksOf('Open Library')).slice(2),
+    }).toEqual({
+      shopify: [['Usage', '/mcps/shopify-id/usage'], ['API key', '/mcps/shopify-id/api-key']],
+      notion: [['Usage', '/mcps/notion-id/usage'], ['API key', '/mcps/notion-id/api-key']],
+      stripe: [['Usage', '/mcps/stripe-id/usage']],
+      public: [['Usage', '/mcps/public-id/usage']],
+    });
   });
 
   it('offers "Edit actions" on each row, at /mcps/<id>/edit, as the only way to change an MCP (contract 2, D3, D10)', async () => {
