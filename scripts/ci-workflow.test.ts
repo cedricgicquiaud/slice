@@ -23,7 +23,8 @@ interface Workflow {
 }
 
 const ROOT = resolve(import.meta.dirname, '..');
-const workflow = yaml.load(readFileSync(resolve(ROOT, '.github/workflows/ci.yml'), 'utf8')) as Workflow;
+const ciFile = readFileSync(resolve(ROOT, '.github/workflows/ci.yml'), 'utf8');
+const workflow = yaml.load(ciFile) as Workflow;
 const gate = workflow.jobs.gate;
 
 /** The gate's step with a line of its script that starts with `command`. */
@@ -48,5 +49,9 @@ describe('the CI', () => {
     const check = gate.steps.slice(started + 1).find((step) => step.run?.includes('localhost:3001'))?.run ?? '';
     expect(check).toContain('for path in /api/health /; do');
     expect(check).toContain('[ "$status" = 200 ] || { docker logs slice; exit 1; }');
+  });
+
+  it('hands no build argument to the image', () => {
+    expect(ciFile).not.toContain('--build-arg');
   });
 });
