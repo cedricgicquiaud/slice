@@ -79,4 +79,10 @@ describe('the deployment', () => {
     });
     expect(JSON.stringify(deploy)).not.toMatch(/https?:\/\//);
   });
+
+  it('skips the call while the deploy webhook secret is not set', () => {
+    // A step's `if` sees the job's env, not its own: the secret goes in at job level.
+    expect(deploy?.env?.COOLIFY_DEPLOY_WEBHOOK).toBe('${{ secrets.COOLIFY_DEPLOY_WEBHOOK }}');
+    expect(deploy?.steps[0].if).toBe("env.COOLIFY_DEPLOY_WEBHOOK != ''");
+  });
 });
