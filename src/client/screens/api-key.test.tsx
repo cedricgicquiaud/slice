@@ -343,3 +343,18 @@ describe('Refusing an unusable key', () => {
     expect(server.saved).toEqual(['secret_ntn_1234']);
   });
 });
+
+describe('An MCP that takes no key', () => {
+  it('says a public MCP needs no API key, with neither field nor button (contract 16, D17)', async () => {
+    server.mcps = [{ ...NOTION, id: 'public-id', apiName: 'Open Library', upstreamAuthType: 'none' }];
+    window.history.pushState({}, '', '/mcps/public-id/api-key');
+
+    render(<App />);
+
+    expect({
+      message: (await screen.findByText('This MCP needs no API key.')) !== null,
+      field: screen.queryByLabelText('API key') !== null,
+      buttons: screen.queryAllByRole('button', { name: /save|replace|remove/i }).length,
+    }).toEqual({ message: true, field: false, buttons: 0 });
+  });
+});
