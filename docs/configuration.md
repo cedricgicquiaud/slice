@@ -107,7 +107,7 @@ SLICE expects **one** reverse proxy in front of it (in production, Coolify's), w
 Without a proxy, or behind two, the last address of `X-Forwarded-For` is not one the proxy wrote: a visitor reaching
 SLICE directly writes it themselves. Do not publish SLICE's port; let the one proxy be the only way in.
 
-In development, the Vite page relays `/m` to the API server as it relays `/api`: an MCP address on
+In development, the Vite page relays `/m/<id>` to the API server as it relays `/api`: an MCP address on
 `http://localhost:5173` answers.
 
 ### Development scripts
