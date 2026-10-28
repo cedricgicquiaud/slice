@@ -78,7 +78,11 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
           </p>
           {apiKey && (
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              <p className="text-sm text-foreground">Saved on {CREATED.format(new Date(apiKey.savedAt))}</p>
+              {apiKey.readable ? (
+                <p className="text-sm text-foreground">Saved on {CREATED.format(new Date(apiKey.savedAt))}</p>
+              ) : (
+                <p className="text-sm text-destructive">This key can no longer be read. Replace it.</p>
+              )}
               {!replacing && (
                 <>
                   <Button type="button" variant="outline" size="sm" onClick={() => setReplacing(true)}>
