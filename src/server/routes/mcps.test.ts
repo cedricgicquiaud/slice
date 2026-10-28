@@ -959,5 +959,20 @@ describe('/api/mcps/:id/api-key', () => {
         kept: hasKey ? { key: myKey } : undefined,
       });
     });
+
+    it('answers 403 to a key sent from another site, and saves nothing (D16)', async () => {
+      const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+
+      const res = await fetch(`${guarded.url}/api/mcps/${id}/api-key`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', cookie: account.cookie, origin: 'https://evil.example' },
+        body: JSON.stringify({ apiKey: randomApiKey() }),
+      });
+
+      expect({ status: res.status, kept: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
+        status: 403,
+        kept: undefined,
+      });
+    });
   });
 });
