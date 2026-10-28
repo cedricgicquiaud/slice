@@ -72,4 +72,16 @@ describe('POST /api/dev/mcps/:id/api-key/garble', () => {
       read: { apiKey: { savedAt: '2026-10-28T09:30:00.000Z', readable: false } },
     });
   });
+
+  it('does not exist when NODE_ENV=production: the key stays readable (D17)', async () => {
+    const id = await mcpWithAKey();
+    const app = sliceApp({ nodeEnv: 'production' });
+
+    const garbled = await request(app).post(`/api/dev/mcps/${id}/api-key/garble`).set('cookie', account.cookie);
+
+    expect({ garbled: garbled.status, state: await apiKeys.stateOf(id) }).toEqual({
+      garbled: 404,
+      state: { savedAt: SAVED, readable: true },
+    });
+  });
 });
