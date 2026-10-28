@@ -105,10 +105,17 @@ function agentKey(): string | undefined {
   return token === PASTE_YOUR_TOKEN_HERE ? undefined : token;
 }
 
-/** The value of the key saved on SLICE for the MCP the request is for, if it has one. */
+/** What the agent reads when the key saved on its MCP can no longer be read (D17). */
+export const SAVED_KEY_UNREADABLE = 'The API key saved on this MCP can no longer be read. Replace it on SLICE.';
+
+/**
+ * The value of the key saved on SLICE for the MCP the request is for, if it has one.
+ * One SLICE can no longer read is never used: the call fails as SLICE's own error (D17).
+ */
 function savedKey(): string | undefined {
   const saved = relayStore.getStore()?.savedKey;
-  return saved && 'key' in saved ? saved.key : undefined;
+  if (saved && 'unreadable' in saved) throw new Error(SAVED_KEY_UNREADABLE);
+  return saved?.key;
 }
 
 /**
@@ -217,6 +224,10 @@ async function callUpstream(
   allowPrivateHosts: boolean,
   timeoutMs: number
 ): Promise<unknown> {
+  const ownKey = agentKey();
+  const token = ownKey ?? savedKey();
+  // The saved key never reaches the agent: an API copying it into its error has it hidden (D12).
+  const hidden = ownKey === undefined ? token : undefined;
   // Defense in depth: re-check the host at request time, not just at config
   // creation. The caller controls neither host nor protocol here (both are
   // fixed in the stored config), but DNS for a hostname could have changed.
@@ -252,10 +263,6 @@ async function callUpstream(
     const value = args[p.name];
     if (value !== undefined && value !== null) headers.set(p.name, String(value));
   }
-  const ownKey = agentKey();
-  const token = ownKey ?? savedKey();
-  // The saved key never reaches the agent: an API copying it into its error has it hidden (D12).
-  const hidden = ownKey === undefined ? token : undefined;
   if (token) {
     // oauth2 is relayed exactly like bearer here: the hosted runtime never runs
     // the client_credentials flow (no secret on SLICE Cloud) — the agent's own
