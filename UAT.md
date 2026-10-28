@@ -1168,4 +1168,119 @@ _Section écrite par la livraison 2._
 
 ### Livraison 3 — J'enregistre ma clé sur la page « API key » de mon MCP
 
-_Section écrite par la livraison 3._
+Cette livraison ne touche que les écrans : la page « API key », son bouton dans « My MCPs », son lien en fin de
+création, et les textes qui disaient « never stored ». L'API de la clé est celle de la livraison 1.
+
+**Préparer la recette**
+
+- Le fichier `.env` porte une `SLICE_ENCRYPTION_KEY` (voir la livraison 1). Lancer `pnpm dev` et ouvrir
+  http://localhost:5173.
+- Coller l'amorce `.pilot/recette/amorce-api-key.js` dans la console du navigateur, puis recharger la page (Cmd+R).
+  Elle ouvre une session pour `recette@slice.local` et prépare cinq MCP hébergés, un par état de la page (un MCP déjà
+  là est repris, et son état de clé remis) :
+  - « Recette Key Empty » : à clé d'API, sans clé ;
+  - « Recette Key Saved » : à clé d'API, clé enregistrée ;
+  - « Recette Token Unreadable » : à jeton, clé enregistrée puis rendue illisible (comme après un changement de
+    `SLICE_ENCRYPTION_KEY`) ;
+  - « Recette OAuth2 » : en OAuth2 ;
+  - « Recette Public » : sans accès.
+
+  La page s'ouvre sur « My MCPs ».
+- Pour ouvrir directement la page d'un état : l'amorce `.pilot/recette/amorce-api-key-<état>.js` (`empty`, `saved`,
+  `unreadable`, `oauth2`, `none`), collée de la même façon, remet ce seul MCP dans son état et place la page sur sa
+  page « API key ».
+- La clé de recette est `slice-recette-key-0123456789abcdefghijkl`. Toute clé inventée fait l'affaire : elle n'est
+  jamais essayée auprès de l'API.
+
+**Je colle ma clé sur la page « API key » de mon MCP, et je ne la revois jamais (WAT-176)**
+
+- [ ] Sur « My MCPs », cliquer « API key » sur « Recette Key Empty » : l'adresse devient
+  `http://localhost:5173/mcps/<identifiant>/api-key`. La page montre en titre « Recette Key Empty », « Back to My MCPs »
+  au-dessus, et pas les trois étapes du parcours de création.
+- [ ] La page affiche « Your Recette Key Empty key is used for every call this MCP makes. SLICE keeps it encrypted
+  and never shows it again. » puis « Anyone with this MCP's address acts with your key. Keep the address private. »
+- [ ] Coller `slice-recette-key-0123456789abcdefghijkl` dans le champ « API key », cliquer « Save » : le champ
+  disparaît, la page montre « Saved on <date du jour> » avec deux boutons, « Replace » et « Remove ».
+- [ ] La date s'écrit comme les dates de création de « My MCPs » : mois abrégé, jour, année, sans heure (par exemple
+  « Saved on Oct 28, 2026 »).
+- [ ] Recharger la page (Cmd+R) : la même page revient, toujours « Saved on <date> », sans champ.
+- [ ] Le bouton « Save » se grise le temps de l'enregistrement : un double clic rapide sur « Save » n'enregistre
+  qu'une fois. Preuve aussi par le test « greys "Save" during the call: a double click saves once (idiom) »
+  (`src/client/screens/api-key.test.tsx`).
+- [ ] Refus : après « Save », la clé ne se voit nulle part. Chercher `0123456789` dans la page (Cmd+F) : aucun
+  résultat. Recharger, chercher encore : aucun résultat.
+- [ ] Refus : ouvrir `http://localhost:5173/mcps/nexistepas/api-key` : la page affiche en titre « MCP not found » et,
+  dessous, « There is no MCP at this address in your account. », sans champ, comme « Usage ».
+- [ ] Refus : la page « API key » d'un MCP d'un autre compte répond de même. Dans une fenêtre de navigation privée sur
+  http://localhost:5173, se connecter par code e-mail avec `voisin@example.com` (le code s'affiche dans le terminal de
+  `pnpm dev`), puis ouvrir `http://localhost:5173/mcps/<identifiant de « Recette Key Saved »>/api-key` : « MCP not
+  found », sans champ ni date.
+
+**Je remplace ou retire ma clé ; une clé illisible me demande de la remplacer (WAT-177)**
+
+- [ ] Sur la page de « Recette Key Saved » (amorce `amorce-api-key-saved.js`), cliquer « Replace » : le champ « API
+  key » revient, vide, sous « Saved on <date> ». Coller `slice-recette-key-remplacee`, cliquer « Save » : la page
+  montre « Saved on <date du jour> », sans champ.
+- [ ] Cliquer « Remove » : la page revient au champ « API key » vide et au bouton « Save » ; « Saved on » a disparu.
+  Recharger : toujours le champ vide.
+- [ ] Refus : après « Remove », chercher `remplacee` dans la page (Cmd+F) : aucun résultat.
+- [ ] « Replace » et « Remove » se grisent le temps du retrait : un double clic rapide sur « Remove » ne l'envoie
+  qu'une fois. Preuve par le test « greys "Replace" and "Remove" during the removal: a double click removes once
+  (idiom) ».
+- [ ] Sur la page de « Recette Token Unreadable » (amorce `amorce-api-key-unreadable.js`) : à la place de « Saved on
+  <date> », la page affiche « This key can no longer be read. Replace it. », avec « Replace » et « Remove ».
+  « Replace », coller une clé, « Save » : « Saved on <date du jour> » revient.
+- [ ] Un retrait refusé par le serveur laisse la clé et affiche le message du serveur sous le titre, avec le même
+  espace que « Version N restored » sur « History ». Preuve par le test « keeps the key and shows the server's message
+  under the title, spaced mt-4, when the removal is refused ».
+
+**La page refuse une clé inutilisable, et un MCP sans clé possible n'a pas de champ (WAT-178)**
+
+Sur la page de « Recette Key Empty » (amorce `amorce-api-key-empty.js`). Après chaque refus, recharger la page : le
+champ est toujours vide et aucune date ne s'affiche, preuve que rien n'a été enregistré.
+
+- [ ] Refus : cliquer « Save » sans rien coller : sous le champ, en rouge, « This key can't be used: it is empty. »
+- [ ] Refus : coller une clé de 4 097 caractères (dans la console : `copy('k'.repeat(4097))`, puis coller dans le
+  champ), « Save » : sous le champ, « This key can't be used: it is longer than 4,096 characters. »
+- [ ] Refus : coller `secret_ntn_12€34`, « Save » : sous le champ, « This key can't be used: it contains a character
+  an API can't receive. »
+- [ ] Une clé copiée avec un retour à la ligne final et des espaces autour (`  slice-recette-key-final  ` suivi d'un
+  retour à la ligne) est enregistrée sans eux : « Saved on <date du jour> ». La valeur rangée ne se relit pas à
+  l'écran ; preuve par le test « saves a key pasted with a final line break and spaces at its ends without them »,
+  qui lit la clé envoyée au serveur : `secret_ntn_1234`.
+- [ ] Refus : sur « Recette Key Saved », « Replace », coller `secret_ntn_12€34`, « Save » : le message de refus
+  s'affiche sous le champ, et « Saved on <date> » reste affiché au-dessus. Recharger : toujours la même date.
+- [ ] La page de « Recette Public » (amorce `amorce-api-key-none.js`) affiche « This MCP needs no API key. », sans
+  champ, sans « Save », sans les deux phrases sur la clé.
+- [ ] La page de « Recette OAuth2 » (amorce `amorce-api-key-oauth2.js`) affiche « This MCP gets its access from your
+  agent on every call. », sans champ ni bouton.
+
+**J'arrive à la page « API key » depuis « My MCPs » ou la fin de création, et plus aucun écran ne dit « never
+stored » (WAT-179)**
+
+- [ ] Sur « My MCPs » (amorce `amorce-api-key.js`), les lignes de « Recette Key Empty », « Recette Key Saved » et
+  « Recette Token Unreadable » portent, dans cet ordre, « Edit actions », « History », « Usage », « API key ». Chaque
+  « API key » mène à `/mcps/<identifiant du MCP>/api-key`.
+- [ ] Refus : les lignes de « Recette OAuth2 » et « Recette Public » n'ont pas de bouton « API key » (« Edit
+  actions », « History », « Usage » seulement).
+- [ ] Créer un MCP depuis l'écran d'accueil avec `fixtures/uat-apikey-auth.yaml` (clé d'API en en-tête) : à l'étape 3,
+  la carte « SLICE Cloud » dit « We host it and use your API key: relayed from your agent, or saved once and kept
+  encrypted. You get a URL to paste into your agent. »
+- [ ] « Deploy to SLICE Cloud » : l'écran de fin dit « Paste the snippet below into your agent, then replace
+  PASTE_YOUR_TOKEN_HERE with the token of your target API, or save it once in SLICE: we keep it encrypted. », suivi
+  du lien « Add your API key ». Le lien ouvre la page « API key » du MCP qui vient d'être créé (même identifiant que
+  la fin de l'adresse affichée, après `/m/`).
+- [ ] Les extraits de configuration de l'écran de fin (onglets sous le lien) sont les mêmes qu'avant cette livraison :
+  le lien s'ajoute au-dessus, rien ne change dans les onglets. Preuve aussi par le test « leaves the configuration
+  snippets as they were without the link (D16) » (`src/client/screens/success.test.tsx`).
+- [ ] Refus : créer un MCP depuis `fixtures/uat-no-auth.yaml`, « None » choisi à l'étape 3 : l'écran de fin n'a pas
+  de lien « Add your API key ». Un MCP en OAuth2 (`client_credentials`) n'a pas de lien non plus, et son texte finit
+  par « We relay it on every call. » : preuve par le test « never says "never stored", whatever the access, and links
+  an MCP by API key or by token only » (`src/client/screens/success.test.tsx`), faute de description en
+  `client_credentials` dans `fixtures/` (`uat-oauth2.yaml` est en `authorizationCode`, traité comme un jeton : son
+  écran de fin a le lien).
+- [ ] Refus : aucun écran ne dit plus « never stored ». Chercher « never stored » (Cmd+F) sur la carte « SLICE Cloud »
+  de l'étape 3 et sur l'écran de fin, pour `uat-apikey-auth.yaml` puis `uat-no-auth.yaml` : aucun résultat.
+- [ ] Les amorces font apparaître les cinq états : après chacune des amorces `amorce-api-key-empty.js`, `-saved.js`,
+  `-unreadable.js`, `-oauth2.js` et `-none.js`, la page ouverte montre respectivement le champ vide, « Saved on
+  <date> », « This key can no longer be read. Replace it. », le texte OAuth2 et « This MCP needs no API key. ».
