@@ -13,3 +13,12 @@ FROM base AS build
 RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm build
+
+# Started like `pnpm start`, from the folder of package.json: the parse child
+# process resolves from the working directory.
+FROM base AS runtime
+RUN pnpm install --frozen-lockfile --prod
+COPY --from=build /app/dist ./dist
+USER node
+EXPOSE 3001
+CMD ["pnpm", "start"]
