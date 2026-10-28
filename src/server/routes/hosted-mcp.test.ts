@@ -497,6 +497,22 @@ describe('the saved key during a call', () => {
 
     expect(lines.filter((line) => line.includes('saved-key-0175-logged'))).toEqual([]);
   });
+
+  it('is in no note of the calls kept for "Usage", the call having failed with the key copied by the API (D12)', async () => {
+    const { id } = await store.put(withApiActions(withApiKeyHeader(threeActions())), account.workspaceId, CREATED);
+    await saveKey(id, 'saved-key-0175-noted');
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`);
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.callTool({ name: 'delete_thing', arguments: { id: 'echo-key' } });
+    await agent.close();
+
+    await vi.waitFor(async () => expect(await calls.of(id)).toHaveLength(2));
+    const noted = await database.rows<{ row: string }>(
+      sql`select row_to_json(c)::text as row from connector_calls c where connector_id = ${id}`
+    );
+    expect(noted.filter(({ row }) => row.includes('saved-key-0175-noted'))).toEqual([]);
+  });
 });
 
 /** `config`, whose API's actions are exactly its own: every call of them is noted (D2). */
