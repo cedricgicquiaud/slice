@@ -12,6 +12,7 @@ import { createMcpsRouter } from './routes/mcps';
 import type { HostedStore } from './services/hosted-store';
 import type { AccountMcps } from './services/account-mcps';
 import type { McpCalls } from './services/mcp-calls';
+import type { McpApiKeys } from './services/mcp-api-key';
 import type { SliceAuth } from './auth/auth';
 import { devSignIn } from './auth/dev-sign-in';
 import { requireSameOrigin, requireSession } from './middleware/require-session';
@@ -36,6 +37,8 @@ export interface CreateAppOptions {
   upstreamTimeoutMs?: number;
   /** The MCPs of each account's workspace. Without it, `/api/mcps` is not mounted. */
   accountMcps?: AccountMcps;
+  /** The MCPs' API keys, encrypted. Without them, `/api/mcps/:id/api-key` is not mounted. */
+  mcpApiKeys?: McpApiKeys;
   /** Clock that dates a created connector. Defaults to the system clock. */
   now?: () => Date;
   /** Accounts and sessions. Without it, every `/api/*` call but health is refused. */
@@ -104,8 +107,11 @@ export function createApp(options: CreateAppOptions = {}): Express {
   // 10 MB app-level one is bypassed by the path-specific router order.
   app.use('/api/generate', createGenerateRouter());
 
-  // GET /api/mcps, DELETE /api/mcps/:id — the account's own MCPs (D9, D10).
-  if (options.accountMcps) app.use('/api/mcps', createMcpsRouter(options.accountMcps));
+  // GET /api/mcps, DELETE /api/mcps/:id — the account's own MCPs (D9, D10), and their API keys (D3).
+  if (options.accountMcps) {
+    const now = options.now ?? (() => new Date());
+    app.use('/api/mcps', createMcpsRouter(options.accountMcps, { apiKeys: options.mcpApiKeys, now }));
+  }
 
   // Pivot-4 — SLICE Cloud. POST /api/host stores a config and returns a URL;
   // /m/:id is the hosted MCP runtime (not under /api/, so not rate-limited

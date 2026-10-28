@@ -3,7 +3,8 @@
  * (D9), `GET /api/mcps/:id/versions` reads the versions of one (D8),
  * `POST /api/mcps/:id/versions/:number/restore` makes one of them active again
  * (D9), `GET /api/mcps/:id/usage` reads what agents did with one over the
- * last 30 days (D10), `DELETE /api/mcps/:id` deletes one at once (D10). Mounted under the
+ * last 30 days (D10), `DELETE /api/mcps/:id` deletes one at once (D10),
+ * `GET`/`PUT /api/mcps/:id/api-key` tell and save the key of one, never showing it (D3). Mounted under the
  * session guard, which sets `res.locals.workspaceId`: another workspace's
  * MCPs are out of reach.
  */
@@ -11,6 +12,7 @@ import { Router } from 'express';
 import type { ApiErrorPayload } from '@shared/types';
 import { mcpSelectionChangeSchema } from '@shared/config-schema';
 import type { AccountMcps } from '../services/account-mcps';
+import type { McpApiKeys, McpApiKeyState } from '../services/mcp-api-key';
 import type { SaveRefusal } from '../services/mcp-selection';
 import type { RestoreRefusal } from '../services/mcp-versions';
 
@@ -44,8 +46,21 @@ const RESTORE_REFUSALS: Record<RestoreRefusal, ApiErrorPayload> = {
   'unknown-version': UNKNOWN_VERSION,
 };
 
-export function createMcpsRouter(accountMcps: AccountMcps): Router {
+/** What is told of a key: when it was saved and whether SLICE can read it, never its value (D3). */
+function apiKeyPayload(state: McpApiKeyState | undefined) {
+  return { apiKey: state ? { savedAt: state.savedAt.toISOString(), readable: state.readable } : null };
+}
+
+export interface McpsRouterOptions {
+  /** The MCPs' API keys. Without them, `/api/mcps/:id/api-key` is not mounted. */
+  apiKeys?: McpApiKeys;
+  /** Clock that dates a saved key. */
+  now: () => Date;
+}
+
+export function createMcpsRouter(accountMcps: AccountMcps, options: McpsRouterOptions = { now: () => new Date() }): Router {
   const router = Router();
+  const { apiKeys, now } = options;
 
   router.get('/', async (req, res) => {
     const mcps = await accountMcps.list(res.locals.workspaceId);
@@ -109,6 +124,17 @@ export function createMcpsRouter(accountMcps: AccountMcps): Router {
     }
     res.json({ number, activeSince: outcome.activeSince });
   });
+
+  if (apiKeys) {
+    router.get('/:id/api-key', async (req, res) => {
+      res.json(apiKeyPayload(await apiKeys.stateOf(req.params.id)));
+    });
+
+    router.put('/:id/api-key', async (req, res) => {
+      await apiKeys.save(req.params.id, req.body.apiKey, now());
+      res.json(apiKeyPayload(await apiKeys.stateOf(req.params.id)));
+    });
+  }
 
   router.delete('/:id', async (req, res) => {
     if (!(await accountMcps.delete(res.locals.workspaceId, req.params.id))) {
