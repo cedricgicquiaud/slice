@@ -215,4 +215,25 @@ describe('Replacing or removing the key', () => {
       replace: screen.queryByRole('button', { name: 'Replace' }) !== null,
     }).toEqual({ unreadable: true, saved: false, replace: true });
   });
+
+  it('greys "Replace" and "Remove" during the removal: a double click removes once (idiom)', async () => {
+    server.mcps = [NOTION];
+    server.keys['notion-id'] = { savedAt: '2026-10-27T09:30:00.000Z', readable: true };
+    let answer = () => {};
+    server.held = new Promise<void>((resolve) => (answer = resolve));
+    const user = userEvent.setup();
+    render(<ApiKeyScreen mcpId="notion-id" />);
+    const remove = await screen.findByRole('button', { name: 'Remove' });
+    const replace = screen.getByRole('button', { name: 'Replace' });
+
+    await user.dblClick(remove);
+    const greyedDuringTheCall = { remove: remove.hasAttribute('disabled'), replace: replace.hasAttribute('disabled') };
+    answer();
+    await screen.findByLabelText('API key');
+
+    expect({ greyedDuringTheCall, removals: server.removed.length }).toEqual({
+      greyedDuringTheCall: { remove: true, replace: true },
+      removals: 1,
+    });
+  });
 });
