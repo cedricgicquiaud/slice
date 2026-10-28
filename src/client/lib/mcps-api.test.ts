@@ -6,6 +6,7 @@ import {
   getMcpSelection,
   getMcpUsage,
   listMcps,
+  removeMcpApiKey,
   restoreMcpVersion,
   saveMcpApiKey,
   saveMcpSelection,
@@ -293,5 +294,22 @@ describe('saveMcpApiKey', () => {
         ],
       ],
     });
+  });
+});
+
+describe('removeMcpApiKey', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("asks the server to remove the MCP's key with DELETE /api/mcps/:id/api-key", async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    globalThis.fetch = fetchMock as typeof fetch;
+
+    await removeMcpApiKey('notion-id');
+
+    expect(fetchMock.mock.calls).toEqual([['/api/mcps/notion-id/api-key', { method: 'DELETE' }]]);
   });
 });
