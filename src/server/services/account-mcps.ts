@@ -47,6 +47,13 @@ export interface AccountMcps {
 
 export function createAccountMcps(database: Database): AccountMcps {
   const { db } = database;
+  async function upstreamAuthTypeOf(workspaceId: string, id: string): Promise<UpstreamAuthType | undefined> {
+    const [owned] = await db
+      .select({ upstreamAuthType: connectors.upstreamAuthType })
+      .from(connectors)
+      .where(and(eq(connectors.id, id), eq(connectors.workspaceId, workspaceId)));
+    return owned?.upstreamAuthType;
+  }
   return {
     async list(workspaceId) {
       const rows = await db
@@ -89,20 +96,8 @@ export function createAccountMcps(database: Database): AccountMcps {
         .returning();
       return deleted.length > 0;
     },
-    async owns(workspaceId, id) {
-      const [owned] = await db
-        .select({ id: connectors.id })
-        .from(connectors)
-        .where(and(eq(connectors.id, id), eq(connectors.workspaceId, workspaceId)));
-      return owned !== undefined;
-    },
-    async upstreamAuthTypeOf(workspaceId, id) {
-      const [owned] = await db
-        .select({ upstreamAuthType: connectors.upstreamAuthType })
-        .from(connectors)
-        .where(and(eq(connectors.id, id), eq(connectors.workspaceId, workspaceId)));
-      return owned?.upstreamAuthType;
-    },
+    owns: async (workspaceId, id) => (await upstreamAuthTypeOf(workspaceId, id)) !== undefined,
+    upstreamAuthTypeOf,
     history: (workspaceId, id) => readMcpHistory(database, workspaceId, id),
     selection: (workspaceId, id) => readMcpSelection(database, workspaceId, id),
     saveSelection: (workspaceId, id, change) => saveMcpSelection(database, workspaceId, id, change, new Date()),
