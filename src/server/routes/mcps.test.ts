@@ -839,6 +839,23 @@ describe('/api/mcps/:id/api-key', () => {
     });
   });
 
+  it('shows the key of my MCP in no answer of the API: key, list, versions, selection, usage (contract 14, D3, D12)', async () => {
+    const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+    const apiKey = randomApiKey();
+
+    const saved = await saveKey(id, apiKey);
+    const answers = [saved, await readKey(id)];
+    for (const path of ['/api/mcps', `/api/mcps/${id}/versions`, `/api/mcps/${id}/selection`, `/api/mcps/${id}/usage`]) {
+      answers.push(await fetch(`${keys.url}${path}`, { headers: { cookie: account.cookie } }));
+    }
+    const read = await Promise.all(answers.map(async (res) => ({ status: res.status, text: await res.text() })));
+
+    expect({
+      statuses: read.map((answer) => answer.status),
+      showingTheKey: read.filter((answer) => answer.text.includes(apiKey)).length,
+    }).toEqual({ statuses: [200, 200, 200, 200, 200, 200], showingTheKey: 0 });
+  });
+
   describe('refused', () => {
     let guarded: { url: string; close(): Promise<void> };
     beforeAll(async () => {
