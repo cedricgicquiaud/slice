@@ -141,4 +141,21 @@ describe('API key', () => {
       inAField: Array.from(document.querySelectorAll('input'), (input) => input.value).includes('secret_ntn_1234'),
     }).toEqual({ inThePage: false, inAField: false });
   });
+
+  // The server answers another account's MCP exactly as an unknown one: one case for the page.
+  it("says the MCP is not found at the address of an unknown MCP or of another account's, as Usage does, with no field (contract 17, D13)", async () => {
+    server.mcps = [NOTION];
+    window.history.pushState({}, '', '/mcps/someone-elses-id/api-key');
+
+    render(<App />);
+
+    const notFound = await screen.findByRole('heading', { name: 'MCP not found' });
+    const message = screen.getByText('There is no MCP at this address in your account.');
+    expect({
+      notFound: notFound !== null,
+      spaced: message.classList.contains('mt-4'),
+      field: screen.queryByLabelText('API key') !== null,
+      back: screen.getByRole('link', { name: 'Back to My MCPs' }).getAttribute('href'),
+    }).toEqual({ notFound: true, spaced: true, field: false, back: '/mcps' });
+  });
 });
