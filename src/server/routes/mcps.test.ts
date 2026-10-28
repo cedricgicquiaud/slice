@@ -807,4 +807,51 @@ describe('/api/mcps/:id/api-key', () => {
       body: { apiKey: { savedAt: '2026-10-28T09:30:00.000Z', readable: false } },
     });
   });
+
+  describe('refused', () => {
+    let guarded: { url: string; close(): Promise<void> };
+    beforeAll(async () => {
+      guarded = await startApp({ mcpApiKeys: createMcpApiKeys(database, cipher), now: () => clock });
+    });
+    afterAll(async () => {
+      await guarded?.close();
+    });
+
+    /** A request on the key of the MCP `id`, as the signed-in account; without a session when `cookie` is `null`. */
+    function ask(method: 'GET' | 'PUT' | 'DELETE', id: string, cookie: string | null = account.cookie) {
+      return fetch(`${guarded.url}/api/mcps/${id}/api-key`, {
+        method,
+        headers: { 'content-type': 'application/json', ...(cookie && { cookie }) },
+        ...(method === 'PUT' && { body: JSON.stringify({ apiKey: randomApiKey() }) }),
+      });
+    }
+
+    it.each([
+      ['read', 'GET', false],
+      ['save', 'PUT', false],
+      ['replace', 'PUT', true],
+      ['remove', 'DELETE', true],
+    ] as const)(
+      "answers a request to %s the key of another account's MCP exactly as an unknown id, and leaves its key (contract 17, D13)",
+      async (what, method, hasKey) => {
+        const other = await createTestAccount({ database, email: `neighbour-key-${what}@example.com` });
+        const { id } = await store.put(NOTION, other.workspaceId, CREATED);
+        const theirKey = randomApiKey();
+        if (hasKey) await createMcpApiKeys(database, cipher).save(id, theirKey, SAVED);
+
+        const theirs = await ask(method, id);
+        const unknown = await ask(method, 'no-such-mcp-id');
+
+        expect({
+          theirs: { status: theirs.status, body: await theirs.text() },
+          unknown: { status: unknown.status, body: await unknown.text() },
+          kept: await createMcpApiKeys(database, cipher).keyOf(id),
+        }).toEqual({
+          theirs: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+          unknown: { status: 404, body: '{"code":"NOT_FOUND","message":"Unknown MCP id."}' },
+          kept: hasKey ? { key: theirKey } : undefined,
+        });
+      }
+    );
+  });
 });
