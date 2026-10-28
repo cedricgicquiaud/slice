@@ -236,4 +236,21 @@ describe('Replacing or removing the key', () => {
       removals: 1,
     });
   });
+
+  it('keeps no trace of the removed key on the page, its field empty (contract 14, D3)', async () => {
+    server.mcps = [NOTION];
+    const user = userEvent.setup();
+    render(<ApiKeyScreen mcpId="notion-id" />);
+    await user.click(await screen.findByLabelText('API key'));
+    await user.paste('secret_ntn_1234');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await user.click(await screen.findByRole('button', { name: 'Remove' }));
+    const field = (await screen.findByLabelText('API key')) as HTMLInputElement;
+
+    expect({
+      inThePage: document.body.innerHTML.includes('secret_ntn_1234'),
+      field: field.value,
+    }).toEqual({ inThePage: false, field: '' });
+  });
 });
