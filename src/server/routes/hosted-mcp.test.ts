@@ -4,11 +4,14 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { randomBytes } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { createApp } from '../app';
 import { createHostedStore, type HostedStore } from '../services/hosted-store';
 import { createAccountMcps } from '../services/account-mcps';
 import { createMcpCalls, type McpCalls } from '../services/mcp-calls';
+import { createMcpApiKeys, type McpApiKeys } from '../services/mcp-api-key';
+import { createKeyCipher } from '../services/key-cipher';
 import type { HostedMcpConfig } from '../services/hosted-mcp-factory';
 import { openDatabase, type Database } from '../db/client';
 import { migrateDatabase } from '../db/migrate';
@@ -43,6 +46,8 @@ let calls: McpCalls;
 let account: TestAccount;
 let app: Server;
 let baseUrl: string;
+/** The encryption key of the file's app: a key saved under another one is unreadable to it. */
+const cipher = createKeyCipher(randomBytes(32));
 
 const CREATED = new Date('2026-10-24T09:00:00.000Z');
 /** The servers' clock: every app of this file reads it, tests move it. */
@@ -67,6 +72,12 @@ beforeAll(async () => {
     if (req.url === '/things/echo') {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ body: 'API-RESPONSE-BODY' }));
+      return;
+    }
+    if (req.url === '/things/echo-key') {
+      // An API refusing the key it received, and copying it into its error.
+      res.writeHead(401, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: `Invalid API key: ${req.headers['x-api-key']}` }));
       return;
     }
     // `/things/404`, `/things/500`: the API answers that status code.
@@ -94,6 +105,7 @@ beforeAll(async () => {
     hostedStore: store,
     mcpCalls: calls,
     accountMcps: createAccountMcps(database),
+    mcpApiKeys: createMcpApiKeys(database, cipher),
     now,
     auth: account.auth,
   }).listen(0);
@@ -108,11 +120,12 @@ afterAll(async () => {
   await testDb?.dispose();
 });
 
-async function connectAgent(url: string, token: string): Promise<Client> {
+/** An agent connected to `url`, sending `token` as its own key; none without it. */
+async function connectAgent(url: string, token?: string): Promise<Client> {
   const client = new Client({ name: 'agent', version: '0.0.0' });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(url), {
-      requestInit: { headers: { Authorization: `Bearer ${token}` } },
+      requestInit: { headers: token === undefined ? {} : { Authorization: `Bearer ${token}` } },
     })
   );
   return client;
@@ -283,6 +296,260 @@ describe('hosted connector served from the database', () => {
     );
     expect(new Set(everything.map((r) => r.kind))).toEqual(new Set(['connector', 'version', 'action', 'api action']));
     expect(everything.filter((r) => /feedface|AGENT-SECRET|openapi: 3\.0\.3|info: \{ title/.test(r.row))).toEqual([]);
+  });
+});
+
+/** "Remove" on the "API key" page of the MCP `id`, as the signed-in account. */
+async function removeKey(id: string): Promise<void> {
+  const res = await fetch(`${baseUrl}/api/mcps/${id}/api-key`, { method: 'DELETE', headers: { cookie: account.cookie } });
+  expect(res.status).toBe(204);
+}
+
+/** "Save" on the "API key" page of the MCP `id`, as the signed-in account. */
+async function saveKey(id: string, apiKey: string): Promise<void> {
+  const res = await fetch(`${baseUrl}/api/mcps/${id}/api-key`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', cookie: account.cookie },
+    body: JSON.stringify({ apiKey }),
+  });
+  expect(res.status).toBe(200);
+}
+
+const withApiKeyHeader = (config: HostedMcpConfig): HostedMcpConfig => ({
+  ...config,
+  upstreamAuth: { type: 'apiKey', headerName: 'X-Api-Key' },
+});
+
+// WAT-172 — the key saved on SLICE serves when the agent sends none, for its own MCP only.
+describe('an MCP whose key is saved on SLICE', () => {
+  it('calls the API with the saved key in the header named at its creation, the agent sending none, and gives the agent the answer (contract 2, D7)', async () => {
+    const { id } = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    await saveKey(id, 'saved-key-0172');
+    received = [];
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`);
+    const answer = await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    expect({ answer, apiKeys: received.map((r) => r.apiKey) }).toEqual({
+      answer: { content: [{ type: 'text', text: '{\n  "ok": true\n}' }] },
+      apiKeys: ['saved-key-0172'],
+    });
+  });
+
+  it('calls the API with Authorization: Bearer and the saved key for an MCP with a token (contract 3, D7)', async () => {
+    const { id } = await store.put(threeActions(), account.workspaceId, CREATED);
+    await saveKey(id, 'saved-token-0172');
+    received = [];
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`);
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    expect(received.map((r) => r.auth)).toEqual(['Bearer saved-token-0172']);
+  });
+
+  it('calls the API without any key when none is saved and the agent sends none, as before (D6)', async () => {
+    const { id } = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    received = [];
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`);
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    expect(received.map(({ auth, apiKey }) => ({ auth, apiKey }))).toEqual([{ auth: undefined, apiKey: undefined }]);
+  });
+
+  it('never calls the API of another MCP of the same account with it (contract 19, D4)', async () => {
+    const withKey = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    const withoutKey = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    await saveKey(withKey.id, 'saved-key-0172-own');
+    received = [];
+
+    const agent = await connectAgent(`${baseUrl}/m/${withoutKey.id}`);
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    expect(received.map((r) => r.apiKey)).toEqual([undefined]);
+  });
+
+  it('is never sent by an MCP in OAuth2 or without access, even when a key line is in the database (D8)', async () => {
+    const oauth2 = await store.put(
+      { ...threeActions(), upstreamAuth: { type: 'oauth2', tokenUrl: 'https://auth.example.com/token', scopes: [] } },
+      account.workspaceId,
+      CREATED
+    );
+    const none = await store.put({ ...threeActions(), upstreamAuth: { type: 'none' } }, account.workspaceId, CREATED);
+    // "Save" refuses a key for these MCPs (WAT-171): the lines are written behind its back.
+    const keys = createMcpApiKeys(database, cipher);
+    await keys.save(oauth2.id, 'saved-key-0172-oauth2', CREATED);
+    await keys.save(none.id, 'saved-key-0172-none', CREATED);
+    received = [];
+
+    for (const { id } of [oauth2, none]) {
+      const agent = await connectAgent(`${baseUrl}/m/${id}`);
+      await agent.callTool({ name: 'list_things', arguments: {} });
+      await agent.close();
+    }
+
+    expect(received.map(({ auth, apiKey }) => ({ auth, apiKey }))).toEqual([
+      { auth: undefined, apiKey: undefined },
+      { auth: undefined, apiKey: undefined },
+    ]);
+  });
+});
+
+// WAT-174 — each request reads the key saved at its arrival: a key replaced or removed is never sent again.
+describe('the saved key of an MCP, replaced or removed', () => {
+  it('is sent no more after "Replace": every call arriving after it carries the new key (contract 5, D3, D6)', async () => {
+    const { id } = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    await saveKey(id, 'saved-key-0174-old');
+    received = [];
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`);
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await saveKey(id, 'saved-key-0174-new');
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    expect(received.map((r) => r.apiKey)).toEqual(['saved-key-0174-old', 'saved-key-0174-new', 'saved-key-0174-new']);
+  });
+
+  it('is sent no more after "Remove": the next call without the agent\'s key goes without any key (contract 6, D3)', async () => {
+    const { id } = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    await saveKey(id, 'saved-key-0174-removed');
+    received = [];
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`);
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await removeKey(id);
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    expect(received.map((r) => r.apiKey)).toEqual(['saved-key-0174-removed', undefined]);
+  });
+
+  it('serves a request begun before "Replace" with the key read at its arrival, to its last call (D6)', async () => {
+    const { id } = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    const keys = createMcpApiKeys(database, cipher);
+    await keys.save(id, 'saved-key-0174-before', CREATED);
+    // "Replace" lands once the request has read the key, before any of its calls reaches the API.
+    const replacedOnRead: McpApiKeys = {
+      ...keys,
+      keyOf: async (connectorId) => {
+        const read = await keys.keyOf(connectorId);
+        await keys.save(connectorId, 'saved-key-0174-after', CREATED);
+        return read;
+      },
+    };
+    const replacing = createApp({ nodeEnv: 'test', hostedStore: store, mcpApiKeys: replacedOnRead, now, auth: account.auth }).listen(0);
+    await new Promise<void>((r) => replacing.once('listening', r));
+    received = [];
+    try {
+      await postBatch(
+        `http://127.0.0.1:${(replacing.address() as AddressInfo).port}/m/${id}`,
+        [toolCall(1, 'list_things', {}), toolCall(2, 'delete_thing', { id: '42' })],
+        { agentKey: false }
+      );
+
+      expect(received.map((r) => r.apiKey)).toEqual(['saved-key-0174-before', 'saved-key-0174-before']);
+    } finally {
+      await new Promise<void>((r) => replacing.close(() => r()));
+    }
+  });
+});
+
+// WAT-175 — the saved key never leaves in clear during a call.
+describe('the saved key during a call', () => {
+  it('is replaced by [hidden] in what the agent reads when the API copies it into its error (contract 22, D12)', async () => {
+    const { id } = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    await saveKey(id, 'saved-key-0175-echoed');
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`);
+    const answer = await agent.callTool({ name: 'delete_thing', arguments: { id: 'echo-key' } });
+    await agent.close();
+
+    expect(answer).toEqual({
+      isError: true,
+      content: [{ type: 'text', text: 'Upstream 401 Unauthorized: {"error":"Invalid API key: [hidden]"}' }],
+    });
+  });
+
+  it('is written in no line of the server logs during a call, succeeded or failed (contract 13, D12)', async () => {
+    const { id } = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    await saveKey(id, 'saved-key-0175-logged');
+    const lines: string[] = [];
+    const logs = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        lines.push(args.map((arg) => (arg instanceof Error ? arg.stack : String(arg))).join(' '));
+      })
+    );
+    try {
+      const agent = await connectAgent(`${baseUrl}/m/${id}`);
+      await agent.callTool({ name: 'list_things', arguments: {} });
+      await agent.callTool({ name: 'delete_thing', arguments: { id: 'echo-key' } });
+      await agent.callTool({ name: 'delete_thing', arguments: { id: '500' } });
+      await agent.close();
+    } finally {
+      for (const log of logs) log.mockRestore();
+    }
+
+    expect(lines.filter((line) => line.includes('saved-key-0175-logged'))).toEqual([]);
+  });
+
+  it('is in no note of the calls kept for "Usage", the call having failed with the key copied by the API (D12)', async () => {
+    const { id } = await store.put(withApiActions(withApiKeyHeader(threeActions())), account.workspaceId, CREATED);
+    await saveKey(id, 'saved-key-0175-noted');
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`);
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.callTool({ name: 'delete_thing', arguments: { id: 'echo-key' } });
+    await agent.close();
+
+    await vi.waitFor(async () => expect(await calls.of(id)).toHaveLength(2));
+    const noted = await database.rows<{ row: string }>(
+      sql`select row_to_json(c)::text as row from connector_calls c where connector_id = ${id}`
+    );
+    expect(noted.filter(({ row }) => row.includes('saved-key-0175-noted'))).toEqual([]);
+  });
+
+  it('is not used when it can no longer be read: the API is not called, the agent is told to replace it, the call is a SLICE error (contract 21, D17)', async () => {
+    const { id } = await store.put(withApiActions(withApiKeyHeader(threeActions())), account.workspaceId, CREATED);
+    await createMcpApiKeys(database, createKeyCipher(randomBytes(32))).save(id, 'saved-key-0175-unreadable', CREATED);
+    received = [];
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`);
+    const answer = await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    await vi.waitFor(async () =>
+      expect({ answer, upstreamCalls: received.length, results: (await calls.of(id)).map((note) => note.result) }).toEqual({
+        answer: {
+          isError: true,
+          content: [{ type: 'text', text: 'The API key saved on this MCP can no longer be read. Replace it on SLICE.' }],
+        },
+        upstreamCalls: 0,
+        results: [{ kind: 'slice_error' }],
+      })
+    );
+  });
+
+  it('is neither in clear nor encrypted in the error the agent reads when it can no longer be read (contract 21, D12)', async () => {
+    const { id } = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    await createMcpApiKeys(database, createKeyCipher(randomBytes(32))).save(id, 'saved-key-0175-sealed', CREATED);
+    const [{ sealed }] = await database.rows<{ sealed: string }>(
+      sql`select encrypted_key as sealed from connector_keys where connector_id = ${id}`
+    );
+
+    const agent = await connectAgent(`${baseUrl}/m/${id}`);
+    const answer = JSON.stringify(await agent.callTool({ name: 'list_things', arguments: {} }));
+    await agent.close();
+
+    expect({ inClear: answer.includes('saved-key-0175-sealed'), encrypted: answer.includes(sealed) }).toEqual({
+      inClear: false,
+      encrypted: false,
+    });
   });
 });
 
@@ -564,14 +831,17 @@ describe('the note of an action call refused before the API', () => {
   });
 });
 
-/** Send several JSON-RPC messages in one request (a batch), as the SDK accepts them; the raw answer. */
-async function postBatch(url: string, messages: unknown[]): Promise<string> {
+/**
+ * Send several JSON-RPC messages in one request (a batch), as the SDK accepts them; the raw answer.
+ * The agent sends its own key, unless `agentKey` is false.
+ */
+async function postBatch(url: string, messages: unknown[], { agentKey = true } = {}): Promise<string> {
   const res = await fetch(url, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       accept: 'application/json, text/event-stream',
-      authorization: 'Bearer TOKEN',
+      ...(agentKey && { authorization: 'Bearer TOKEN' }),
     },
     body: JSON.stringify(messages),
   });

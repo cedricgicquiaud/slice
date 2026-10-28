@@ -6,7 +6,7 @@
  * Outputs are plain strings (not React nodes) so they can be passed through
  * `navigator.clipboard.writeText` without re-rendering.
  */
-import type { SliceConfig } from '@shared/types';
+import { PASTE_YOUR_TOKEN_HERE, type SliceConfig } from '@shared/types';
 
 const DEFAULT_HTTP_PORT = 8787;
 const PLACEHOLDER_HOST = 'your-host';
@@ -17,7 +17,7 @@ const PLACEHOLDER_PATH = '/absolute/path/to';
  * SLICE never stores it — the hosted runtime relays whatever the agent sends
  * in `Authorization: Bearer …` (RC2.2 / RC5.3).
  */
-export const TOKEN_PLACEHOLDER = 'PASTE_YOUR_TOKEN_HERE';
+export const TOKEN_PLACEHOLDER = PASTE_YOUR_TOKEN_HERE;
 
 /** True when the upstream API requires no credentials — no token to ask for. */
 function isPublicUpstream(config: SliceConfig): boolean {

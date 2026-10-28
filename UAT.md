@@ -1164,7 +1164,107 @@ puis le `GET` de la clé : il doit rendre encore la date notée, preuve que l'an
 
 ### Livraison 2 — Le MCP appelle l'API avec la clé enregistrée
 
-_Section écrite par la livraison 2._
+Cette livraison n'a pas d'écran : la clé s'enregistre par l'API (la page « API key » arrive en livraison 3), et l'agent
+est joué par `scripts/try-hosted.ts`, un vrai client MCP. L'API visée est `https://httpbin.org/anything`, un service
+public qui renvoie dans sa réponse les en-têtes qu'il a reçus : on lit donc, dans le résultat de l'appel, la clé que
+l'API a reçue. Les clés de recette sont fausses ; n'y mettre jamais une vraie clé.
+
+**Préparer la recette**
+
+- Lancer `pnpm dev` (le fichier `.env` porte `SLICE_ENCRYPTION_KEY`, voir la livraison 1), ouvrir
+  http://localhost:5173, coller dans la console du navigateur l'amorce `.pilot/amorce-recette.js` (session de
+  `recette@slice.local`), puis recharger la page.
+- Créer deux MCP depuis `fixtures/uat-no-auth.yaml` (« Anonymous Sample »), toutes les actions cochées. À l'étape 3,
+  cliquer le crayon « Edit base URL » et saisir `https://httpbin.org/anything`, puis :
+  - « Recette Clé » : nom `recette-cle`, accès « API Key », nom d'en-tête `X-Recette-Key` ;
+  - « Recette Jeton » : nom `recette-jeton`, accès « Bearer ».
+  Héberger chacun sur SLICE. L'identifiant de chaque MCP est la fin de son adresse à l'écran 4
+  (`http://localhost:3001/m/<identifiant>`).
+- Les commandes `fetch` ci-dessous se collent dans la console de http://localhost:5173 (remplacer `<identifiant>`) :
+  - « Save » : `await (await fetch('/api/mcps/<identifiant>/api-key', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ apiKey: '<la clé>' }) })).json()` ;
+  - « Remove » : `(await fetch('/api/mcps/<identifiant>/api-key', { method: 'DELETE' })).status`, qui rend `204`.
+- L'appel de l'agent se lance dans un terminal, à la racine du dépôt :
+  `pnpm exec tsx scripts/try-hosted.ts http://localhost:3001/m/<identifiant> list_items '{}'`. Pour que l'agent envoie
+  sa propre clé, préfixer la commande par `API_TOKEN=<sa clé>` ; sans préfixe, l'agent n'envoie aucune clé. Le
+  résultat s'affiche sous `Result:` ; les en-têtes reçus par l'API sont sous `"headers"`.
+
+**Sans clé de l'agent, l'appel part avec la clé enregistrée, et la clé d'un MCP ne sert qu'à lui (WAT-172)**
+
+- [ ] Clé d'API : « Save » sur « Recette Clé » avec `slice-recette-key-0123456789abcdefghijkl`, puis l'appel sans
+  préfixe : le résultat n'est pas une erreur, et ses `"headers"` portent
+  `"X-Recette-Key": "slice-recette-key-0123456789abcdefghijkl"`.
+- [ ] Jeton : « Save » sur « Recette Jeton » avec `slice-recette-token-0123456789abcdefghij`, puis l'appel sans
+  préfixe : les `"headers"` portent `"Authorization": "Bearer slice-recette-token-0123456789abcdefghij"`.
+- [ ] Sans clé nulle part : « Remove » sur « Recette Jeton », puis l'appel sans préfixe : les `"headers"` ne portent
+  aucune ligne `Authorization`.
+- [ ] Refus : la clé d'un MCP ne sert jamais à un autre MCP du même compte. « Recette Clé » ayant sa clé, créer un
+  troisième MCP comme « Recette Clé » (nom `recette-cle-2`, même en-tête `X-Recette-Key`), sans « Save » ; son appel
+  sans préfixe montre des `"headers"` sans ligne `X-Recette-Key`.
+- [ ] Refus : un MCP en OAuth2 ou sans accès n'utilise jamais de clé enregistrée. « Save » les refuse déjà (livraison
+  1) ; une clé restée en base malgré tout n'est pas envoyée : preuve par le test « is never sent by an MCP in OAuth2 or
+  without access, even when a key line is in the database » (`src/server/routes/hosted-mcp.test.ts`).
+- [ ] Chacun de ces cas est prouvé aussi avec un vrai client MCP contre une API simulée qui note les en-têtes reçus :
+  `pnpm vitest run src/server/routes/hosted-mcp.test.ts -t "an MCP whose key is saved on SLICE"` (5 tests verts).
+
+**La clé de l'agent passe d'abord ; le texte d'exemple `PASTE_YOUR_TOKEN_HERE` ne compte pas (WAT-173)**
+
+Préparer : « Save » sur « Recette Clé » avec `slice-recette-key-0123456789abcdefghijkl`.
+
+- [ ] Clé de l'agent : l'appel préfixé par `API_TOKEN=agent-recette-key` montre `"X-Recette-Key": "agent-recette-key"`,
+  pas la clé enregistrée.
+- [ ] Texte d'exemple : l'appel préfixé par `API_TOKEN=PASTE_YOUR_TOKEN_HERE` montre
+  `"X-Recette-Key": "slice-recette-key-0123456789abcdefghijkl"`.
+- [ ] Un en-tête que le relai refuse ne compte pas comme clé de l'agent. Caractère hors ASCII : l'appel préfixé par
+  `API_TOKEN=agent-clé` montre la clé enregistrée. Autre forme que `Bearer`, dans un terminal :
+  `curl -s http://localhost:3001/m/<identifiant> -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -H 'Authorization: Basic YWdlbnQ6c2VjcmV0' -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_items","arguments":{}}}'`
+  affiche une réponse dont le texte porte `\"X-Recette-Key\": \"slice-recette-key-0123456789abcdefghijkl\"`.
+- [ ] Refus : un paramètre d'en-tête envoyé par l'agent sous le nom de l'en-tête de la clé, quelle que soit sa casse,
+  ne la remplace jamais : l'API reçoit la seule clé enregistrée. Aucune description de `fixtures/` n'a de paramètre
+  d'en-tête : preuve par le test « is never replaced by a header parameter the agent sends under the name of the key's
+  header, whatever its case » (`src/server/services/hosted-mcp-factory.test.ts`).
+- [ ] Les extraits de l'écran 4 n'ont pas changé : à la création de « Recette Jeton », chaque onglet de connexion
+  affiche toujours `PASTE_YOUR_TOKEN_HERE` là où va la clé.
+
+**Après Replace ou Remove, l'appel suivant part avec la nouvelle clé ou sans clé (WAT-174)**
+
+Préparer : « Save » sur « Recette Clé » avec `slice-recette-key-0123456789abcdefghijkl`, puis un appel sans préfixe,
+qui montre cette clé.
+
+- [ ] « Replace » : refaire « Save » avec `slice-recette-key-ZYXWVUTSRQ9876543210abcd`, puis deux appels sans
+  préfixe : chacun montre `"X-Recette-Key": "slice-recette-key-ZYXWVUTSRQ9876543210abcd"`, jamais l'ancienne.
+- [ ] « Remove », puis un appel sans préfixe : les `"headers"` n'ont plus de ligne `X-Recette-Key`.
+- [ ] Une requête commencée avant « Replace » finit avec la clé lue à son arrivée, jusqu'à son dernier appel : preuve
+  par le test « serves a request begun before "Replace" with the key read at its arrival, to its last call »
+  (`src/server/routes/hosted-mcp.test.ts`), qui remplace la clé juste après sa lecture, sous un lot de deux appels.
+- [ ] Refus : aucune clé n'est gardée en mémoire d'une requête à l'autre : les deux cases « Replace » et « Remove »
+  ci-dessus le montrent, sans redémarrer le serveur.
+- [ ] Les mêmes cas avec un vrai client MCP contre une API simulée :
+  `pnpm vitest run src/server/routes/hosted-mcp.test.ts -t "replaced or removed"` (3 tests verts).
+
+**La clé ne sort jamais en clair pendant un appel, même quand l'API la recopie ou qu'elle est illisible (WAT-175)**
+
+Préparer : « Save » sur « Recette Clé » avec `slice-recette-key-0123456789abcdefghijkl`.
+
+- [ ] Quand l'API recopie la clé enregistrée dans sa réponse d'erreur, l'agent lit `[hidden]` à sa place : une API
+  répond `401` avec `{"error":"Invalid API key: <la clé reçue>"}`, et l'agent lit
+  `Upstream 401 Unauthorized: {"error":"Invalid API key: [hidden]"}`. httpbin ne sait pas recopier une clé dans une
+  erreur : preuve par le test « is replaced by [hidden] in what the agent reads when the API copies it into its error »
+  (`src/server/routes/hosted-mcp.test.ts`).
+- [ ] Refus : aucune ligne des journaux du serveur ne contient la clé pendant un appel, réussi ou en échec. À faire
+  après la case « clé illisible » ci-dessous, dont l'appel échoue : chercher `slice-recette-key` dans le terminal de
+  `pnpm dev` (Cmd+F) ; aucun résultat, alors que toute cette livraison y a fait passer des appels réussis. Preuve aussi
+  par le test « is written in no line of the server logs during a call, succeeded or failed », où l'API répond aussi
+  `401` et `500`.
+- [ ] Refus : l'appel noté sur « Usage » ne contient pas la clé. Ouvrir http://localhost:5173/mcps/<identifiant>/usage :
+  les appels ci-dessus y sont, avec leur action et leur résultat, jamais la clé. Preuve en base par le test « is in no
+  note of the calls kept for "Usage", the call having failed with the key copied by the API ».
+- [ ] Une clé illisible n'est pas utilisée. Rendre la clé illisible :
+  `(await fetch('/api/dev/mcps/<identifiant>/api-key/garble', { method: 'POST' })).status` rend `204`. L'appel sans
+  préfixe rend alors une erreur (`"isError": true`) dont le texte est exactement
+  `The API key saved on this MCP can no longer be read. Replace it on SLICE.`, et la page « Usage » note cet appel
+  « SLICE error ».
+- [ ] Refus : cette erreur ne contient ni la clé ni sa valeur chiffrée : son texte est la seule phrase ci-dessus. Preuve
+  aussi par le test « is neither in clear nor encrypted in the error the agent reads when it can no longer be read ».
 
 ### Livraison 3 — J'enregistre ma clé sur la page « API key » de mon MCP
 

@@ -913,24 +913,39 @@ Clients send JSON-RPC over `POST` with `Accept: application/json, text/event-str
 
 **Access control:** the URL is the credential. Anyone holding it can list and call the tools. SLICE itself checks no token.
 
-**Credential relay:** the agent sends its own upstream credential as `Authorization: Bearer <token>`.
-For each tool call the runtime forwards it to the upstream API, then forgets it:
+**Credential relay:** each tool call reaches the upstream API with one credential at most, chosen in this order:
+
+1. The agent's own credential, sent as `Authorization: Bearer <token>`. The token must be printable ASCII without spaces
+   (`0x21`–`0x7E`). A header of another form (`Basic …`), with another character, or carrying the example text of the
+   configuration snippets (`Bearer PASTE_YOUR_TOKEN_HERE`) is not the agent's credential.
+2. Otherwise, the key saved on SLICE for this MCP (see [`PUT /api/mcps/:id/api-key`](#put-apimcpsidapi-key)), for an
+   MCP whose `upstreamAuth.type` is `apiKey` or `bearer` only. It serves this MCP alone, never another MCP of the same
+   account.
+3. Otherwise, nothing: the upstream call goes out without a credential, and the upstream API's own error comes back to
+   the agent.
 
 | `upstreamAuth.type` | Header sent upstream |
 |---|---|
-| `bearer` | `Authorization: Bearer <token>` |
-| `oauth2` | `Authorization: Bearer <token>` (the agent's own access token; the hosted runtime never runs an OAuth flow) |
-| `apiKey` | `<headerName>: <token>` |
+| `bearer` | `Authorization: Bearer <token or saved key>` |
+| `oauth2` | `Authorization: Bearer <token>` (the agent's own access token; the hosted runtime never runs an OAuth flow, and never sends a saved key) |
+| `apiKey` | `<headerName>: <token or saved key>` |
 | `none` | Nothing |
 
-The token must be printable ASCII without spaces (`0x21`–`0x7E`). A missing or malformed header means the upstream call
-goes out without a credential, and the upstream API's own error comes back to the agent.
+The saved key is read once, when the request arrives: every tool call of that request, a batch included, is sent with
+it, even when the key is replaced or removed in the meantime. The next request reads the key saved at its own arrival;
+nothing is kept in memory from one request to the next. The agent's token is forwarded, then forgotten.
+
+The saved key never reaches the agent, nor the server's logs, nor the notes of the calls. When the upstream API copies
+it into an error response, the agent reads `[hidden]` in its place. A saved key SLICE can no longer read (encrypted under
+another `SLICE_ENCRYPTION_KEY`) is never used: without a credential of the agent, the tool call fails before the
+upstream API is called, the agent reads the tool error "The API key saved on this MCP can no longer be read. Replace it
+on SLICE.", and the call is noted `slice_error`.
 
 **Tool calls**
 
 - Tools are named after the endpoint label in snake_case, as in the downloadable kit (see [mcp-template.md](mcp-template.md#tool-name-convention)).
 - Path parameters are URL-encoded into the path; query parameters are appended when provided.
-- `in: "header"` parameters (for example `Notion-Version`) are sent as request headers. The relayed credential is applied after them, so a header parameter cannot overwrite it.
+- `in: "header"` parameters (for example `Notion-Version`) are sent as request headers. The credential is applied after them, so a header parameter cannot overwrite it, whatever the case of its name.
 - Body parameters are reassembled into a JSON body. No body is sent on `GET`.
 - Requests are sent with `Accept: application/json` and `Content-Type: application/json`.
 - A call of a tool the active version lacks — removed by a later version, or never part of the MCP — is answered with a
@@ -998,7 +1013,7 @@ Protocol-level errors (wrong `Accept` header, unsupported method, invalid JSON-R
 | Parse isolation | Every parse runs in a separate Node.js child process with a 512 MB heap cap and an 8-second wall-clock limit enforced by the parent with `SIGKILL`. A pathological spec kills only that child; the server keeps running. The child receives no server secrets: its environment is limited to `PATH`, `HOME`, `NODE_ENV`, and an empty `NODE_OPTIONS`. Its output is capped at 32 MB. |
 | Client parse not trusted | `/api/generate` and `/api/host` re-parse `rawSpec` server-side and keep only selected ids that exist in that result. |
 | SSRF guard | Outbound URLs must be `http(s)` and resolve only to public addresses. Blocked: `0.0.0.0/8`, `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16` (including cloud metadata `169.254.169.254`), `100.64.0.0/10`, IPv6 `::`, `::1`, `fe80::/10`, `fc00::/7`, and IPv4-mapped IPv6 forms of the above. Applied to `/api/upload-url` (always, on every redirect and candidate), to `config.baseUrl` in `/api/host`, and again before every hosted tool call (both production only). |
-| Token relayed, never stored | The hosted runtime reads the caller's `Authorization` header per request (Node.js `AsyncLocalStorage`), forwards it upstream, and keeps nothing. Stored configurations contain no credential. |
+| Token relayed, never stored; saved key encrypted | The hosted runtime reads the caller's `Authorization` header per request (Node.js `AsyncLocalStorage`), forwards it upstream, and keeps nothing. Stored configurations contain no credential. The only credential SLICE keeps is the API key saved on an MCP, encrypted with `SLICE_ENCRYPTION_KEY`: decrypted per request, sent to that MCP's API only, written neither to the server's logs nor to the notes of the calls, and replaced by `[hidden]` when the upstream API copies it into an error. |
 | Unguessable hosted URLs | Ids are 128-bit random values. |
 | No disk writes for uploads and bundles | Uploads use in-memory storage; ZIPs are built in memory and streamed. Hosted configurations live in the database (PostgreSQL, or the embedded PGlite files under `SLICE_DATA_DIR` outside production). |
 | Header-injection safe download name | The `Content-Disposition` file name is reduced to `[a-z0-9-]` before use. |

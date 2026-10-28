@@ -3,17 +3,19 @@
  *
  * Given a stored config (a curated OpenAPI subset = the "fiche"), it builds an
  * `McpServer` in memory whose tools proxy to the upstream API, relaying the
- * caller's `Authorization` header (never storing a secret). One engine BECOMES
+ * caller's `Authorization` header, or else sending the key saved on SLICE for
+ * this MCP, read at the request's arrival (P-WAT-43). One engine BECOMES
  * any MCP at request time, driven purely by the config. No code per client.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { z, type ZodTypeAny } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
-import type { EndpointParam, HttpMethod, UpstreamAuth } from '@shared/types';
+import { PASTE_YOUR_TOKEN_HERE, type EndpointParam, type HttpMethod, type UpstreamAuth } from '@shared/types';
 import { type ZodSchemaShape, schemaShapeForParam } from './zod-schema-builder';
 import { SsrfError, assertPublicUrl } from './ssrf-guard';
 import type { CallResult } from './mcp-calls';
+import type { McpApiKey } from './mcp-api-key';
 
 /** Knobs for the hosted engine. `allowPrivateHosts` is for tests/dev only. */
 export interface HostedMcpOptions {
@@ -74,14 +76,16 @@ export interface HostedMcpConfig {
 /** What one request tells the engine, and how the engine tells what became of its action calls. */
 export interface RelayContext {
   authorization: string;
+  /** The key saved on SLICE for this MCP, read once at the request's arrival (D6); none without one. */
+  savedKey?: McpApiKey;
   /** Told the result of each action call the engine handled, by its JSON-RPC id (WAT-155). */
   onActionResult?: (requestId: string | number, result: CallResult) => void;
 }
 
 /**
  * Per-request relay context. The HTTP route wraps `handleRequest` in
- * `relayStore.run({ authorization }, …)`; tool handlers read the caller's
- * token from here, per request, without storing anything.
+ * `relayStore.run({ authorization, savedKey }, …)`; tool handlers read the
+ * caller's token and the saved key from here, per request, keeping neither.
  */
 export const relayStore = new AsyncLocalStorage<RelayContext>();
 
@@ -94,6 +98,25 @@ export function relayedToken(): string | undefined {
   const raw = relayStore.getStore()?.authorization ?? '';
   const match = /^Bearer\s+([\x21-\x7e]+)\s*$/i.exec(raw.trim());
   return match?.[1];
+}
+
+/** The key the agent sent of its own (D6): the example text of the snippets is none. */
+function agentKey(): string | undefined {
+  const token = relayedToken();
+  return token === PASTE_YOUR_TOKEN_HERE ? undefined : token;
+}
+
+/** What the agent reads when the key saved on its MCP can no longer be read (D17). */
+const SAVED_KEY_UNREADABLE = 'The API key saved on this MCP can no longer be read. Replace it on SLICE.';
+
+/**
+ * The value of the key saved on SLICE for the MCP the request is for, if it has one.
+ * One SLICE can no longer read is never used: the call fails as SLICE's own error (D17).
+ */
+function savedKey(): string | undefined {
+  const saved = relayStore.getStore()?.savedKey;
+  if (saved && 'unreadable' in saved) throw new Error(SAVED_KEY_UNREADABLE);
+  return saved?.key;
 }
 
 /**
@@ -194,7 +217,7 @@ function resultOfFailedCall(err: unknown): CallResult {
   return { kind: 'slice_error' };
 }
 
-/** Issue the upstream call for one tool invocation, relaying the caller token. */
+/** Issue the upstream call for one tool invocation, with the caller's token or else the saved key (D6). */
 async function callUpstream(
   config: HostedMcpConfig,
   endpoint: HostedEndpoint,
@@ -202,6 +225,10 @@ async function callUpstream(
   allowPrivateHosts: boolean,
   timeoutMs: number
 ): Promise<unknown> {
+  const ownKey = agentKey();
+  const token = ownKey ?? savedKey();
+  // The saved key never reaches the agent: an API copying it into its error has it hidden (D12).
+  const hidden = ownKey === undefined ? token : undefined;
   // Defense in depth: re-check the host at request time, not just at config
   // creation. The caller controls neither host nor protocol here (both are
   // fixed in the stored config), but DNS for a hostname could have changed.
@@ -225,26 +252,26 @@ async function callUpstream(
   const qs = search.toString();
   const url = `${config.baseUrl}${path}${qs ? `?${qs}` : ''}`;
 
-  const headers: Record<string, string> = {
+  // Header names ignore case: setting one replaces it whatever case it was written in.
+  const headers = new Headers({
     Accept: 'application/json',
     'Content-Type': 'application/json',
-  };
+  });
   // Forward `in: header` params the agent supplied (e.g. Notion-Version, which
   // the upstream requires on every call). Applied before the auth relay so a
   // header param can never clobber the relayed token.
   for (const p of endpoint.params.filter((x) => x.in === 'header')) {
     const value = args[p.name];
-    if (value !== undefined && value !== null) headers[p.name] = String(value);
+    if (value !== undefined && value !== null) headers.set(p.name, String(value));
   }
-  const token = relayedToken();
   if (token) {
     // oauth2 is relayed exactly like bearer here: the hosted runtime never runs
     // the client_credentials flow (no secret on SLICE Cloud) — the agent's own
     // access token is forwarded. The auto flow lives only in the self-host kit.
     if (config.upstreamAuth.type === 'bearer' || config.upstreamAuth.type === 'oauth2') {
-      headers.Authorization = `Bearer ${token}`;
+      headers.set('Authorization', `Bearer ${token}`);
     } else if (config.upstreamAuth.type === 'apiKey' && config.upstreamAuth.headerName) {
-      headers[config.upstreamAuth.headerName] = token;
+      headers.set(config.upstreamAuth.headerName, token);
     }
   }
 
@@ -257,7 +284,8 @@ async function callUpstream(
   try {
     const res = await fetch(url, { method: endpoint.method, headers, body, signal: abandon.signal });
     if (!res.ok) {
-      throw new UpstreamFailure(res.status, `Upstream ${res.status} ${res.statusText}: ${await res.text()}`);
+      const message = `Upstream ${res.status} ${res.statusText}: ${await res.text()}`;
+      throw new UpstreamFailure(res.status, hidden ? message.replaceAll(hidden, '[hidden]') : message);
     }
     const ct = res.headers.get('content-type') ?? '';
     return await (ct.includes('application/json') ? res.json() : res.text());
