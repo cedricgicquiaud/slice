@@ -877,6 +877,24 @@ describe('/api/mcps/:id/api-key', () => {
     expect(lines.filter((line) => line.includes(first) || line.includes(second))).toEqual([]);
   });
 
+  it("saves the key of my MCP without trying it on the MCP's API (D10)", async () => {
+    let received = 0;
+    const notionApi = createServer((_req, res) => {
+      received += 1;
+      res.writeHead(200, { 'content-type': 'application/json' }).end('{}');
+    }).listen(0);
+    await new Promise<void>((r) => notionApi.once('listening', r));
+    const notionApiUrl = `http://127.0.0.1:${(notionApi.address() as AddressInfo).port}`;
+    const { id } = await store.put({ ...NOTION, baseUrl: notionApiUrl }, account.workspaceId, CREATED);
+
+    try {
+      const saved = await saveKey(id, randomApiKey());
+      expect({ saved: saved.status, received }).toEqual({ saved: 200, received: 0 });
+    } finally {
+      await new Promise<void>((r) => notionApi.close(() => r()));
+    }
+  });
+
   describe('refused', () => {
     let guarded: { url: string; close(): Promise<void> };
     beforeAll(async () => {
