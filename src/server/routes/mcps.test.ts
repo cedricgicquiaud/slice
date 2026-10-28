@@ -1024,5 +1024,17 @@ describe('/api/mcps/:id/api-key', () => {
         kept: { key: before },
       });
     });
+
+    it('saves a key of 4,096 characters exactly (D9)', async () => {
+      const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+      const apiKey = 'k'.repeat(4096);
+
+      const res = await put(id, { apiKey });
+
+      expect({ status: res.status, served: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
+        status: 200,
+        served: { key: apiKey },
+      });
+    });
   });
 });
