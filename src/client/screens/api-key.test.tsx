@@ -20,7 +20,8 @@ const NOTION = {
  * (`mcps`); `GET /api/mcps/:id/api-key` answers the key kept in `keys` under
  * that id, `null` without any, or 404 for an MCP outside `mcps`, as for an
  * unknown MCP or another account's; `PUT /api/mcps/:id/api-key` keeps the key
- * sent in `saved` and answers it saved on Oct 28, 2026; any other call is
+ * sent in `saved` and answers, once `held` resolves when set, the key saved on
+ * Oct 28, 2026; any other call is
  * "who is signed in?" (`session`).
  * Set before any import: the auth client keeps the `fetch` it finds when loaded.
  */
@@ -30,7 +31,8 @@ const server = vi.hoisted(() => {
     mcps: { id: string }[];
     keys: Record<string, { savedAt: string; readable: boolean } | null>;
     saved: string[];
-  } = { session: null, mcps: [], keys: {}, saved: [] };
+    held: Promise<void> | null;
+  } = { session: null, mcps: [], keys: {}, saved: [], held: null };
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -42,6 +44,7 @@ const server = vi.hoisted(() => {
     if (!state.mcps.some((mcp) => mcp.id === id)) return json({ code: 'NOT_FOUND', message: 'Unknown MCP id.' }, 404);
     if (init?.method === 'PUT') {
       state.saved.push((JSON.parse(String(init.body)) as { apiKey: string }).apiKey);
+      await state.held;
       state.keys[id] = { savedAt: '2026-10-28T09:30:00.000Z', readable: true };
     }
     return json({ apiKey: state.keys[id] ?? null });
@@ -53,6 +56,7 @@ afterEach(() => {
   server.mcps = [];
   server.keys = {};
   server.saved = [];
+  server.held = null;
   window.history.pushState({}, '', '/');
 });
 
@@ -102,5 +106,23 @@ describe('API key', () => {
       back: screen.getByRole('link', { name: 'Back to My MCPs' }).getAttribute('href'),
       steps: screen.queryByRole('navigation', { name: /steps/i }) !== null,
     }).toEqual({ saved: true, field: false, back: '/mcps', steps: false });
+  });
+
+  it('greys "Save" during the call: a double click saves once (idiom)', async () => {
+    server.mcps = [NOTION];
+    let answer = () => {};
+    server.held = new Promise<void>((resolve) => (answer = resolve));
+    const user = userEvent.setup();
+    render(<ApiKeyScreen mcpId="notion-id" />);
+    await user.click(await screen.findByLabelText('API key'));
+    await user.paste('secret_ntn_1234');
+    const save = screen.getByRole('button', { name: 'Save' });
+
+    await user.dblClick(save);
+    const greyedDuringTheCall = save.hasAttribute('disabled');
+    answer();
+    await screen.findByText('Saved on Oct 28, 2026');
+
+    expect({ greyedDuringTheCall, saves: server.saved.length }).toEqual({ greyedDuringTheCall: true, saves: 1 });
   });
 });
