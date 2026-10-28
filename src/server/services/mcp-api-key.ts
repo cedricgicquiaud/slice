@@ -12,6 +12,14 @@ export interface McpApiKeys {
   save(connectorId: string, apiKey: string, now: Date): Promise<void>;
   /** The key of the connector `connectorId`, decrypted for the relay to its API; `undefined` without one. */
   keyOf(connectorId: string): Promise<{ key: string } | undefined>;
+  /** What can be told of the key of the connector `connectorId`, never its value (D3); `undefined` without one. */
+  stateOf(connectorId: string): Promise<McpApiKeyState | undefined>;
+}
+
+export interface McpApiKeyState {
+  /** When the key was last saved or replaced (D3). */
+  savedAt: Date;
+  readable: boolean;
 }
 
 export function createMcpApiKeys(database: Database, cipher: KeyCipher): McpApiKeys {
@@ -31,6 +39,13 @@ export function createMcpApiKeys(database: Database, cipher: KeyCipher): McpApiK
         .from(connectorKeys)
         .where(eq(connectorKeys.connectorId, connectorId));
       return line && { key: cipher.decrypt(line.encryptedKey) };
+    },
+    async stateOf(connectorId) {
+      const [line] = await db
+        .select({ savedAt: connectorKeys.savedAt })
+        .from(connectorKeys)
+        .where(eq(connectorKeys.connectorId, connectorId));
+      return line && { savedAt: line.savedAt, readable: true };
     },
   };
 }
