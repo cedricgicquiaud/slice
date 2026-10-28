@@ -46,7 +46,8 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
       setPasted('');
       setReplacing(false);
     } catch (err) {
-      // A key the server can't use is refused under the field, as above (D9); any other refusal under the title.
+      // A key the server can't use is refused under the field, as the shared schema's refusals (D9);
+      // any other refusal under the title.
       if (err instanceof ApiError && err.code === 'INVALID_KEY') setKeyError(err.message);
       else setRefusal(messageOf(err));
     } finally {
@@ -109,59 +110,59 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
             <p className="mt-4 text-sm text-muted-foreground">{NO_KEY[mcp.upstreamAuthType]}</p>
           ) : (
             <>
-            <p className="mt-8 text-sm text-foreground">
-              Your {mcp.apiName} key is used for every call this MCP makes. SLICE keeps it encrypted and never shows it
-              again.
-            </p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Anyone with this MCP&apos;s address acts with your key. Keep the address private.
-            </p>
-            {apiKey && (
-              <div className="mt-8 flex flex-wrap items-center gap-3">
-                {apiKey.readable ? (
-                  <p className="text-sm text-foreground">Saved on {CREATED.format(new Date(apiKey.savedAt))}</p>
-                ) : (
-                  <p className="text-sm text-destructive">This key can no longer be read. Replace it.</p>
-                )}
-                {!replacing && (
-                  <>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={calling}
-                      onClick={() => setReplacing(true)}
-                    >
-                      Replace
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={calling}
-                      onClick={() => void handleRemove()}
-                      className="text-muted-foreground hover:text-destructive"
-                    >
-                      Remove
-                    </Button>
-                  </>
-                )}
-              </div>
-            )}
-            {(!apiKey || replacing) && (
-              <form
-                className="mt-8 flex flex-col gap-3"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void handleSave();
-                }}
-              >
-                <Field label="API key" value={pasted} onChange={setPasted} error={keyError ?? undefined} mono />
-                <Button type="submit" disabled={calling} className="self-start">
-                  Save
-                </Button>
-              </form>
-            )}
+              <p className="mt-8 text-sm text-foreground">
+                Your {mcp.apiName} key is used for every call this MCP makes. SLICE keeps it encrypted and never shows
+                it again.
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Anyone with this MCP&apos;s address acts with your key. Keep the address private.
+              </p>
+              {apiKey && (
+                <div className="mt-8 flex flex-wrap items-center gap-3">
+                  {apiKey.readable ? (
+                    <p className="text-sm text-foreground">Saved on {CREATED.format(new Date(apiKey.savedAt))}</p>
+                  ) : (
+                    <p className="text-sm text-destructive">This key can no longer be read. Replace it.</p>
+                  )}
+                  {!replacing && (
+                    <>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={calling}
+                        onClick={() => setReplacing(true)}
+                      >
+                        Replace
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={calling}
+                        onClick={() => void handleRemove()}
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        Remove
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
+              {(!apiKey || replacing) && (
+                <form
+                  className="mt-8 flex flex-col gap-3"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void handleSave();
+                  }}
+                >
+                  <Field label="API key" value={pasted} onChange={setPasted} error={keyError ?? undefined} mono />
+                  <Button type="submit" disabled={calling} className="self-start">
+                    Save
+                  </Button>
+                </form>
+              )}
             </>
           )}
         </>
