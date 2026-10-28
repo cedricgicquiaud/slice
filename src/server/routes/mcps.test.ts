@@ -1025,6 +1025,24 @@ describe('/api/mcps/:id/api-key', () => {
       });
     });
 
+    it.each([
+      ['a euro sign', 'secret_ntn_12€34'],
+      ['an emoji', 'secret_ntn_12🔑34'],
+      ['a line break in the middle', 'secret_ntn_12\n34'],
+    ])('refuses a key holding %s with INVALID_KEY, and keeps the key before (contract 15, D9, D17)', async (_what, apiKey) => {
+      const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+      const before = randomApiKey();
+      await createMcpApiKeys(database, cipher).save(id, before, SAVED);
+
+      const res = await put(id, { apiKey });
+
+      expect({ status: res.status, body: await res.json(), kept: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
+        status: 400,
+        body: { code: 'INVALID_KEY', message: "This key can't be used: it contains a character an API can't receive." },
+        kept: { key: before },
+      });
+    });
+
     it('saves a key of 4,096 characters exactly (D9)', async () => {
       const { id } = await store.put(NOTION, account.workspaceId, CREATED);
       const apiKey = 'k'.repeat(4096);
