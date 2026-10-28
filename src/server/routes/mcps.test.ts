@@ -856,6 +856,27 @@ describe('/api/mcps/:id/api-key', () => {
     }).toEqual({ statuses: [200, 200, 200, 200, 200, 200], showingTheKey: 0 });
   });
 
+  it('writes the key of my MCP in no line of the server logs while saving and replacing it (contract 13, D12)', async () => {
+    const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+    const [first, second] = [randomApiKey(), randomApiKey()];
+    const lines: string[] = [];
+    const methods = ['log', 'info', 'warn', 'error', 'debug'] as const;
+    const spies = methods.map((method) =>
+      vi.spyOn(console, method).mockImplementation((...args: unknown[]) => {
+        lines.push(args.map((arg) => (arg instanceof Error ? `${arg.stack}` : String(arg))).join(' '));
+      })
+    );
+
+    try {
+      await saveKey(id, first);
+      await saveKey(id, second);
+    } finally {
+      spies.forEach((spy) => spy.mockRestore());
+    }
+
+    expect(lines.filter((line) => line.includes(first) || line.includes(second))).toEqual([]);
+  });
+
   describe('refused', () => {
     let guarded: { url: string; close(): Promise<void> };
     beforeAll(async () => {
