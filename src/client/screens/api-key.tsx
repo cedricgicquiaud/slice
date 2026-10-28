@@ -4,12 +4,21 @@
  * Outside the three steps: the MCP's name at the top and a way back to "My MCPs".
  */
 import { useEffect, useState } from 'react';
-import { listMcps, type Mcp } from '../lib/mcps-api';
-import { messageOf } from './mcps';
+import { Button } from '../components/ui/button';
+import { Field } from '../components/field';
+import { listMcps, saveMcpApiKey, type Mcp, type McpApiKey } from '../lib/mcps-api';
+import { CREATED, messageOf } from './mcps';
 
 export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
   const [mcp, setMcp] = useState<Mcp | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState<McpApiKey | null>(null);
+  const [pasted, setPasted] = useState('');
+
+  async function handleSave() {
+    setApiKey(await saveMcpApiKey(mcpId, pasted));
+    setPasted('');
+  }
 
   useEffect(() => {
     listMcps()
@@ -37,6 +46,30 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
           <p className="mt-2 text-sm text-muted-foreground">
             Anyone with this MCP&apos;s address acts with your key. Keep the address private.
           </p>
+          {apiKey ? (
+            <div className="mt-8 flex flex-wrap items-center gap-3">
+              <p className="text-sm text-foreground">Saved on {CREATED.format(new Date(apiKey.savedAt))}</p>
+              <Button type="button" variant="outline" size="sm">
+                Replace
+              </Button>
+              <Button type="button" variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive">
+                Remove
+              </Button>
+            </div>
+          ) : (
+            <form
+              className="mt-8 flex flex-col gap-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleSave();
+              }}
+            >
+              <Field label="API key" value={pasted} onChange={setPasted} mono />
+              <Button type="submit" className="self-start">
+                Save
+              </Button>
+            </form>
+          )}
         </>
       )}
     </div>
