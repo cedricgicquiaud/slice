@@ -475,6 +475,28 @@ describe('the saved key during a call', () => {
       content: [{ type: 'text', text: 'Upstream 401 Unauthorized: {"error":"Invalid API key: [hidden]"}' }],
     });
   });
+
+  it('is written in no line of the server logs during a call, succeeded or failed (contract 13, D12)', async () => {
+    const { id } = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    await saveKey(id, 'saved-key-0175-logged');
+    const lines: string[] = [];
+    const logs = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        lines.push(args.map((arg) => (arg instanceof Error ? arg.stack : String(arg))).join(' '));
+      })
+    );
+    try {
+      const agent = await connectAgent(`${baseUrl}/m/${id}`);
+      await agent.callTool({ name: 'list_things', arguments: {} });
+      await agent.callTool({ name: 'delete_thing', arguments: { id: 'echo-key' } });
+      await agent.callTool({ name: 'delete_thing', arguments: { id: '500' } });
+      await agent.close();
+    } finally {
+      for (const log of logs) log.mockRestore();
+    }
+
+    expect(lines.filter((line) => line.includes('saved-key-0175-logged'))).toEqual([]);
+  });
 });
 
 /** `config`, whose API's actions are exactly its own: every call of them is noted (D2). */
