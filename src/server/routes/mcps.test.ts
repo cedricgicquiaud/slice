@@ -1020,6 +1020,23 @@ describe('/api/mcps/:id/api-key', () => {
     });
 
     it.each([
+      ['without an apiKey', {}],
+      ['with an apiKey that is not a text', { apiKey: 1234 }],
+    ])('refuses a body %s with INVALID_KEY, and keeps the key before (D17)', async (_what, body) => {
+      const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+      const before = randomApiKey();
+      await createMcpApiKeys(database, cipher).save(id, before, SAVED);
+
+      const res = await put(id, body);
+
+      expect({ status: res.status, body: await res.json(), kept: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
+        status: 400,
+        body: { code: 'INVALID_KEY', message: "This key can't be used: it is not a text." },
+        kept: { key: before },
+      });
+    });
+
+    it.each([
       ['a final line break', 'secret_ntn_1234\n'],
       ['spaces at its ends', '  secret_ntn_1234   '],
     ])('saves a key pasted with %s without them (contract 15, D9)', async (_what, apiKey) => {
