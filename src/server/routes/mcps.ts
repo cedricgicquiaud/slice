@@ -4,9 +4,9 @@
  * `POST /api/mcps/:id/versions/:number/restore` makes one of them active again
  * (D9), `GET /api/mcps/:id/usage` reads what agents did with one over the
  * last 30 days (D10), `DELETE /api/mcps/:id` deletes one at once (D10),
- * `GET`/`PUT`/`DELETE /api/mcps/:id/api-key` tell, save and remove the key of one, never showing it (D3). Mounted under the
- * session guard, which sets `res.locals.workspaceId`: another workspace's
- * MCPs are out of reach.
+ * `GET`/`PUT`/`DELETE /api/mcps/:id/api-key` tell, save and remove the key of
+ * one, never showing it (D3). Mounted under the session guard, which sets
+ * `res.locals.workspaceId`: another workspace's MCPs are out of reach.
  */
 import { Router } from 'express';
 import type { ApiErrorPayload } from '@shared/types';
