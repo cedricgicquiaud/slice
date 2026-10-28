@@ -150,8 +150,10 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
     let savedKey: McpApiKey | undefined;
     try {
       config = await options.store.get(req.params.id);
-      // Read once, at the arrival: the whole request is served with this key (D6).
-      if (config) savedKey = await options.apiKeys?.keyOf(req.params.id);
+      // Only an API key or a bearer token takes a saved key (D8), read once, at the arrival:
+      // the whole request is served with it (D6).
+      const access = config?.upstreamAuth.type;
+      if (access === 'apiKey' || access === 'bearer') savedKey = await options.apiKeys?.keyOf(req.params.id);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[hosted-mcp] reading the connector failed:', err instanceof Error ? err.message : err);
