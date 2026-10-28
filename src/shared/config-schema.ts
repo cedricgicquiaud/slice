@@ -135,5 +135,9 @@ export const mcpSelectionChangeSchema = z.strictObject(
  * spaces and line breaks a copy-paste leaves at its ends are dropped first.
  */
 export const mcpApiKeySchema = z.object({
-  apiKey: z.string().trim().min(1, "This key can't be used: it is empty."),
+  apiKey: z
+    .string()
+    .trim()
+    .min(1, "This key can't be used: it is empty.")
+    .max(4096, "This key can't be used: it is longer than 4,096 characters."),
 });
