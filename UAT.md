@@ -1003,3 +1003,56 @@ On ne peut pas atteindre 10 000 appels à la main ; chaque case renvoie à son t
   cleaned up again an hour after a cleanup failed on an unreachable database, the failure only logged ».
 - [ ] `docs/API.md`, section `ANY /m/:id`, décrit le délai de 30 secondes, le plafond de 10 000 appels notés par MCP et
   par jour UTC, et la conservation des notes pendant 30 jours.
+
+## SLICE — Le MCP porte l'authentification
+
+_Feature P-WAT-43. Une section par livraison, ajoutée par chaque PR._
+
+### Livraison 1 — SLICE garde la clé d'un MCP, chiffrée
+
+Cette livraison n'a pas d'écran : tout se constate dans le terminal du serveur, par l'API et dans la base de
+développement. La page « API key » arrive en livraison 3.
+
+**Préparer la recette**
+
+- Le serveur ne démarre plus sans clé de chiffrement, en développement aussi. Ajouter au fichier `.env` de la racine
+  du dépôt (le créer depuis `.env.example` s'il n'existe pas) la ligne `SLICE_ENCRYPTION_KEY=` suivie de la sortie de
+  `openssl rand -base64 32` (44 caractères finissant par `=`). Ne jamais la committer ni la recopier ailleurs.
+
+**Le serveur refuse de démarrer sans sa clé de chiffrement (WAT-168)**
+
+- [ ] Refus : sans `SLICE_ENCRYPTION_KEY`, le serveur refuse de démarrer, en développement comme en production.
+  Développement : `SLICE_ENCRYPTION_KEY= pnpm dev:server` (la valeur vide passe avant celle du `.env`) ; le terminal
+  affiche `SLICE server cannot start: SLICE_ENCRYPTION_KEY is required (32 bytes in base64, …)` et le serveur
+  s'arrête. Production : `pnpm build`, puis
+  `SLICE_ENCRYPTION_KEY= DATABASE_URL=postgres://localhost:9/none BETTER_AUTH_SECRET=x BETTER_AUTH_URL=http://localhost:3001 pnpm start` ;
+  même message, même arrêt (la base n'est jamais ouverte). Preuve aussi par les tests « refuses to start in
+  development without SLICE_ENCRYPTION_KEY » et « refuses to start in production without SLICE_ENCRYPTION_KEY »
+  (`src/server/index.test.ts`).
+- [ ] Refus : avec une valeur qui ne fait pas 32 octets une fois décodée, le serveur refuse de démarrer.
+  `SLICE_ENCRYPTION_KEY=$(openssl rand -base64 31) pnpm dev:server` affiche
+  `SLICE server cannot start: SLICE_ENCRYPTION_KEY must be 32 bytes in base64 (…)` et s'arrête ; même message avec
+  `SLICE_ENCRYPTION_KEY='not base64 at all!' pnpm dev:server`. Avec la clé du `.env` (`pnpm dev:server` seul), le
+  terminal affiche `SLICE server running on http://localhost:3001`.
+- [ ] Une valeur chiffrée puis déchiffrée avec la même clé redonne la valeur d'origine, et chiffrer deux fois la même
+  valeur donne deux résultats différents : preuve par les tests « decrypts what it encrypted back to the original
+  value » et « encrypts the same value twice into two different results » (`src/server/services/key-cipher.test.ts`).
+- [ ] Refus : déchiffrer avec une autre clé de chiffrement échoue par une erreur reconnaissable, jamais par un texte
+  faux : preuve par le test « refuses to decrypt with another encryption key, by an UnreadableKeyError and never a
+  wrong text ». L'état « illisible » qui en découle se voit par l'API plus bas dans cette livraison (WAT-170).
+- [ ] Aucune clé par défaut n'est écrite dans le dépôt : `git grep -n "SLICE_ENCRYPTION_KEY="` ne montre que la ligne
+  vide de `.env.example`, et les lignes des tests et du smoke qui tirent leur clé au hasard
+  (`randomBytes(32).toString('base64')`).
+- [ ] `.env.example` et `docs/configuration.md` (tableau des variables) nomment `SLICE_ENCRYPTION_KEY` et la commande
+  qui la génère, `openssl rand -base64 32`.
+- [ ] `pnpm prod:smoke` démarre le binaire compilé avec une clé tirée au hasard et finit par `✅ prod smoke passed` :
+  vérifier que l'étape « Prod smoke (compiled bundle) » de la CI de la PR est verte (en local, il faut un PostgreSQL,
+  voir `docs/configuration.md`).
+
+### Livraison 2 — Le MCP appelle l'API avec la clé enregistrée
+
+_Section écrite par la livraison 2._
+
+### Livraison 3 — J'enregistre ma clé sur la page « API key » de mon MCP
+
+_Section écrite par la livraison 3._
