@@ -93,6 +93,14 @@ export interface McpSelection {
   selectedIds: string[];
 }
 
+/** An MCP's saved API key, as `GET /api/mcps/:id/api-key` tells it: never the key itself (D3). */
+export interface McpApiKey {
+  /** ISO date of the last "Save" or "Replace". */
+  savedAt: string;
+  /** `false` when SLICE can no longer read the key: it must be replaced (D3). */
+  readable: boolean;
+}
+
 /** The MCPs of the signed-in account, newest first. */
 export async function listMcps(): Promise<Mcp[]> {
   const res = await fetch('/api/mcps');
@@ -140,6 +148,14 @@ export async function restoreMcpVersion(id: string, number: number): Promise<str
   if (!res.ok) await throwRefusal(res);
   const { activeSince } = (await res.json()) as { activeSince: string };
   return activeSince;
+}
+
+/** The saved API key of one of the account's MCPs, `null` without any (D3). */
+export async function getMcpApiKey(id: string): Promise<McpApiKey | null> {
+  const res = await fetch(`/api/mcps/${id}/api-key`);
+  if (!res.ok) await throwRefusal(res);
+  const { apiKey } = (await res.json()) as { apiKey: McpApiKey | null };
+  return apiKey;
 }
 
 /** Delete one of the account's MCPs, at once (D10). */
