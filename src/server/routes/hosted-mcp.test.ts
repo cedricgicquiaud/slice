@@ -347,6 +347,19 @@ describe('an MCP whose key is saved on SLICE', () => {
 
     expect(received.map(({ auth, apiKey }) => ({ auth, apiKey }))).toEqual([{ auth: undefined, apiKey: undefined }]);
   });
+
+  it('never calls the API of another MCP of the same account with it (contract 19, D4)', async () => {
+    const withKey = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    const withoutKey = await store.put(withApiKeyHeader(threeActions()), account.workspaceId, CREATED);
+    await saveKey(withKey.id, 'saved-key-0172-own');
+    received = [];
+
+    const agent = await connectAgent(`${baseUrl}/m/${withoutKey.id}`);
+    await agent.callTool({ name: 'list_things', arguments: {} });
+    await agent.close();
+
+    expect(received.map((r) => r.apiKey)).toEqual([undefined]);
+  });
 });
 
 /** `config`, whose API's actions are exactly its own: every call of them is noted (D2). */
