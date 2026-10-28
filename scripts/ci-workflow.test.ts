@@ -54,4 +54,12 @@ describe('the CI', () => {
   it('hands no build argument to the image', () => {
     expect(ciFile).not.toContain('--build-arg');
   });
+
+  it('still runs pnpm prod:smoke on the compiled bundle', () => {
+    expect(gate.steps).toContainEqual({
+      name: 'Prod smoke (compiled bundle)',
+      run: 'pnpm prod:smoke',
+      env: { DATABASE_URL: 'postgres://postgres:ci-throwaway@localhost:5432/postgres' },
+    });
+  });
 });
