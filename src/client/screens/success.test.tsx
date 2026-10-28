@@ -149,4 +149,14 @@ describe('hosted MCP that takes a saved key', () => {
 
     expect(screen.getByRole('link', { name: 'Add your API key' })).toHaveAttribute('href', '/mcps/abc123/api-key');
   });
+
+  it('says the token may be saved once in SLICE, kept encrypted, followed by the link (contract 10, D15)', () => {
+    setupHostedAs({ type: 'bearer' });
+
+    const link = screen.getByRole('link', { name: 'Add your API key' });
+    expect(link.previousElementSibling?.textContent).toBe(
+      'Paste the snippet below into your agent, then replace PASTE_YOUR_TOKEN_HERE with the token of your target API, ' +
+        'or save it once in SLICE: we keep it encrypted.'
+    );
+  });
 });
