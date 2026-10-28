@@ -123,6 +123,29 @@ describe("an MCP's address behind the proxy (D5)", () => {
   });
 });
 
+/**
+ * A request of the visitor at `ip`, as the proxy forwards it: it adds that address to `X-Forwarded-For`,
+ * after whatever the visitor wrote there himself (`written`).
+ */
+function fromVisitor(app: ReturnType<typeof createApp>, ip: string, written?: string) {
+  return request(app)
+    .get('/api/mcps')
+    .set('x-forwarded-for', written ? `${written}, ${ip}` : ip);
+}
+
+describe('thirty requests a minute for each visitor behind the proxy (D6)', () => {
+  it("refuses a visitor's thirty-first request, and only his (contract 5)", async () => {
+    const app = createApp({ nodeEnv: 'test' });
+    for (let i = 0; i < 30; i++) await fromVisitor(app, '203.0.113.7');
+
+    const his = await fromVisitor(app, '203.0.113.7');
+    const another = await fromVisitor(app, '198.51.100.4');
+
+    // Without a session, a request under the limit is refused for that: 401.
+    expect({ his: his.status, another: another.status }).toEqual({ his: 429, another: 401 });
+  });
+});
+
 // The real entry point, run from the repository root as `pnpm dev:server` runs it (tsx binary, no package manager).
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
