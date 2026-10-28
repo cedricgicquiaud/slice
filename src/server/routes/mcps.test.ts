@@ -853,5 +853,24 @@ describe('/api/mcps/:id/api-key', () => {
         });
       }
     );
+
+    it.each([
+      ['read', 'GET', false],
+      ['save', 'PUT', false],
+      ['replace', 'PUT', true],
+      ['remove', 'DELETE', true],
+    ] as const)('answers 401 to a request to %s the key of my MCP without a session, and leaves its key (contract 18, D13)', async (_what, method, hasKey) => {
+      const { id } = await store.put(NOTION, account.workspaceId, CREATED);
+      const myKey = randomApiKey();
+      if (hasKey) await createMcpApiKeys(database, cipher).save(id, myKey, SAVED);
+
+      const res = await ask(method, id, null);
+
+      expect({ status: res.status, body: await res.json(), kept: await createMcpApiKeys(database, cipher).keyOf(id) }).toEqual({
+        status: 401,
+        body: { code: 'UNAUTHORIZED', message: 'Sign in to continue.' },
+        kept: hasKey ? { key: myKey } : undefined,
+      });
+    });
   });
 });
