@@ -15,7 +15,7 @@ try {
   const databaseConfig = databaseConfigFromEnv(process.env);
   const authSecret = authSecretFromEnv(process.env);
   const authBaseUrl = authBaseUrlFromEnv(process.env);
-  // Read before anything opens, so a server without it never starts (D11); WAT-169 hands it to the MCPs' keys.
+  // Read before anything opens, so a server without it never starts (D11); WAT-170 hands it to `createMcpApiKeys` through `createApp`.
   encryptionKeyFromEnv(process.env);
   const database = openDatabase(databaseConfig);
   await migrateDatabase(database);
