@@ -106,7 +106,7 @@ function agentKey(): string | undefined {
 }
 
 /** What the agent reads when the key saved on its MCP can no longer be read (D17). */
-export const SAVED_KEY_UNREADABLE = 'The API key saved on this MCP can no longer be read. Replace it on SLICE.';
+const SAVED_KEY_UNREADABLE = 'The API key saved on this MCP can no longer be read. Replace it on SLICE.';
 
 /**
  * The value of the key saved on SLICE for the MCP the request is for, if it has one.
