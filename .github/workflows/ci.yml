@@ -98,3 +98,18 @@ jobs:
             echo "GET $path: $status"
             [ "$status" = 200 ] || { docker logs slice; exit 1; }
           done
+
+  # Only a main whose gate is green goes online: Coolify's own deployment on
+  # push is turned off (docs), and this job calls its deploy webhook instead.
+  deploy:
+    name: deploy to Coolify
+    needs: gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call the Coolify deploy webhook
+        run: |
+          curl -fsS -H "Authorization: Bearer $COOLIFY_API_TOKEN" "$COOLIFY_DEPLOY_WEBHOOK"
+        env:
+          COOLIFY_DEPLOY_WEBHOOK: ${{ secrets.COOLIFY_DEPLOY_WEBHOOK }}
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
