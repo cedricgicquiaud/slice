@@ -5,7 +5,8 @@
  * (`buildHostedMcpServer`), and serves it in **stateless** mode — a fresh
  * transport per request, so any number of agents can hit any number of MCPs
  * concurrently with no shared session state. The incoming `Authorization`
- * header is captured per request and relayed to the upstream; nothing stored.
+ * header is captured per request and relayed to the upstream; without it, the
+ * key saved on SLICE for the MCP, read at the request's arrival, is sent (D6).
  * Each action call is noted (WAT-154): its action, version, date, result and
  * duration, written once the response is gone.
  */
@@ -199,7 +200,9 @@ export function createHostedMcpRouter(options: HostedMcpRouterOptions): Router {
         const position = delivered++;
         const onActionResult = (_requestId: string | number, result: CallResult) => tellCall?.(position, result);
         // The engine, and the SDK's answer, tell this call's result through the context it runs in.
-        if (served.has(call.name)) return relayStore.run({ authorization, savedKey, onActionResult }, () => deliver?.(message, extra));
+        if (served.has(call.name)) {
+          return relayStore.run({ authorization, savedKey, onActionResult }, () => deliver?.(message, extra));
+        }
         onActionResult(call.id, { kind: 'not_available' });
         transport
           .send({ jsonrpc: '2.0', id: call.id, result: { content: [{ type: 'text', text: ACTION_GONE }], isError: true } })

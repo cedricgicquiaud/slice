@@ -3,7 +3,8 @@
  *
  * Given a stored config (a curated OpenAPI subset = the "fiche"), it builds an
  * `McpServer` in memory whose tools proxy to the upstream API, relaying the
- * caller's `Authorization` header (never storing a secret). One engine BECOMES
+ * caller's `Authorization` header, or else sending the key saved on SLICE for
+ * this MCP, read at the request's arrival (P-WAT-43). One engine BECOMES
  * any MCP at request time, driven purely by the config. No code per client.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -83,8 +84,8 @@ export interface RelayContext {
 
 /**
  * Per-request relay context. The HTTP route wraps `handleRequest` in
- * `relayStore.run({ authorization }, …)`; tool handlers read the caller's
- * token from here, per request, without storing anything.
+ * `relayStore.run({ authorization, savedKey }, …)`; tool handlers read the
+ * caller's token and the saved key from here, per request, keeping neither.
  */
 export const relayStore = new AsyncLocalStorage<RelayContext>();
 
@@ -216,7 +217,7 @@ function resultOfFailedCall(err: unknown): CallResult {
   return { kind: 'slice_error' };
 }
 
-/** Issue the upstream call for one tool invocation, relaying the caller token. */
+/** Issue the upstream call for one tool invocation, with the caller's token or else the saved key (D6). */
 async function callUpstream(
   config: HostedMcpConfig,
   endpoint: HostedEndpoint,
