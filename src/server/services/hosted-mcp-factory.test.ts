@@ -515,4 +515,16 @@ describe('the key an action call sends to the API', () => {
 
     expect(heard.map((headers) => headers['x-api-key'])).toEqual(['saved-key-0173', 'saved-key-0173']);
   });
+
+  it("is never replaced by a header parameter the agent sends under the name of the key's header, whatever its case (D6)", async () => {
+    heard = [];
+
+    await callWith(API_KEY, {
+      savedKey: { key: 'saved-key-0173' },
+      params: [{ name: 'x-api-key', in: 'header', type: 'string', required: false }],
+      args: { 'x-api-key': 'agent-param-0173' },
+    });
+
+    expect(heard.map((headers) => headers['x-api-key'])).toEqual(['saved-key-0173']);
+  });
 });
