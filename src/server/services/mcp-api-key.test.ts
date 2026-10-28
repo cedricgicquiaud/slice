@@ -58,4 +58,17 @@ describe('the key of an MCP', () => {
 
     expect((await rawLinesOf(id)).map(({ line }) => line.includes(apiKey))).toEqual([false]);
   });
+
+  it('saved again replaces the one before, which leaves the database (D3, D4)', async () => {
+    const { id } = await createHostedStore(database).put(notion, workspaceId, NOW);
+    const keys = createMcpApiKeys(database, createKeyCipher(randomBytes(32)));
+    await keys.save(id, 'secret_ntn_first', NOW);
+
+    await keys.save(id, 'secret_ntn_second', NOW);
+
+    expect({ key: await keys.keyOf(id), lines: (await rawLinesOf(id)).length }).toEqual({
+      key: { key: 'secret_ntn_second' },
+      lines: 1,
+    });
+  });
 });
