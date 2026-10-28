@@ -19,6 +19,7 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
   const [replacing, setReplacing] = useState(false);
   // "Save", "Replace" and "Remove" stay greyed during a call: a double click sends one.
   const [calling, setCalling] = useState(false);
+  const [refusal, setRefusal] = useState<string | null>(null);
 
   async function handleSave() {
     if (calling) return;
@@ -35,9 +36,12 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
   async function handleRemove() {
     if (calling) return;
     setCalling(true);
+    setRefusal(null);
     try {
       await removeMcpApiKey(mcpId);
       setApiKey(null);
+    } catch (err) {
+      setRefusal(messageOf(err));
     } finally {
       setCalling(false);
     }
@@ -75,6 +79,11 @@ export function ApiKeyScreen({ mcpId }: { mcpId: string }) {
       {mcp && (
         <>
           <h1 className="mt-4 font-serif text-4xl italic">{mcp.apiName}</h1>
+          {refusal && (
+            <p role="alert" className="mt-4 text-sm text-destructive">
+              {refusal}
+            </p>
+          )}
           <p className="mt-8 text-sm text-foreground">
             Your {mcp.apiName} key is used for every call this MCP makes. SLICE keeps it encrypted and never shows it
             again.
