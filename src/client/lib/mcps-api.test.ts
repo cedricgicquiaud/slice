@@ -7,6 +7,7 @@ import {
   getMcpUsage,
   listMcps,
   restoreMcpVersion,
+  saveMcpApiKey,
   saveMcpSelection,
 } from './mcps-api';
 
@@ -267,6 +268,30 @@ describe('getMcpApiKey', () => {
     expect({ apiKey: await getMcpApiKey('notion-id'), asked: fetchMock.mock.calls }).toEqual({
       apiKey: { savedAt: '2026-10-27T09:30:00.000Z', readable: true },
       asked: [['/api/mcps/notion-id/api-key']],
+    });
+  });
+});
+
+describe('saveMcpApiKey', () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("puts the key to PUT /api/mcps/:id/api-key, and returns the saved key's date and readability", async () => {
+    const fetchMock = serverAnswers(200, { apiKey: { savedAt: '2026-10-28T09:30:00.000Z', readable: true } });
+
+    const saved = await saveMcpApiKey('notion-id', 'secret_ntn_1234');
+
+    expect({ saved, asked: fetchMock.mock.calls }).toEqual({
+      saved: { savedAt: '2026-10-28T09:30:00.000Z', readable: true },
+      asked: [
+        [
+          '/api/mcps/notion-id/api-key',
+          { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{"apiKey":"secret_ntn_1234"}' },
+        ],
+      ],
     });
   });
 });
