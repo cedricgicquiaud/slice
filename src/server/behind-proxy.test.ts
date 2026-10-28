@@ -73,4 +73,13 @@ describe("an MCP's address behind the proxy (D5)", () => {
       url: `https://slice.example.com/m/${res.body.id}`,
     });
   });
+
+  it('is the same in My MCPs, in https though the request came in http (contract 17)', async () => {
+    const app = sliceAt('https://slice.example.com');
+    const { id } = (await deploy(app)).body;
+
+    const res = await request(app).get('/api/mcps').set('cookie', account.cookie).set('x-forwarded-proto', 'http');
+
+    expect(res.body.mcps.find((mcp: { id: string }) => mcp.id === id)?.url).toBe(`https://slice.example.com/m/${id}`);
+  });
 });
