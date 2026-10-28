@@ -26,6 +26,10 @@ function invalidSelection(message: string): ApiErrorPayload {
   return { code: 'INVALID_SELECTION', message };
 }
 
+function invalidKey(message: string): ApiErrorPayload {
+  return { code: 'INVALID_KEY', message };
+}
+
 /** How each refusal of a "Save" is answered: nothing is saved in any case. */
 const SAVE_REFUSALS: Record<SaveRefusal, { status: number; payload: ApiErrorPayload }> = {
   // Another account's MCP answers like a missing one (D12).
@@ -142,7 +146,7 @@ export function createMcpsRouter(accountMcps: AccountMcps, { apiKeys, now }: Mcp
       // An unusable key is refused before anything is saved: the key before stays (D9, D17).
       const sent = mcpApiKeySchema.safeParse(req.body);
       if (!sent.success) {
-        res.status(400).json({ code: 'INVALID_KEY', message: sent.error.issues[0]?.message ?? 'Invalid key.' });
+        res.status(400).json(invalidKey(sent.error.issues[0]?.message ?? 'Invalid key.'));
         return;
       }
       await apiKeys.save(req.params.id, req.body.apiKey, now());
