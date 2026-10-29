@@ -20,6 +20,7 @@ import { DATABASE_TEST_TIMEOUTS, createTestDatabase, type TestDatabase } from '.
 import { createTestAccount, type TestAccount } from '../db/test-account';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { ORDERS_SPEC, SEARCH_ORDERS_DESCRIPTION } from '../services/_fixtures/orders-spec';
 
 vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
@@ -332,6 +333,47 @@ describe('POST /api/mcps/:id/versions', () => {
         url: `${edit.url}/m/${id}`,
       },
       tools: ['list_notes', 'create_note', 'empty_trash'],
+    });
+  });
+
+  // WAT-200 — what the spec says of an action reaches the agent after "Save" as it does at creation.
+  it("gives the agent an added action's whole description, its parameters' explanations and their values (WAT-200)", async () => {
+    const created = await fetch(`${edit.url}/api/host`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: account.cookie },
+      body: JSON.stringify({
+        parsedSpec: {},
+        rawSpec: ORDERS_SPEC,
+        selectedIds: ['GET /orders'],
+        config: {
+          mcpName: 'orders',
+          baseUrl: 'http://127.0.0.1:9',
+          upstreamAuth: { type: 'bearer' },
+          hosting: 'cloud',
+          mode: 'remote',
+          includeParamDescriptions: true,
+          retryOnServerError: false,
+        },
+      }),
+    });
+    const { id } = (await created.json()) as { id: string };
+
+    await save(id, { fromVersion: 1, selectedIds: ['GET /orders', 'POST /orders/search'] });
+    const agent = new Client({ name: 'agent', version: '0.0.0' });
+    await agent.connect(new StreamableHTTPClientTransport(new URL(`${edit.url}/m/${id}`)));
+    const searchOrders = (await agent.listTools()).tools.find((tool) => tool.name === 'search_orders');
+    await agent.close();
+
+    expect({
+      description: searchOrders?.description,
+      customer: searchOrders?.inputSchema.properties?.customer,
+      status: searchOrders?.inputSchema.properties?.status,
+      carrier: searchOrders?.inputSchema.properties?.carrier,
+    }).toMatchObject({
+      description: SEARCH_ORDERS_DESCRIPTION,
+      customer: { description: 'Customer name, e.g. Sara' },
+      status: { enum: ['pending', 'shipped', 'late'] },
+      carrier: { description: 'Carrier that ships the order', enum: ['ups', 'dhl'] },
     });
   });
 
