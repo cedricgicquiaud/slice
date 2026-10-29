@@ -1228,6 +1228,10 @@ describe('the list of actions an agent reads from an MCP created from screen 4',
   it("gives the action's whole description, not only its first line", () => {
     expect(searchOrders.description).toBe(SEARCH_ORDERS_DESCRIPTION);
   });
+
+  it("gives each parameter's explanation", () => {
+    expect(searchOrders.inputSchema.properties?.customer).toMatchObject({ description: 'Customer name, e.g. Sara' });
+  });
 });
 
 async function host(): Promise<string> {
