@@ -104,6 +104,30 @@ describe('generateMcp — logic files (07-4)', () => {
     expect(tools).toContain('delete_c');
   });
 
+  it("gives each tool the action's whole description, every line of it (WAT-200)", () => {
+    const req = buildRequest();
+    req.parsedSpec = {
+      ...SPEC,
+      groups: [
+        {
+          tag: 'Products',
+          endpoints: [
+            {
+              id: 'GET /products',
+              method: 'GET',
+              path: '/products',
+              label: 'List products',
+              description: 'List products of the shop.\nUse it before any action on a product.',
+              params: [],
+            },
+          ],
+        },
+      ],
+    };
+    const tools = asMap(generateMcp(req)).get('src/tools.ts')!;
+    expect(tools).toContain('"List products of the shop.\\nUse it before any action on a product."');
+  });
+
   it('builds the Zod input schema from endpoint params (R1.4.7)', () => {
     const tools = asMap(generateMcp(buildRequest())).get('src/tools.ts')!;
     expect(tools).toContain('limit: z.number().int().optional()');
