@@ -18,7 +18,7 @@
 // nested body-field schema. Re-exported here for back-compat with existing
 // `./zod-schema-builder` imports.
 export type { ZodSchemaShape } from '@shared/types';
-import type { EndpointParam, ZodSchemaShape } from '@shared/types';
+import type { EndpointParam, EnumValue, ZodSchemaShape } from '@shared/types';
 
 /**
  * The `ZodSchemaShape` used to type one tool argument. A body field carries a
@@ -49,6 +49,8 @@ export function toZodShape(schema: unknown): ZodSchemaShape {
   const description = typeof s.description === 'string' ? s.description : undefined;
   const base: ZodSchemaShape = {};
   if (description) base.description = description;
+  const values = Array.isArray(s.enum) ? s.enum.filter(isEnumValue) : [];
+  if (values.length > 0) base.enum = values;
 
   const looksObject = type === 'object' || s.properties != null || s.additionalProperties != null;
   if (looksObject) {
@@ -75,6 +77,11 @@ export function toZodShape(schema: unknown): ZodSchemaShape {
 
   if (type) base.type = type;
   return base;
+}
+
+/** A value an OpenAPI `enum` may hold that a param can carry: objects and lists are left out. */
+export function isEnumValue(value: unknown): value is EnumValue {
+  return value === null || ['string', 'number', 'boolean'].includes(typeof value);
 }
 
 export function buildZodExpression(
