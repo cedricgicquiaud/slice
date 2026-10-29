@@ -185,6 +185,54 @@ describe('generated kit — README snippet and remaining spec values', () => {
   });
 });
 
+// WAT-200 — the values a parameter is limited to come from the spec too.
+describe('generated kit — a hostile value in the list a parameter is limited to', () => {
+  const HOSTILE_VALUE = `late"]); ${MARK}(); z.enum(["x' \`\${${MARK}()}\`\n${MARK}()`;
+
+  function generateWithStatus(): GeneratedFile[] {
+    const spec: ParsedSpec = {
+      ...SPEC,
+      groups: [
+        {
+          tag: 'Orders',
+          endpoints: [
+            {
+              id: 'GET /orders',
+              method: 'GET',
+              path: '/orders',
+              label: 'List orders',
+              params: [{ name: 'status', in: 'query', type: 'string', required: false, enum: ['pending', HOSTILE_VALUE] }],
+            },
+          ],
+        },
+      ],
+    };
+    return generateMcp({
+      parsedSpec: spec,
+      rawSpec: 'unused',
+      selectedIds: ['GET /orders'],
+      config: {
+        mcpName: 'evil-api',
+        baseUrl: 'https://api.example.com',
+        upstreamAuth: { type: 'none' },
+        hosting: 'self',
+        mode: 'both',
+        mcpServerToken: 'a'.repeat(32),
+        includeParamDescriptions: true,
+        retryOnServerError: false,
+      },
+    } as GenerateRequest);
+  }
+
+  it('stays a string value: it becomes no code and is restored exactly', () => {
+    const scanned = tokens(file(generateWithStatus(), 'src/tools.ts'));
+    expect({
+      code: scanned.filter((t) => t.kind === ts.SyntaxKind.Identifier && t.text === MARK),
+      restored: scanned.some((t) => t.kind === ts.SyntaxKind.StringLiteral && t.text === HOSTILE_VALUE),
+    }).toEqual({ code: [], restored: true });
+  });
+});
+
 describe('config schema — URLs', () => {
   const base = {
     mcpName: 'evil-api',
