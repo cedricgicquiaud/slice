@@ -9,7 +9,6 @@ import type {
   Endpoint,
   EndpointGroup,
   EndpointParam,
-  EnumValue,
   HttpMethod,
   ParsedSpec,
 } from '@shared/types';
@@ -277,10 +276,6 @@ function normaliseParam(raw: any): EndpointParam | null {
     type: typeof raw.schema?.type === 'string' ? raw.schema.type : undefined,
     required: raw.required === true || raw.in === 'path', // path params are always required (OpenAPI rule)
     description: typeof raw.description === 'string' ? raw.description : undefined,
-    enum: Array.isArray(raw.schema?.enum) ? raw.schema.enum.filter(isEnumValue) : undefined,
+    enum: toZodShape(raw.schema).enum,
   };
-}
-
-function isEnumValue(value: unknown): value is EnumValue {
-  return value === null || ['string', 'number', 'boolean'].includes(typeof value);
 }

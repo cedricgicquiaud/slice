@@ -80,7 +80,7 @@ export function toZodShape(schema: unknown): ZodSchemaShape {
 }
 
 /** A value an OpenAPI `enum` may hold that a param can carry: objects and lists are left out. */
-export function isEnumValue(value: unknown): value is EnumValue {
+function isEnumValue(value: unknown): value is EnumValue {
   return value === null || ['string', 'number', 'boolean'].includes(typeof value);
 }
 
