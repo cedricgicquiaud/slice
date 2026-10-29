@@ -20,6 +20,8 @@ import { createTestAccount, type TestAccount } from '../db/test-account';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import { ORDERS_SPEC, SEARCH_ORDERS_DESCRIPTION } from '../services/_fixtures/orders-spec';
 
 vi.setConfig(DATABASE_TEST_TIMEOUTS);
 
@@ -1210,6 +1212,21 @@ describe('the versions of an MCP created from screen 4', () => {
         },
       ],
     });
+  });
+});
+
+// WAT-200 — the agent reads everything the API description says of the actions it is given.
+describe('the list of actions an agent reads from an MCP created from screen 4', () => {
+  let searchOrders: Tool;
+  beforeAll(async () => {
+    const id = await hostSelection(ORDERS_SPEC, ['POST /orders/search']);
+    const agent = await connectAgent(`${baseUrl}/m/${id}`);
+    searchOrders = (await agent.listTools()).tools.find((tool) => tool.name === 'search_orders')!;
+    await agent.close();
+  });
+
+  it("gives the action's whole description, not only its first line", () => {
+    expect(searchOrders.description).toBe(SEARCH_ORDERS_DESCRIPTION);
   });
 });
 
