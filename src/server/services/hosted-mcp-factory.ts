@@ -12,7 +12,7 @@ import { z, type ZodTypeAny } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js';
 import { PASTE_YOUR_TOKEN_HERE, type EndpointParam, type HttpMethod, type UpstreamAuth } from '@shared/types';
-import { type ZodSchemaShape, schemaShapeForParam } from './zod-schema-builder';
+import { type ZodSchemaShape, schemaShapeForParam, textValues } from './zod-schema-builder';
 import { SsrfError, assertPublicUrl } from './ssrf-guard';
 import type { CallResult } from './mcp-calls';
 import type { McpApiKey } from './mcp-api-key';
@@ -152,7 +152,7 @@ export function buildZodSchema(shape: ZodSchemaShape): ZodTypeAny {
       break;
     }
     default: {
-      const values = (shape.enum ?? []).filter((value) => typeof value === 'string');
+      const values = textValues(shape);
       base = values.length > 0 ? z.enum(values) : z.string();
     }
   }

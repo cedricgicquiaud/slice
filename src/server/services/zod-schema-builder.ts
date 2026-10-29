@@ -143,10 +143,19 @@ function baseExpression(shape: ZodSchemaShape, includeDescriptions: boolean): st
     case 'string':
     default: {
       // The spec's values are JSON-encoded like every value it gives (anti-injection rule).
-      const values = (shape.enum ?? []).filter((value) => typeof value === 'string');
+      const values = textValues(shape);
       return values.length > 0 ? `z.enum(${JSON.stringify(values)})` : 'z.string()';
     }
   }
+}
+
+/**
+ * The values a text field is limited to: the text ones of its `enum`. Shared by
+ * the kit and hosted builders. Other values are left out, a text field refusing
+ * them anyway; a number limited to a list stays a free number.
+ */
+export function textValues(shape: ZodSchemaShape): string[] {
+  return (shape.enum ?? []).filter((value) => typeof value === 'string');
 }
 
 function escapeStringLiteral(input: string): string {
