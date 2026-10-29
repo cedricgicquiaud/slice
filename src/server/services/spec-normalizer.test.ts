@@ -238,6 +238,26 @@ describe('normalizeSpec', () => {
     expect(legacy?.deprecated).toBe(true);
     expect(current?.deprecated).toBeFalsy();
   });
+
+  // WAT-200 — the bench: Seldon's parameters point, once dereferenced, at schemas that contain themselves.
+  it('reads a parameter whose schema contains itself, as dereferenced references give it', () => {
+    const tensor: Record<string, unknown> = { type: 'object', properties: {} };
+    (tensor.properties as Record<string, unknown>).child = tensor;
+    const spec = {
+      ...baseSpec,
+      paths: {
+        '/predict': {
+          get: {
+            summary: 'Predict',
+            parameters: [{ name: 'json', in: 'query', schema: tensor }],
+            responses: { '200': {} },
+          },
+        },
+      },
+    };
+    const params = normalizeSpec(spec).groups[0].endpoints[0].params;
+    expect(params).toMatchObject([{ name: 'json', in: 'query', type: 'object' }]);
+  });
 });
 
 // ---------------------------------------------------------------------------
