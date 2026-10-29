@@ -1558,3 +1558,66 @@ elles-mêmes. Le constat contre le vrai proxy de Coolify se fait à la livraison
 ### Livraison 4 — SLICE répond à son adresse publique en suivant le guide, base sauvegardée
 
 À venir.
+
+## SLICE — Correctif : l'agent reçoit toute la spec
+
+_Fiche WAT-200. Un MCP hébergé transmettait à l'agent moins que ce que dit la description d'API : la description
+d'une action coupée à sa première ligne, aucune explication de paramètre, aucune liste de valeurs permises._
+
+Ce correctif ne change aucun écran : il change ce que l'agent lit, la liste des actions de son MCP (`tools/list`).
+On la lit ici dans le terminal, comme le fait l'agent au démarrage.
+
+**Préparer la recette**
+
+- Lancer `pnpm dev`, ouvrir http://localhost:5173, se connecter (amorce `.pilot/amorce-recette.js` dans la console du
+  navigateur, puis recharger la page).
+- La description d'API du scénario est le fichier `fixtures/uat-orders.yaml`. Son action « Search orders » a une
+  description sur deux lignes, un paramètre `customer` expliqué, un paramètre `status` limité à `pending`, `shipped`,
+  `late`, et un champ de corps `carrier` expliqué et limité à `ups`, `dhl`.
+- Lire la liste des actions d'un MCP, en remplaçant `<adresse>` par la sienne (écran « Your MCP is live » ou
+  « My MCPs ») :
+  `curl -s -X POST <adresse> -H "content-type: application/json" -H "accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'`
+
+**À la création, l'agent lit tout ce que dit la spec**
+
+- [ ] Créer un MCP depuis `fixtures/uat-orders.yaml` en cochant seulement « Search orders », jusqu'à « Deploy to SLICE
+  Cloud ». Dans la liste lue par `curl`, l'action `search_orders` a pour description les deux lignes :
+  `"Search orders by customer and status.\nUse it before any action on an order, to find the right one."` (le `\n`
+  sépare les deux lignes). Avant le correctif, seule la première phrase y était. Preuve aussi par le test « gives the
+  action's whole description, not only its first line » (`src/server/routes/hosted-mcp.test.ts`).
+- [ ] Le paramètre `customer` porte son explication : `"description":"Customer name, e.g. Sara"`. Preuve aussi par le
+  test « gives each parameter's explanation ».
+- [ ] Le paramètre `status` porte sa liste : `"enum":["pending","shipped","late"]`. Preuve aussi par le test « gives the
+  values a parameter is limited to ».
+- [ ] Le champ de corps `carrier` porte son explication et sa liste : `"description":"Carrier that ships the order"` et
+  `"enum":["ups","dhl"]`. Preuve aussi par le test « gives the explanation of a field of the request body, and the
+  values it is limited to ».
+- [ ] Refus : l'agent qui envoie une valeur hors de la liste est arrêté avant l'API. Dans le terminal :
+  `curl -s -X POST <adresse> -H "content-type: application/json" -H "accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"search_orders","arguments":{"status":"lost"}}}'`
+  répond une erreur (`"isError":true`) qui dit `Invalid option: expected one of "pending"|"shipped"|"late"`. Sur la
+  page « Usage » du MCP, l'appel est noté « Invalid request ». Preuve aussi par le test « accepts a value of the list
+  and refuses any other, in the kit as in the hosted engine » (`src/server/services/zod-builders-parity.test.ts`).
+
+**Après « Save », l'agent lit la même chose**
+
+- [ ] Créer un second MCP depuis `fixtures/uat-orders.yaml` en cochant seulement « List orders ». Sur « My MCPs »,
+  « Edit actions », cocher aussi « Search orders », « Save ». La liste lue par `curl` à la même adresse montre
+  `search_orders` avec ses deux lignes de description, l'explication de `customer`, la liste de `status`, l'explication
+  et la liste de `carrier`, exactement comme ci-dessus. Preuve aussi par le test « gives the agent an added action's
+  whole description, its parameters' explanations and their values (WAT-200) » (`src/server/routes/mcps.test.ts`).
+- [ ] Limite connue : un MCP créé avant ce correctif garde la description coupée de ses actions et des paramètres sans
+  liste. Après « Save » d'une nouvelle sélection, ses actions retrouvent leur description entière ; leurs listes de
+  valeurs ne reviennent qu'en recréant le MCP depuis la spec.
+
+**Le kit à télécharger reçoit la même chose**
+
+- [ ] Depuis `fixtures/uat-orders.yaml`, choisir l'hébergement par soi-même et télécharger le kit. Dans
+  `src/tools.ts`, l'outil `search_orders` a pour description les deux lignes, `status` s'écrit
+  `z.enum(["pending","shipped","late"])` et `carrier` `z.enum(["ups","dhl"])`. Preuve aussi par les tests « gives each
+  tool the action's whole description, every line of it (WAT-200) » (`src/server/services/mcp-generator.test.ts`) et
+  « stays a string value: it becomes no code and is restored exactly » (`mcp-generator.injection.test.ts`, une valeur
+  de liste piégée par une apostrophe, un accent grave, `${}` et un retour à la ligne).
+
+**Le banc avant / après sur de vraies API**
+
+À venir, ajouté séparément avant la PR.
