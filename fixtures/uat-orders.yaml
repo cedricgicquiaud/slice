@@ -1,0 +1,42 @@
+# UAT fixture for WAT-200 — the agent reads everything the spec says.
+#
+# Expected behaviour, in the list of actions an agent reads (tools/list):
+#   - "search_orders" carries both lines of its description
+#   - its parameter "customer" carries "Customer name, e.g. Sara"
+#   - its parameter "status" only accepts pending, shipped, late
+#   - its body field "carrier" carries its explanation and only accepts ups, dhl
+openapi: 3.0.3
+info: { title: Orders, version: "1.0" }
+servers: [{ url: https://orders.example.com }]
+paths:
+  /orders:
+    get:
+      operationId: listOrders
+      summary: List orders
+      responses: { '200': { description: ok } }
+  /orders/search:
+    post:
+      operationId: searchOrders
+      summary: Search orders
+      description: |-
+        Search orders by customer and status.
+        Use it before any action on an order, to find the right one.
+      parameters:
+        - name: customer
+          in: query
+          description: Customer name, e.g. Sara
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, shipped, late] }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                carrier:
+                  type: string
+                  description: Carrier that ships the order
+                  enum: [ups, dhl]
+      responses: { '200': { description: ok } }
