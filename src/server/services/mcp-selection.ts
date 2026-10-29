@@ -136,7 +136,7 @@ export async function saveMcpSelection(
     await tx.execute(sql`
       insert into ${connectorActions} (connector_id, version, position, name, label, description, method, path, params)
       select connector_id, ${version}, (row_number() over (order by position) - 1)::int, name, label,
-             split_part(coalesce(description, label), E'\n', 1), method, path, params
+             coalesce(description, label), method, path, params
       from ${connectorApiActions}
       where connector_id = ${id}
         and method::text || ' ' || path in (select jsonb_array_elements_text(${JSON.stringify(change.selectedIds)}::jsonb))`);
