@@ -2,8 +2,9 @@
  * How many sign-in codes may leave in an hour (D13): five for an address, ten
  * from an IP. Only codes that left count: a failed send spends nothing
  * (contract 14). Kept in memory: a restart gives every quota back.
- * Requests whose IP cannot be read share one IP's quota, so that a forged
- * `x-forwarded-for` cannot slip past it.
+ * The IP is the last address of `x-forwarded-for`, the one SLICE's single proxy
+ * adds (D6): an address the visitor writes before it moves nothing. Requests
+ * whose IP cannot be read share one IP's quota, so that none slips past it.
  */
 const HOUR_MS = 60 * 60 * 1000;
 const CODES_PER_ADDRESS = 5;

@@ -60,14 +60,16 @@ export interface McpsRouterOptions {
   apiKeys?: McpApiKeys;
   /** Clock that dates a saved key. */
   now: () => Date;
+  /** SLICE's public address, where the MCPs' addresses start (D5). Without it, the address the request reached. */
+  publicUrl?: string;
 }
 
-export function createMcpsRouter(accountMcps: AccountMcps, { apiKeys, now }: McpsRouterOptions): Router {
+export function createMcpsRouter(accountMcps: AccountMcps, { apiKeys, now, publicUrl }: McpsRouterOptions): Router {
   const router = Router();
 
   router.get('/', async (req, res) => {
     const mcps = await accountMcps.list(res.locals.workspaceId);
-    const origin = `${req.protocol}://${req.get('host')}`;
+    const origin = publicUrl ?? `${req.protocol}://${req.get('host')}`;
     res.json({ mcps: mcps.map((mcp) => ({ ...mcp, url: `${origin}/m/${mcp.id}` })) });
   });
 

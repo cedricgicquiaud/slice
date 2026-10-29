@@ -59,6 +59,9 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
       // guards it, and switches off whenever TEST is set. Never in production.
       ...(nodeEnv === 'production' && { disableOriginCheck: false }),
     },
+    // Better Auth limits its routes when its own NODE_ENV reads production, read once at import;
+    // the NODE_ENV declared here says the same, so a test can switch that limiter on.
+    ...(nodeEnv === 'production' && { rateLimit: { enabled: true } }),
     // D8: seven days from the last visit, whenever it falls; every visit renews the session.
     // Decision 25: any live session deletes the account. Better Auth asks for one opened less
     // than a day ago, which guards a password retyped; SLICE has none.
@@ -142,7 +145,10 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
 
 export type SliceAuth = ReturnType<typeof createAuth>;
 
-/** The caller's IP as Better Auth reads it (`x-forwarded-for`, set by SLICE's proxy), if known. */
+/**
+ * The caller's IP, if known: `x-forwarded-for`, which `createApp` has cut down to the last address,
+ * the one SLICE's single proxy adds (D6). Better Auth's own limit reads the same header.
+ */
 function ipOf(ctx: { headers?: Headers; context: { options: BetterAuthOptions } }): string | null {
   return ctx.headers ? getIP(ctx.headers, ctx.context.options) : null;
 }
@@ -158,10 +164,16 @@ export function authSecretFromEnv(env: NodeJS.ProcessEnv): string | undefined {
 
 /**
  * SLICE's public address: BETTER_AUTH_URL. Refused missing in production, where behind
- * a proxy every write from SLICE's own page would answer 403. Elsewhere it defaults to
+ * a proxy every write from SLICE's own page would answer 403, and refused in http:// there,
+ * since the MCPs' addresses start with it (contract 17). Elsewhere it defaults to
  * the Vite page (`pnpm dev`), whose proxy hands the API another address.
  */
 export function authBaseUrlFromEnv(env: NodeJS.ProcessEnv): string {
+  if (env.BETTER_AUTH_URL && env.NODE_ENV === 'production' && !env.BETTER_AUTH_URL.startsWith('https://')) {
+    throw new Error(
+      `BETTER_AUTH_URL must start with https:// in production (the MCPs' addresses start with it), got ${env.BETTER_AUTH_URL}.`
+    );
+  }
   if (env.BETTER_AUTH_URL) return env.BETTER_AUTH_URL;
   if (env.NODE_ENV === 'production') {
     throw new Error('BETTER_AUTH_URL is required in production (the address the browser uses, e.g. https://slice.example.com).');

@@ -19,7 +19,7 @@ in production, set the variables in the platform's settings.
 | `NODE_ENV` | `development` | `production` serves the built front end from `dist/client` (with a single-page-app fallback) and turns on the SSRF guard for hosted MCPs (`config.baseUrl` in `POST /api/host`, and every hosted tool call). Any other value leaves that guard off so a local upstream can be reached. The value is also reported by `GET /api/health`. `pnpm start` sets it to `production`. |
 | `DATABASE_URL` | (none) | PostgreSQL connection string (`postgres://user:password@host:5432/database`) where hosted MCPs are stored. **Required when `NODE_ENV=production`**: without it the server refuses to start and says why. Elsewhere, leaving it unset uses the embedded database below. |
 | `BETTER_AUTH_SECRET` | (none) | Signs the session cookies of SLICE accounts. **Required when `NODE_ENV=production`**: without it the server refuses to start and says why. Use a long random value (`openssl rand -hex 32`), kept in the platform's secret settings. Elsewhere, Better Auth falls back to a public development secret. |
-| `BETTER_AUTH_URL` | `http://localhost:5173` outside production; (none) in production | SLICE's public address (`https://slice.example.com`, or the Vite page in development). Better Auth builds its sign-in links from it, and the API takes writes only from a page at this address or at the address the request reached (`403 FORBIDDEN` otherwise, see [API.md](API.md#authentication)). **Required when `NODE_ENV=production`**: without it the server refuses to start and says why, since behind a proxy that ends HTTPS the server sees `http://` requests and would refuse the `https://` page. An `https://` address makes the session cookie `Secure`. |
+| `BETTER_AUTH_URL` | `http://localhost:5173` outside production; (none) in production | SLICE's public address (`https://slice.example.com`, or the Vite page in development). Better Auth builds its sign-in links from it, and the API takes writes only from a page at this address or at the address the request reached (`403 FORBIDDEN` otherwise, see [API.md](API.md#authentication)). **Required when `NODE_ENV=production`**: without it the server refuses to start and says why, since behind a proxy that ends HTTPS the server sees `http://` requests and would refuse the `https://` page. In production it must also start with `https://`: an `http://` one stops the server at start-up, since the MCPs' addresses start with it. An `https://` address makes the session cookie `Secure`. |
 | `SLICE_ENCRYPTION_KEY` | (none) | Encrypts the API keys saved for MCPs (AES-256-GCM) before they reach the database. **Required whatever `NODE_ENV`**, development included: without it, or with a value that is not 32 bytes in base64, the server refuses to start and names it. Generate one with `openssl rand -base64 32` and keep it in the platform's secret settings; the repository holds none, and the tests draw their own at random. Changing it makes every saved key unreadable: SLICE never decrypts one into a wrong value. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | (none) | The Google application SLICE signs in with ([oauth-apps.md](oauth-apps.md)). With both set, "Continue with Google" works; without them, the server offers no Google sign-in. |
 | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` | (none) | The Microsoft application SLICE signs in with, personal and work or school accounts ([oauth-apps.md](oauth-apps.md)). Same rule as Google. |
@@ -91,18 +91,24 @@ soon as the database is back, without a restart.
 
 ### Running behind a reverse proxy
 
-The app does not configure Express `trust proxy`. Behind a TLS-terminating reverse proxy this has two effects:
+SLICE expects **one** reverse proxy in front of it (in production, Coolify's), which ends HTTPS and forwards plain
+`http` requests. It trusts that proxy, and that proxy only (Express `trust proxy` set to one hop):
 
-- The rate limit counts every client under the proxy's IP address, so all users share one 30 requests-per-minute budget.
-- `POST /api/host` builds the returned URL from the request protocol and `Host` header, so it returns `http://` URLs
-  even when the public site is served over HTTPS.
+- **Each visitor is counted on their own address**, for the 30 requests a minute on `/api/*` and for the ten sign-in
+  codes an hour per IP. That address is the **last** one of `X-Forwarded-For`, the one the proxy adds. Whatever the
+  visitor wrote in that header before it is ignored: a forged `X-Forwarded-For` neither frees a visitor from their
+  quotas nor spends another visitor's. The proxy must add the client's address at the end of the header (append) or
+  replace the header with it; either way the last address is the client's.
+- **The address of a hosted MCP starts with `BETTER_AUTH_URL`**: `POST /api/host` returns, and `GET /api/mcps`
+  lists, `https://slice.example.com/m/<id>` for `BETTER_AUTH_URL=https://slice.example.com` (a trailing slash in it
+  is dropped). Neither the `http` the proxy forwards nor a `Host` header written by the visitor changes it. Outside
+  production, with `BETTER_AUTH_URL` unset, it starts with the address the request reached.
 
-Account for both when exposing an instance publicly.
+Without a proxy, or behind two, the last address of `X-Forwarded-For` is not one the proxy wrote: a visitor reaching
+SLICE directly writes it themselves. Do not publish SLICE's port; let the one proxy be the only way in.
 
-The ten sign-in codes an hour per IP are counted on the `X-Forwarded-For` header. The proxy in front of SLICE must
-**overwrite** that header with the client's address, never append to it: SLICE reads a single address only. A request
-whose header holds several addresses, or none, counts in one quota shared by every such request, so without a proxy
-that sets it every visitor shares the same ten codes an hour.
+In development, the Vite page relays `/m/<id>` to the API server as it relays `/api`: an MCP address on
+`http://localhost:5173` answers.
 
 ### Development scripts
 

@@ -42,8 +42,10 @@ try {
   });
 
   // The NODE_ENV as declared: the recette sign-in opens only where it says development or test.
+  // The MCPs' addresses start with BETTER_AUTH_URL (D5); unset, with the address each request reached.
   const app = createApp({
     nodeEnv: process.env.NODE_ENV,
+    publicUrl: process.env.BETTER_AUTH_URL || undefined,
     hostedStore,
     mcpCalls,
     accountMcps,

@@ -1,0 +1,330 @@
+// WAT-188, WAT-109 — SLICE behind Coolify's proxy: the proxy ends HTTPS and forwards
+// `http` requests, adding the visitor's address to `X-Forwarded-For`. Its headers are simulated here.
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import request from 'supertest';
+import { randomBytes } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { createServer, type AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createApp, type CreateAppOptions } from './app';
+import { createAuth } from './auth/auth';
+import { createHostedStore } from './services/hosted-store';
+import { createAccountMcps } from './services/account-mcps';
+import { openDatabase } from './db/client';
+import { migrateDatabase } from './db/migrate';
+import { createTestAccount, TEST_AUTH_SECRET, type TestAccount } from './db/test-account';
+import { DATABASE_TEST_TIMEOUTS } from './db/test-database';
+import { startTestProcess, stopTestProcess } from './test-processes';
+import { createServer as createViteServer } from 'vite';
+
+vi.setConfig(DATABASE_TEST_TIMEOUTS);
+
+const SPEC = `openapi: 3.0.3
+info: { title: Demo, version: "1.0" }
+servers: [{ url: https://api.example.com }]
+paths:
+  /things:
+    get:
+      operationId: listThings
+      summary: List things
+      responses: { '200': { description: ok } }
+`;
+
+let account: TestAccount;
+
+beforeAll(async () => {
+  account = await createTestAccount();
+});
+
+afterAll(async () => {
+  await account?.dispose();
+});
+
+/** SLICE on the account's database, at the public address `publicUrl`. */
+function sliceAt(publicUrl: CreateAppOptions['publicUrl']) {
+  return createApp({
+    nodeEnv: 'test',
+    publicUrl,
+    hostedStore: createHostedStore(account.database),
+    accountMcps: createAccountMcps(account.database),
+    auth: account.auth,
+  });
+}
+
+/** What screen 4's "Deploy" posts to `/api/host`. */
+const DEPLOY = {
+  parsedSpec: {},
+  rawSpec: SPEC,
+  selectedIds: ['GET /things'],
+  config: {
+    mcpName: 'demo',
+    baseUrl: 'https://api.example.com',
+    upstreamAuth: { type: 'none' },
+    hosting: 'cloud',
+    mode: 'remote',
+    includeParamDescriptions: false,
+    retryOnServerError: false,
+  },
+};
+
+/** Screen 4's "Deploy", as the proxy forwards it: over `http`. */
+function deploy(app: ReturnType<typeof createApp>) {
+  return request(app).post('/api/host').set('cookie', account.cookie).set('x-forwarded-proto', 'http').send(DEPLOY);
+}
+
+describe("an MCP's address behind the proxy (D5)", () => {
+  it("is SLICE's public address followed by /m/<id>, in https though the request came in http (contract 3, 17)", async () => {
+    const res = await deploy(sliceAt('https://slice.example.com'));
+
+    expect({ status: res.status, url: res.body.url }).toEqual({
+      status: 200,
+      url: `https://slice.example.com/m/${res.body.id}`,
+    });
+  });
+
+  it('is the same in My MCPs, in https though the request came in http (contract 17)', async () => {
+    const app = sliceAt('https://slice.example.com');
+    const { id } = (await deploy(app)).body;
+
+    const res = await request(app).get('/api/mcps').set('cookie', account.cookie).set('x-forwarded-proto', 'http');
+
+    expect(res.body.mcps.find((mcp: { id: string }) => mcp.id === id)?.url).toBe(`https://slice.example.com/m/${id}`);
+  });
+
+  it('ignores a Host header written by the visitor, at creation and in My MCPs', async () => {
+    const app = sliceAt('https://slice.example.com');
+
+    const created = await deploy(app).set('host', 'evil.example.com');
+    const listed = await request(app).get('/api/mcps').set('cookie', account.cookie).set('host', 'evil.example.com');
+
+    expect({
+      created: created.body.url,
+      listed: listed.body.mcps.find((mcp: { id: string }) => mcp.id === created.body.id)?.url,
+    }).toEqual({
+      created: `https://slice.example.com/m/${created.body.id}`,
+      listed: `https://slice.example.com/m/${created.body.id}`,
+    });
+  });
+
+  it('has a single slash before /m when the public address ends with one, at creation and in My MCPs', async () => {
+    const app = sliceAt('https://slice.example.com/');
+
+    const created = await deploy(app);
+    const listed = await request(app).get('/api/mcps').set('cookie', account.cookie);
+
+    expect({
+      created: created.body.url,
+      listed: listed.body.mcps.find((mcp: { id: string }) => mcp.id === created.body.id)?.url,
+    }).toEqual({
+      created: `https://slice.example.com/m/${created.body.id}`,
+      listed: `https://slice.example.com/m/${created.body.id}`,
+    });
+  });
+});
+
+/**
+ * The `X-Forwarded-For` the proxy hands SLICE for the visitor at `ip`: it adds that address
+ * after whatever the visitor wrote there themselves (`written`).
+ */
+function forwardedFor(ip: string, written?: string): string {
+  return written ? `${written}, ${ip}` : ip;
+}
+
+/** A request of the visitor at `ip`, as the proxy forwards it. */
+function fromVisitor(app: ReturnType<typeof createApp>, ip: string, written?: string) {
+  return request(app).get('/api/mcps').set('x-forwarded-for', forwardedFor(ip, written));
+}
+
+describe('thirty requests a minute for each visitor behind the proxy (D6)', () => {
+  it("refuses a visitor's thirty-first request, and only theirs (contract 5)", async () => {
+    const app = createApp({ nodeEnv: 'test' });
+    for (let i = 0; i < 30; i++) await fromVisitor(app, '203.0.113.7');
+
+    const theirs = await fromVisitor(app, '203.0.113.7');
+    const another = await fromVisitor(app, '198.51.100.4');
+
+    // Without a session, a request under the limit is refused for that: 401.
+    expect({ theirs: theirs.status, another: another.status }).toEqual({ theirs: 429, another: 401 });
+  });
+
+  it('counts a visitor who writes a false X-Forwarded-For on their real address (contract 14)', async () => {
+    const app = createApp({ nodeEnv: 'test' });
+    for (let i = 1; i <= 30; i++) await fromVisitor(app, '203.0.113.7', `10.0.0.${i}`);
+
+    const res = await fromVisitor(app, '203.0.113.7', '10.0.0.31');
+
+    expect(res.status).toBe(429);
+  });
+
+  it('leaves a visitor their thirty requests when another passes for them (contract 14)', async () => {
+    const app = createApp({ nodeEnv: 'test' });
+    for (let i = 0; i < 30; i++) await fromVisitor(app, '192.0.2.66', '203.0.113.7');
+
+    const res = await fromVisitor(app, '203.0.113.7');
+
+    expect(res.status).toBe(401);
+  });
+});
+
+/** SLICE sending its sign-in codes, with the addresses it sent them to. In production, Better Auth limits the route too. */
+function sliceSendingCodes(nodeEnv?: string) {
+  const sentTo: string[] = [];
+  const auth = createAuth({
+    database: account.database,
+    secret: TEST_AUTH_SECRET,
+    nodeEnv,
+    sendCode: async (email) => {
+      sentTo.push(email);
+    },
+  });
+  return { app: createApp({ nodeEnv: 'test', auth }), sentTo };
+}
+
+/** "Email me a code" for `email`, from the visitor at `ip`, as the proxy forwards it. */
+function askForCodeFrom(app: ReturnType<typeof createApp>, ip: string, email: string, written?: string) {
+  return request(app)
+    .post('/api/auth/email-otp/send-verification-otp')
+    .set('x-forwarded-for', forwardedFor(ip, written))
+    .send({ email, type: 'sign-in' });
+}
+
+describe('ten sign-in codes an hour for each visitor behind the proxy (D6)', () => {
+  it("still sends a visitor's code when another visitor has had their ten (contract 5)", async () => {
+    const { app, sentTo } = sliceSendingCodes();
+    for (let i = 1; i <= 10; i++) await askForCodeFrom(app, '203.0.113.7', `office${i}@example.com`);
+
+    const res = await askForCodeFrom(app, '198.51.100.4', 'home@example.com');
+
+    expect({ status: res.status, sent: sentTo.length }).toEqual({ status: 200, sent: 11 });
+  });
+
+  it('counts a visitor who writes a false X-Forwarded-For on their real address (contract 14)', async () => {
+    const { app, sentTo } = sliceSendingCodes();
+    for (let i = 1; i <= 10; i++) await askForCodeFrom(app, '203.0.113.7', `forger${i}@example.com`, `10.0.0.${i}`);
+
+    const res = await askForCodeFrom(app, '203.0.113.7', 'forger11@example.com');
+
+    expect({ status: res.status, code: res.body.code, sent: sentTo.length }).toEqual({
+      status: 429,
+      code: 'too_many_codes_from_ip',
+      sent: 10,
+    });
+  });
+
+  it('leaves a visitor their ten codes when another passes for them (contract 14)', async () => {
+    const { app, sentTo } = sliceSendingCodes();
+    for (let i = 1; i <= 10; i++) await askForCodeFrom(app, '192.0.2.66', `impostor${i}@example.com`, '203.0.113.7');
+
+    const res = await askForCodeFrom(app, '203.0.113.7', 'victim@example.com');
+
+    expect({ status: res.status, sent: sentTo.length }).toEqual({ status: 200, sent: 11 });
+  });
+});
+
+describe("Better Auth's three calls a minute for each visitor behind the proxy, in production (D6)", () => {
+  it('leaves a visitor their three calls when another, writing a false X-Forwarded-For, has had theirs (contract 5)', async () => {
+    const { app } = sliceSendingCodes('production');
+    for (let i = 1; i <= 3; i++) await askForCodeFrom(app, '203.0.113.21', `forger${i}@example.com`, '1.2.3.4');
+
+    // Their own network's router wrote an address before theirs: the header holds two.
+    const res = await askForCodeFrom(app, '198.51.100.21', 'office@example.com', '10.1.1.1');
+
+    expect(res.status).toBe(200);
+  });
+
+  it('counts a visitor who writes a false X-Forwarded-For on their real address (contract 14)', async () => {
+    const { app } = sliceSendingCodes('production');
+    for (let i = 1; i <= 3; i++) await askForCodeFrom(app, '203.0.113.22', `liar${i}@example.com`, `10.0.0.${i}`);
+
+    const res = await askForCodeFrom(app, '203.0.113.22', 'liar4@example.com');
+
+    // Better Auth's own refusal carries no `code`, unlike SLICE's hourly quotas.
+    expect({ status: res.status, code: res.body.code }).toEqual({ status: 429, code: undefined });
+  });
+});
+
+// The real entry point, run from the repository root as `pnpm dev:server` runs it (tsx binary, no package manager).
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+
+async function freePort(): Promise<number> {
+  const probe = createServer();
+  await new Promise<void>((r) => probe.listen(0, r));
+  const { port } = probe.address() as { port: number };
+  await new Promise<void>((r) => probe.close(() => r()));
+  return port;
+}
+
+describe('the server started with BETTER_AUTH_URL (D5, D16)', () => {
+  it('gives a created MCP an address at BETTER_AUTH_URL, not at the address the request reached', async () => {
+    const scratch = mkdtempSync(path.join(tmpdir(), 'slice-public-url-'));
+    const database = openDatabase({ driver: 'pglite', dataDir: path.join(scratch, 'pglite') });
+    await migrateDatabase(database);
+    const { cookie } = await createTestAccount({ database });
+    await database.close();
+    const port = await freePort();
+    const { DATABASE_URL: _ignored, ...inherited } = process.env;
+    const server = startTestProcess(
+      path.join(ROOT, 'node_modules/.bin/tsx'),
+      ['--tsconfig', path.join(ROOT, 'tsconfig.server.json'), path.join(ROOT, 'src/server/index.ts')],
+      {
+        cwd: ROOT,
+        env: {
+          ...inherited,
+          NODE_ENV: 'development',
+          PORT: String(port),
+          SLICE_DATA_DIR: scratch,
+          BETTER_AUTH_SECRET: TEST_AUTH_SECRET,
+          BETTER_AUTH_URL: 'http://localhost:5173',
+          SLICE_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
+        },
+        stdio: 'ignore',
+      }
+    );
+    const baseUrl = `http://127.0.0.1:${port}`;
+    try {
+      for (let attempt = 0; attempt < 150; attempt++) {
+        if (await fetch(`${baseUrl}/api/health`).then((res) => res.ok, () => false)) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+
+      const res = await fetch(`${baseUrl}/api/host`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie },
+        body: JSON.stringify(DEPLOY),
+      });
+      const body = (await res.json()) as { id: string; url: string };
+
+      expect({ status: res.status, url: body.url }).toEqual({ status: 200, url: `http://localhost:5173/m/${body.id}` });
+    } finally {
+      await stopTestProcess(server);
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  }, 30_000);
+});
+
+describe('the Vite page in development (D16)', () => {
+  it('relays /m/<id> to the API server, and keeps showing its own pages at /mcps', async () => {
+    // Only the relay is at stake: no dependency pre-bundling, no file watching, a free port.
+    const vite = await createViteServer({
+      configFile: path.join(ROOT, 'vite.config.ts'),
+      logLevel: 'silent',
+      optimizeDeps: { noDiscovery: true, include: [] },
+      server: { port: 0, watch: null },
+    });
+    await vite.listen();
+    const page = `http://localhost:${(vite.httpServer!.address() as AddressInfo).port}`;
+    // Asked for a web page: unrelayed, Vite answers with SLICE's page (whatever the API server is doing).
+    const visit = async (route: string) =>
+      (await (await fetch(`${page}${route}`, { headers: { accept: 'text/html' } })).text()).includes('<div id="root">');
+    try {
+      expect({ myMcps: await visit('/mcps'), mcp: await visit('/m/Q2xhdWRlIGlzIG5vdCBoZXJl') }).toEqual({
+        myMcps: true,
+        mcp: false,
+      });
+    } finally {
+      await vite.close();
+    }
+  });
+});

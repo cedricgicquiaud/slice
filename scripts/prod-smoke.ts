@@ -32,6 +32,8 @@ import { openDatabase } from '../src/server/db/client';
 
 const PORT = Number(process.env.PORT ?? 3099);
 const BASE = `http://localhost:${PORT}`;
+/** BETTER_AUTH_URL, which production refuses in http://: the address a proxy ending HTTPS would show. */
+const PUBLIC_URL = `https://localhost:${PORT}`;
 const ROOT = resolve(import.meta.dirname, '..');
 const SERVER_ENTRY = 'dist/server/server/index.js';
 
@@ -71,7 +73,8 @@ let cookie = '';
 async function signIn(databaseUrl: string): Promise<string> {
   const database = openDatabase({ driver: 'postgres', url: databaseUrl });
   try {
-    const auth = createAuth({ database, secret: AUTH_SECRET, baseURL: BASE });
+    // Under the server's own public address: Better Auth then names the cookie as the server reads it.
+    const auth = createAuth({ database, secret: AUTH_SECRET, baseURL: PUBLIC_URL });
     const { name, value } = await openSession(auth, 'smoke@slice.local');
     return `${name}=${value}`;
   } finally {
@@ -182,8 +185,9 @@ const checks: { name: string; fn: () => Promise<void> }[] = [
         throw new Error(`url does not end with /m/<22-char id>: ${body.url}`);
       }
 
+      // The address starts with PUBLIC_URL, which no proxy ends here: the server is reached in http.
       const client = new Client({ name: 'prod-smoke', version: '0.0.0' });
-      await client.connect(new StreamableHTTPClientTransport(new URL(body.url)));
+      await client.connect(new StreamableHTTPClientTransport(new URL(new URL(body.url).pathname, BASE)));
       try {
         const { tools } = await client.listTools();
         const names = tools.map((t) => t.name).sort().join(',');
@@ -255,8 +259,7 @@ async function main(): Promise<void> {
       PORT: String(PORT),
       DATABASE_URL: smokeUrl.href,
       BETTER_AUTH_SECRET: AUTH_SECRET,
-      // Plain http here: Better Auth then names its cookie without the `__Secure-` prefix.
-      BETTER_AUTH_URL: BASE,
+      BETTER_AUTH_URL: PUBLIC_URL,
       SLICE_ENCRYPTION_KEY: ENCRYPTION_KEY,
     },
     stdio: ['ignore', 'inherit', 'inherit'],

@@ -72,11 +72,11 @@ A code lives 10 minutes, signs in once, and takes 5 tries:
 | 403 | `TOO_MANY_ATTEMPTS` | Sixth try of a code, even the right one; only a new code signs in |
 | 400 | `OTP_EXPIRED` | Code older than 10 minutes |
 | 429 | `too_many_codes_for_address` | Sixth code within the hour for the address; no email sent |
-| 429 | `too_many_codes_from_ip` | Eleventh code within the hour from the IP (`x-forwarded-for`), any address; no email sent |
+| 429 | `too_many_codes_from_ip` | Eleventh code within the hour from the visitor's IP (the last address of `x-forwarded-for`), any address; no email sent |
 
 Only codes that left count in the two hourly quotas: a `code_not_sent` spends nothing. The quotas live in the server's
 memory, so a restart gives them back. In production, Better Auth also limits each of the two routes to 3 calls a minute
-per IP (`429` without `code`).
+per visitor (`429` without `code`), counted on the same address as the hourly quotas: the last of `x-forwarded-for`.
 
 Account deletion (Better Auth's delete user): `POST /api/auth/delete-user` with `{}` and the session cookie erases
 the signed-in account at once and answers `{ "success": true, "message": "User deleted" }`. Its sessions go with it on
@@ -120,13 +120,15 @@ Independently of the body limit, any API description is capped at 10 MB before i
 
 ### Rate limiting
 
-- 30 requests per minute per client IP on every path under `/api/`, except `GET /api/health`.
+- 30 requests per minute per visitor on every path under `/api/`, except `GET /api/health`.
 - The hosted runtime `/m/:id` is not rate-limited.
 - Responses carry the standard `RateLimit-Policy`, `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` headers.
 - Over the limit: `429` with body `{ "error": "Too many requests, please try again in a minute." }`.
 
-The limiter keys on `req.ip`. The app does not set Express `trust proxy`, so behind a reverse proxy
-every client is counted under the proxy's address (see [configuration.md](configuration.md#running-behind-a-reverse-proxy)).
+Both this limit and the ten sign-in codes an hour per IP count each visitor on their own address: SLICE trusts the
+one reverse proxy in front of it (Express `trust proxy` set to one hop), and reads the last address of
+`X-Forwarded-For`, the one that proxy adds. An address the visitor writes in that header themselves moves nothing
+(see [configuration.md](configuration.md#running-behind-a-reverse-proxy)).
 
 ### Error format
 
@@ -459,7 +461,7 @@ otherwise the request fails with `BLOCKED_HOST`. In development this check is of
 | Field | Description |
 |---|---|
 | `id` | 16 random bytes, base64url-encoded (22 characters, about 128 bits of entropy) |
-| `url` | `<request protocol>://<Host header>/m/<id>` |
+| `url` | `<BETTER_AUTH_URL>/m/<id>`, SLICE's public address (`https://slice.example.com/m/<id>` in production); outside production, with `BETTER_AUTH_URL` unset, the address the request reached |
 
 A hosted MCP has no expiry date: its URL keeps working until the MCP is deleted.
 
@@ -515,7 +517,7 @@ Only its selection of actions can change: its name, the API's address and its up
 | `actionCount` | Number of actions (tools) the MCP exposes: those of its active version, not the API's full list |
 | `upstreamAuthType` | How the MCP reaches its API, set at its creation: `none`, `apiKey` (a key in a header), `bearer` (`Authorization: Bearer`) or `oauth2` (client_credentials) |
 | `createdAt` | Creation date, ISO 8601 |
-| `url` | `<request protocol>://<Host header>/m/<id>`, the address to paste into the agent |
+| `url` | `<BETTER_AUTH_URL>/m/<id>`, the same address as `POST /api/host` returned, to paste into the agent |
 
 An account without any MCP gets `{ "mcps": [] }`.
 

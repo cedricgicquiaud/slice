@@ -478,6 +478,24 @@ describe('server entry point', () => {
     }
   }, 30_000);
 
+  // The MCPs' addresses start with it: in production, never one in http:// (contract 17).
+  it('refuses to start in production with BETTER_AUTH_URL in http://, and says why', async () => {
+    const cwd = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));
+    try {
+      const { code, output } = await runUntilExit(cwd, {
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgres://postgres@127.0.0.1:9/never-reached',
+        BETTER_AUTH_SECRET: 'production-secret',
+        BETTER_AUTH_URL: 'http://slice.example.com',
+      });
+
+      expect(code).toBe(1);
+      expect(output).toContain('BETTER_AUTH_URL must start with https:// in production');
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   // WAT-101 — in development the page is Vite's, whose proxy hands the API another address.
   it('takes orders from the Vite page (http://localhost:5173) in development, without BETTER_AUTH_URL', async () => {
     const scratch = mkdtempSync(path.join(tmpdir(), 'slice-entry-'));

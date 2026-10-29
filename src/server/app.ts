@@ -49,13 +49,23 @@ export interface CreateAppOptions {
   now?: () => Date;
   /** Accounts and sessions. Without it, every `/api/*` call but health is refused. */
   auth?: SliceAuth;
+  /**
+   * SLICE's public address (`BETTER_AUTH_URL`): the MCPs' addresses start with it (D5).
+   * Without it, they start with the address the request reached.
+   */
+  publicUrl?: string;
 }
 
 export function createApp(options: CreateAppOptions = {}): Express {
   const declaredEnv = options.nodeEnv ?? process.env.NODE_ENV;
   const nodeEnv = declaredEnv ?? 'development';
   const allowPrivateHosts = options.allowPrivateHosts ?? nodeEnv !== 'production';
+  // `BETTER_AUTH_URL` may end with a slash: an MCP's address never holds `//m/`.
+  const publicUrl = options.publicUrl?.replace(/\/+$/, '');
   const app = express();
+  // D6: one proxy in front of SLICE, Coolify's. `req.ip` is the last address of `X-Forwarded-For`,
+  // the one that proxy adds; whatever the visitor wrote before it is ignored.
+  app.set('trust proxy', 1);
 
   // Agents may call a hosted MCP from anywhere; the API answers SLICE's own page only (D16).
   app.use('/m', cors());
@@ -94,7 +104,16 @@ export function createApp(options: CreateAppOptions = {}): Express {
   });
 
   // Sign-in routes answer without a session (Better Auth rate-limits them itself).
-  if (options.auth) app.all('/api/auth/{*any}', toNodeHandler(options.auth));
+  if (options.auth) {
+    // D6: Better Auth reads an `X-Forwarded-For` holding several addresses as no address at all.
+    // It is handed `req.ip` alone, so its limit and SLICE's quotas count the visitor where Express does.
+    app.use('/api/auth', (req, _res, next) => {
+      if (req.ip) req.headers['x-forwarded-for'] = req.ip;
+      else delete req.headers['x-forwarded-for'];
+      next();
+    });
+    app.all('/api/auth/{*any}', toNodeHandler(options.auth));
+  }
   // Recette primer: a session without proof, so mounted only where NODE_ENV says development or test.
   if (options.auth && (declaredEnv === 'development' || declaredEnv === 'test')) {
     app.post('/api/dev/sign-in', devSignIn(options.auth));
@@ -116,7 +135,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
   // GET /api/mcps, DELETE /api/mcps/:id — the account's own MCPs (D9, D10), and their API keys (D3).
   if (options.accountMcps) {
     const now = options.now ?? (() => new Date());
-    app.use('/api/mcps', createMcpsRouter(options.accountMcps, { apiKeys: options.mcpApiKeys, now }));
+    app.use('/api/mcps', createMcpsRouter(options.accountMcps, { apiKeys: options.mcpApiKeys, now, publicUrl }));
   }
   // Recette primer: an unreadable key, so mounted only where NODE_ENV says development or test (D17).
   const { accountMcps, mcpApiKeys, mcpApiKeysUnderAnotherKey } = options;
@@ -133,7 +152,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
       now: options.now ?? (() => new Date()),
       allowPrivateHosts,
     };
-    app.use('/api/host', createHostRouter(hosted));
+    app.use('/api/host', createHostRouter({ ...hosted, publicUrl }));
     app.use(
       '/m',
       createHostedMcpRouter({
