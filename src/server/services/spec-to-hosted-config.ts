@@ -20,7 +20,7 @@ export function specToHostedConfig(
     .map((e) => ({
       name: toolNameFor(e),
       label: e.label,
-      description: (e.description ?? e.label).split('\n')[0],
+      description: e.description ?? e.label,
       method: e.method,
       path: e.path,
       params: e.params,
