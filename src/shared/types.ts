@@ -21,6 +21,8 @@ export interface ZodSchemaShape {
   type?: string;
   required?: boolean;
   description?: string;
+  /** The values the spec limits it to (`enum`), as written: only text values restrict a text field. */
+  enum?: ReadonlyArray<EnumValue>;
   items?: ZodSchemaShape;
   properties?: Record<string, ZodSchemaShape>;
   /** Names of fields that must be present when `type === 'object'`. */
@@ -28,6 +30,9 @@ export interface ZodSchemaShape {
   /** When true, an object tolerates undeclared keys (Zod `.passthrough()`). */
   additionalProperties?: boolean;
 }
+
+/** One value of an OpenAPI `enum`: any JSON value but an object or a list. */
+export type EnumValue = string | number | boolean | null;
 
 export interface EndpointParam {
   /** Tool-facing param name (may be disambiguated from the wire name — see wireName). */
@@ -44,6 +49,8 @@ export interface EndpointParam {
   required: boolean;
   /** Param description if present in the spec. */
   description?: string;
+  /** The values the spec limits the param to (`schema.enum`), if it does. */
+  enum?: ReadonlyArray<EnumValue>;
   /**
    * Nested schema for `in: 'body'` fields that are objects/arrays. Scalars use
    * `type` only; this carries the structure so the Zod builders can type it.

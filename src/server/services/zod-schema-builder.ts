@@ -32,7 +32,7 @@ export function schemaShapeForParam(p: EndpointParam): ZodSchemaShape {
   // `required`, so we must graft it on or every body field reads as required.
   if (p.in === 'body' && p.schema) return { ...p.schema, required: p.required };
   // Default missing `required` to true so non-flagged params aren't `.optional()`.
-  return { type: p.type, required: p.required !== false, description: p.description };
+  return { type: p.type, required: p.required !== false, description: p.description, enum: p.enum };
 }
 
 /**

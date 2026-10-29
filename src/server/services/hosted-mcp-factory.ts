@@ -151,8 +151,10 @@ export function buildZodSchema(shape: ZodSchemaShape): ZodTypeAny {
       base = z.object(entries).passthrough();
       break;
     }
-    default:
-      base = z.string();
+    default: {
+      const values = (shape.enum ?? []).filter((value) => typeof value === 'string');
+      base = values.length > 0 ? z.enum(values as [string, ...string[]]) : z.string();
+    }
   }
   const withOptional = shape.required === false ? base.optional() : base;
   return shape.description ? withOptional.describe(shape.description) : withOptional;
