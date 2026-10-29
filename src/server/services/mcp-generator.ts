@@ -115,7 +115,7 @@ function buildTool(endpoint: Endpoint, includeDescriptions: boolean): ToolBindin
     // Spec values are JSON-encoded, never hand-escaped: JSON.stringify yields a
     // complete string literal whatever the input (quote, backslash, newline).
     nameJson: JSON.stringify(toolNameFor(endpoint)),
-    descriptionJson: JSON.stringify((endpoint.description ?? endpoint.label).split('\n')[0]),
+    descriptionJson: JSON.stringify(endpoint.description ?? endpoint.label),
     methodJson: JSON.stringify(endpoint.method),
     pathJson: JSON.stringify(endpoint.path),
     inputSchema,
