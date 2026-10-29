@@ -4,6 +4,7 @@
 // Behavioural parity is asserted on the runtime side; the string side is
 // checked structurally (it must emit `.passthrough()`).
 import { describe, it, expect } from 'vitest';
+import { z, type ZodTypeAny } from 'zod';
 import type { ZodSchemaShape } from '@shared/types';
 import { buildZodExpression } from './zod-schema-builder';
 import { buildZodSchema } from './hosted-mcp-factory';
@@ -44,6 +45,22 @@ describe('runtime buildZodSchema — permissive objects (passthrough)', () => {
     expect(res.success).toBe(true);
     if (res.success) expect(res.data).toEqual({ foo: 1, bar: 2 });
     expect(schema.safeParse({}).success).toBe(true);
+  });
+});
+
+describe('both builders — a field limited to a list of values (WAT-200)', () => {
+  const STATUS: ZodSchemaShape = { type: 'string', enum: ['pending', 'shipped', 'late'] };
+  const kitSchema = (shape: ZodSchemaShape): ZodTypeAny => new Function('z', `return (${buildZodExpression(shape)})`)(z);
+
+  it('accepts a value of the list and refuses any other, in the kit as in the hosted engine', () => {
+    const verdicts = [kitSchema(STATUS), buildZodSchema(STATUS)].map((schema) => ({
+      late: schema.safeParse('late').success,
+      lost: schema.safeParse('lost').success,
+    }));
+    expect(verdicts).toEqual([
+      { late: true, lost: false },
+      { late: true, lost: false },
+    ]);
   });
 });
 
