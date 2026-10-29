@@ -15,7 +15,7 @@ import type {
 import { collectReferencedSchemeNames, detectAuth } from './auth-detector';
 import { slugify } from './slug';
 import { generateMcpServerToken } from './token-generator';
-import { toZodShape } from './zod-schema-builder';
+import { enumOf, toZodShape } from './zod-schema-builder';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -276,6 +276,6 @@ function normaliseParam(raw: any): EndpointParam | null {
     type: typeof raw.schema?.type === 'string' ? raw.schema.type : undefined,
     required: raw.required === true || raw.in === 'path', // path params are always required (OpenAPI rule)
     description: typeof raw.description === 'string' ? raw.description : undefined,
-    enum: toZodShape(raw.schema).enum,
+    enum: enumOf(raw.schema),
   };
 }

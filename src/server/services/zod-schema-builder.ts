@@ -49,8 +49,8 @@ export function toZodShape(schema: unknown): ZodSchemaShape {
   const description = typeof s.description === 'string' ? s.description : undefined;
   const base: ZodSchemaShape = {};
   if (description) base.description = description;
-  const values = Array.isArray(s.enum) ? s.enum.filter(isEnumValue) : [];
-  if (values.length > 0) base.enum = values;
+  const values = enumOf(s);
+  if (values) base.enum = values;
 
   const looksObject = type === 'object' || s.properties != null || s.additionalProperties != null;
   if (looksObject) {
@@ -77,6 +77,17 @@ export function toZodShape(schema: unknown): ZodSchemaShape {
 
   if (type) base.type = type;
   return base;
+}
+
+/**
+ * The values a schema limits itself to (its own `enum`, never its properties'),
+ * or none. Reads one level only: a dereferenced schema may contain itself.
+ */
+export function enumOf(schema: unknown): EnumValue[] | undefined {
+  if (!schema || typeof schema !== 'object') return undefined;
+  const raw = (schema as Record<string, unknown>).enum;
+  const values = Array.isArray(raw) ? raw.filter(isEnumValue) : [];
+  return values.length > 0 ? values : undefined;
 }
 
 /** A value an OpenAPI `enum` may hold that a param can carry: objects and lists are left out. */
