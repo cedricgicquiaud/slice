@@ -59,6 +59,9 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
       // guards it, and switches off whenever TEST is set. Never in production.
       ...(nodeEnv === 'production' && { disableOriginCheck: false }),
     },
+    // Better Auth limits its routes when its own NODE_ENV reads production, read once at import;
+    // the NODE_ENV declared here says the same, so a test can switch that limiter on.
+    ...(nodeEnv === 'production' && { rateLimit: { enabled: true } }),
     // D8: seven days from the last visit, whenever it falls; every visit renews the session.
     // Decision 25: any live session deletes the account. Better Auth asks for one opened less
     // than a day ago, which guards a password retyped; SLICE has none.
@@ -143,13 +146,11 @@ export function createAuth({ database, secret, baseURL, google, microsoft, sendC
 export type SliceAuth = ReturnType<typeof createAuth>;
 
 /**
- * The caller's IP, if known: the last address of `x-forwarded-for`, the one SLICE's single proxy
- * adds (D6). Better Auth reads only a header holding one address, so it is handed that one alone.
+ * The caller's IP, if known: `x-forwarded-for`, which `createApp` has cut down to the last address,
+ * the one SLICE's single proxy adds (D6). Better Auth's own limit reads the same header.
  */
 function ipOf(ctx: { headers?: Headers; context: { options: BetterAuthOptions } }): string | null {
-  if (!ctx.headers) return null;
-  const last = ctx.headers.get('x-forwarded-for')?.split(',').at(-1)?.trim();
-  return getIP(new Headers(last ? { 'x-forwarded-for': last } : {}), ctx.context.options);
+  return ctx.headers ? getIP(ctx.headers, ctx.context.options) : null;
 }
 
 /** BETTER_AUTH_SECRET; refused missing in production, where sessions would be signed with a public default. */

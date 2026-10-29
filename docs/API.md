@@ -76,7 +76,7 @@ A code lives 10 minutes, signs in once, and takes 5 tries:
 
 Only codes that left count in the two hourly quotas: a `code_not_sent` spends nothing. The quotas live in the server's
 memory, so a restart gives them back. In production, Better Auth also limits each of the two routes to 3 calls a minute
-per IP (`429` without `code`).
+per visitor (`429` without `code`), counted on the same address as the hourly quotas: the last of `x-forwarded-for`.
 
 Account deletion (Better Auth's delete user): `POST /api/auth/delete-user` with `{}` and the session cookie erases
 the signed-in account at once and answers `{ "success": true, "message": "User deleted" }`. Its sessions go with it on

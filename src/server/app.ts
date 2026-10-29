@@ -104,7 +104,16 @@ export function createApp(options: CreateAppOptions = {}): Express {
   });
 
   // Sign-in routes answer without a session (Better Auth rate-limits them itself).
-  if (options.auth) app.all('/api/auth/{*any}', toNodeHandler(options.auth));
+  if (options.auth) {
+    // D6: Better Auth reads an `X-Forwarded-For` holding several addresses as no address at all.
+    // It is handed `req.ip` alone, so its limit and SLICE's quotas count the visitor where Express does.
+    app.use('/api/auth', (req, _res, next) => {
+      if (req.ip) req.headers['x-forwarded-for'] = req.ip;
+      else delete req.headers['x-forwarded-for'];
+      next();
+    });
+    app.all('/api/auth/{*any}', toNodeHandler(options.auth));
+  }
   // Recette primer: a session without proof, so mounted only where NODE_ENV says development or test.
   if (options.auth && (declaredEnv === 'development' || declaredEnv === 'test')) {
     app.post('/api/dev/sign-in', devSignIn(options.auth));
