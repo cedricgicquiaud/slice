@@ -1236,6 +1236,13 @@ describe('the list of actions an agent reads from an MCP created from screen 4',
   it("gives the values a parameter is limited to", () => {
     expect(searchOrders.inputSchema.properties?.status).toMatchObject({ enum: ['pending', 'shipped', 'late'] });
   });
+
+  it('gives the explanation of a field of the request body, and the values it is limited to', () => {
+    expect(searchOrders.inputSchema.properties?.carrier).toMatchObject({
+      description: 'Carrier that ships the order',
+      enum: ['ups', 'dhl'],
+    });
+  });
 });
 
 async function host(): Promise<string> {
