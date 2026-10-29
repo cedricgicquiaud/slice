@@ -168,12 +168,13 @@ describe('thirty requests a minute for each visitor behind the proxy (D6)', () =
   });
 });
 
-/** SLICE sending its sign-in codes, with the addresses it sent them to. */
-function sliceSendingCodes() {
+/** SLICE sending its sign-in codes, with the addresses it sent them to. In production, Better Auth limits the route too. */
+function sliceSendingCodes(nodeEnv?: string) {
   const sentTo: string[] = [];
   const auth = createAuth({
     database: account.database,
     secret: TEST_AUTH_SECRET,
+    nodeEnv,
     sendCode: async (email) => {
       sentTo.push(email);
     },
@@ -219,6 +220,28 @@ describe('ten sign-in codes an hour for each visitor behind the proxy (D6)', () 
     const res = await askForCodeFrom(app, '203.0.113.7', 'victim@example.com');
 
     expect({ status: res.status, sent: sentTo.length }).toEqual({ status: 200, sent: 11 });
+  });
+});
+
+describe("Better Auth's three calls a minute for each visitor behind the proxy, in production (D6)", () => {
+  it('leaves a visitor their three calls when another, writing a false X-Forwarded-For, has had theirs (contract 5)', async () => {
+    const { app } = sliceSendingCodes('production');
+    for (let i = 1; i <= 3; i++) await askForCodeFrom(app, '203.0.113.21', `forger${i}@example.com`, '1.2.3.4');
+
+    // Their own network's router wrote an address before theirs: the header holds two.
+    const res = await askForCodeFrom(app, '198.51.100.21', 'office@example.com', '10.1.1.1');
+
+    expect(res.status).toBe(200);
+  });
+
+  it('counts a visitor who writes a false X-Forwarded-For on their real address (contract 14)', async () => {
+    const { app } = sliceSendingCodes('production');
+    for (let i = 1; i <= 3; i++) await askForCodeFrom(app, '203.0.113.22', `liar${i}@example.com`, `10.0.0.${i}`);
+
+    const res = await askForCodeFrom(app, '203.0.113.22', 'liar4@example.com');
+
+    // Better Auth's own refusal carries no `code`, unlike SLICE's hourly quotas.
+    expect({ status: res.status, code: res.body.code }).toEqual({ status: 429, code: undefined });
   });
 });
 
