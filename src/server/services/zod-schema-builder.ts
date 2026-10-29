@@ -141,8 +141,11 @@ function baseExpression(shape: ZodSchemaShape, includeDescriptions: boolean): st
       return `${obj}.passthrough()`;
     }
     case 'string':
-    default:
-      return 'z.string()';
+    default: {
+      // The spec's values are JSON-encoded like every value it gives (anti-injection rule).
+      const values = (shape.enum ?? []).filter((value) => typeof value === 'string');
+      return values.length > 0 ? `z.enum(${JSON.stringify(values)})` : 'z.string()';
+    }
   }
 }
 
