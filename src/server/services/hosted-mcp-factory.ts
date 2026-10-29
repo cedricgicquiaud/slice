@@ -154,7 +154,8 @@ export function buildZodSchema(shape: ZodSchemaShape): ZodTypeAny {
     default:
       base = z.string();
   }
-  return shape.required === false ? base.optional() : base;
+  const withOptional = shape.required === false ? base.optional() : base;
+  return shape.description ? withOptional.describe(shape.description) : withOptional;
 }
 
 /**
