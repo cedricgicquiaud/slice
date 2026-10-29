@@ -62,6 +62,12 @@ describe('both builders — a field limited to a list of values (WAT-200)', () =
       { late: true, lost: false },
     ]);
   });
+
+  it('leaves a number limited to a list of numbers free, in the kit as in the hosted engine', () => {
+    const PRIORITY: ZodSchemaShape = { type: 'integer', enum: [1, 2, 3] };
+    const verdicts = [kitSchema(PRIORITY), buildZodSchema(PRIORITY)].map((schema) => schema.safeParse(7).success);
+    expect(verdicts).toEqual([true, true]);
+  });
 });
 
 describe('kit buildZodExpression — emits passthrough for objects (parity)', () => {
